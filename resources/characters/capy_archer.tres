@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CharacterData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/CharacterData.gd" id="1_chardata"]
+
+[resource]
+script = ExtResource("1_chardata")
+id = &"capy_archer"
+display_name = "Archer Capy"
+tint = Color(0.38, 0.62, 0.30, 1)
+max_hp = 160.0
+attack = 15
+defense = 7
+finisher_name = "Arrow Storm"
+finisher_threshold = 10
+finisher_damage = 30.0
+base_skill = "arrow"

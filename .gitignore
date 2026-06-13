@@ -1,0 +1,30 @@
+# Godot
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+*.translation
+
+# Signing keys — NEVER commit these
+keystores/release.keystore
+keystores/*.keystore
+keystores/*.jks
+
+# OAuth secrets — NEVER commit these
+secrets/oauth_config.cfg
+
+# Build outputs
+build/
+dist/
+*.app/
+*.apk
+*.aab
+*.ipa
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp

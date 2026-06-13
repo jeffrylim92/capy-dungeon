@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://blj4ep0qs78ec"]
+
+[ext_resource type="Script" path="res://scripts/History.gd" id="1_history"]
+
+[node name="History" type="Node2D"]
+script = ExtResource("1_history")

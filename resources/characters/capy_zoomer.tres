@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CharacterData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/CharacterData.gd" id="1_chardata"]
+
+[resource]
+script = ExtResource("1_chardata")
+id = &"capy_zoomer"
+display_name = "Zoomer Capy"
+tint = Color(0.7, 0.55, 0.4, 1)
+max_hp = 165.0
+attack = 14
+defense = 7
+finisher_name = "Orange Hat Headbutt"
+finisher_threshold = 10
+finisher_damage = 28.0
+base_skill = "bolt"

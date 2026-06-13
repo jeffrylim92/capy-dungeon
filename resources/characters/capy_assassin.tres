@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CharacterData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/CharacterData.gd" id="1_chardata"]
+
+[resource]
+script = ExtResource("1_chardata")
+id = &"capy_assassin"
+display_name = "Assassin Capy"
+tint = Color(0.22, 0.22, 0.30, 1)
+max_hp = 155.0
+attack = 19
+defense = 6
+finisher_name = "Death Mark"
+finisher_threshold = 10
+finisher_damage = 35.0
+base_skill = "star_knife"
