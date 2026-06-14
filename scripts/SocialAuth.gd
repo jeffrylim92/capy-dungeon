@@ -164,7 +164,10 @@ static func _is_mobile() -> bool:
 
 func _active_redirect_uri() -> String:
 	if _using_relay:
-		return FACEBOOK_RELAY_URL + "/fb/callback"
+		match _pending_provider:
+			"facebook": return FACEBOOK_RELAY_URL + "/fb/callback"
+			"google":   return FACEBOOK_RELAY_URL + "/google/callback"
+			_:          return FACEBOOK_RELAY_URL + "/" + _pending_provider + "/callback"
 	return REDIRECT_URI_MOBILE if _is_mobile() else REDIRECT_URI_DESKTOP
 
 ## Begin the OAuth flow for a provider string ("google" | "facebook").
@@ -183,8 +186,8 @@ func start(provider: String) -> void:
 	_pending_provider = provider
 	_pending_state    = _random_state()
 	_step             = "token"
-	# Facebook on mobile: relay server handles code exchange and deep-links back
-	_using_relay = (provider == "facebook" and _is_mobile())
+	# On mobile: relay server handles code exchange and deep-links back for all providers
+	_using_relay = _is_mobile()
 	if _is_mobile():
 		_mobile_waiting  = true
 		_mobile_elapsed  = 0.0
