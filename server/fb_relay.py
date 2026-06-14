@@ -18,12 +18,14 @@ Environment variables (set in Render dashboard):
     RELAY_BASE_URL       = https://capy-dungeon.onrender.com
 """
 
+import asyncio
 import os
+import time
 import urllib.parse
 
 import httpx
 from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
@@ -34,6 +36,38 @@ GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID",     "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 RELAY_BASE           = os.environ.get("RELAY_BASE_URL",       "https://capy-dungeon.onrender.com")
 DEEP_LINK            = "capydungeon://auth/callback"
+
+# ── State-keyed result cache ──────────────────────────────────────────────────
+# Facebook's safety crawler hits the redirect URL before the user's browser,
+# consuming the one-time OAuth code.  We cache the successful exchange result
+# (keyed by `state`) for 5 minutes so repeated requests return the same deep
+# link even after the code has been invalidated.
+_CACHE_TTL   = 300          # seconds
+_auth_cache: dict[str, tuple[str, float]] = {}   # state -> (url, expiry)
+_state_locks: dict[str, asyncio.Lock]    = {}    # state -> Lock (one at a time)
+
+
+def _cache_get(state: str) -> str | None:
+    entry = _auth_cache.get(state)
+    if entry and entry[1] > time.time():
+        return entry[0]
+    return None
+
+
+def _cache_set(state: str, url: str) -> None:
+    _auth_cache[state] = (url, time.time() + _CACHE_TTL)
+    # Prune expired entries so memory doesn't grow unbounded
+    now = time.time()
+    stale = [k for k, v in list(_auth_cache.items()) if v[1] <= now]
+    for k in stale:
+        _auth_cache.pop(k, None)
+        _state_locks.pop(k, None)
+
+
+def _get_state_lock(state: str) -> asyncio.Lock:
+    if state not in _state_locks:
+        _state_locks[state] = asyncio.Lock()
+    return _state_locks[state]
 
 
 def _deep_link_page(url: str) -> HTMLResponse:
@@ -67,38 +101,51 @@ async def fb_callback(
     code:  str = Query(...),
     state: str = Query(""),
 ) -> HTMLResponse:
-    redirect_uri = f"{RELAY_BASE}/fb/callback"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        token_resp = await client.get(
-            "https://graph.facebook.com/v18.0/oauth/access_token",
-            params={
-                "client_id":     FB_APP_ID,
-                "client_secret": FB_APP_SECRET,
-                "redirect_uri":  redirect_uri,
-                "code":          code,
-            },
-        )
-        token_data = token_resp.json()
-        access_token: str = token_data.get("access_token", "")
-        if not access_token:
-            err_msg = token_data.get("error", {}).get("message", "token_exchange_failed")
-            return _deep_link_page(f"{DEEP_LINK}?error={urllib.parse.quote(err_msg)}&state={urllib.parse.quote(state)}")
-        profile_resp = await client.get(
-            "https://graph.facebook.com/v18.0/me",
-            params={"fields": "id,name,email,picture.type(large)", "access_token": access_token},
-        )
-        profile = profile_resp.json()
+    # Serve from cache if already exchanged (handles Facebook bot pre-fetch)
+    cached = _cache_get(state)
+    if cached:
+        return _deep_link_page(cached)
 
-    avatar = profile.get("picture", {}).get("data", {}).get("url", "")
-    params = {
-        "provider": "facebook",
-        "id":       profile.get("id",    ""),
-        "name":     profile.get("name",  ""),
-        "email":    profile.get("email", ""),
-        "picture":  avatar,
-        "state":    state,
-    }
-    return _deep_link_page(DEEP_LINK + "?" + urllib.parse.urlencode(params, quote_via=urllib.parse.quote))
+    async with _get_state_lock(state):
+        # Re-check after acquiring lock (concurrent requests race)
+        cached = _cache_get(state)
+        if cached:
+            return _deep_link_page(cached)
+
+        redirect_uri = f"{RELAY_BASE}/fb/callback"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            token_resp = await client.get(
+                "https://graph.facebook.com/v18.0/oauth/access_token",
+                params={
+                    "client_id":     FB_APP_ID,
+                    "client_secret": FB_APP_SECRET,
+                    "redirect_uri":  redirect_uri,
+                    "code":          code,
+                },
+            )
+            token_data = token_resp.json()
+            access_token: str = token_data.get("access_token", "")
+            if not access_token:
+                err_msg = token_data.get("error", {}).get("message", "token_exchange_failed")
+                return _deep_link_page(f"{DEEP_LINK}?error={urllib.parse.quote(err_msg)}&state={urllib.parse.quote(state)}")
+            profile_resp = await client.get(
+                "https://graph.facebook.com/v18.0/me",
+                params={"fields": "id,name,email,picture.type(large)", "access_token": access_token},
+            )
+            profile = profile_resp.json()
+
+        avatar = profile.get("picture", {}).get("data", {}).get("url", "")
+        qs_params = {
+            "provider": "facebook",
+            "id":       profile.get("id",    ""),
+            "name":     profile.get("name",  ""),
+            "email":    profile.get("email", ""),
+            "picture":  avatar,
+            "state":    state,
+        }
+        deep_url = DEEP_LINK + "?" + urllib.parse.urlencode(qs_params, quote_via=urllib.parse.quote)
+        _cache_set(state, deep_url)
+        return _deep_link_page(deep_url)
 
 
 @app.get("/google/callback")
@@ -106,35 +153,47 @@ async def google_callback(
     code:  str = Query(...),
     state: str = Query(""),
 ) -> HTMLResponse:
-    redirect_uri = f"{RELAY_BASE}/google/callback"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        token_resp = await client.post(
-            "https://oauth2.googleapis.com/token",
-            data={
-                "client_id":     GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "redirect_uri":  redirect_uri,
-                "grant_type":    "authorization_code",
-                "code":          code,
-            },
-        )
-        token_data = token_resp.json()
-        access_token: str = token_data.get("access_token", "")
-        if not access_token:
-            err_msg = token_data.get("error_description", token_data.get("error", "token_exchange_failed"))
-            return _deep_link_page(f"{DEEP_LINK}?error={urllib.parse.quote(err_msg)}&state={urllib.parse.quote(state)}")
-        profile_resp = await client.get(
-            "https://openidconnect.googleapis.com/v1/userinfo",
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-        profile = profile_resp.json()
+    # Serve from cache if already exchanged
+    cached = _cache_get(state)
+    if cached:
+        return _deep_link_page(cached)
 
-    params = {
-        "provider": "google",
-        "id":       profile.get("sub",     ""),
-        "name":     profile.get("name",    ""),
-        "email":    profile.get("email",   ""),
-        "picture":  profile.get("picture", ""),
-        "state":    state,
-    }
-    return _deep_link_page(DEEP_LINK + "?" + urllib.parse.urlencode(params, quote_via=urllib.parse.quote))
+    async with _get_state_lock(state):
+        cached = _cache_get(state)
+        if cached:
+            return _deep_link_page(cached)
+
+        redirect_uri = f"{RELAY_BASE}/google/callback"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            token_resp = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id":     GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "redirect_uri":  redirect_uri,
+                    "grant_type":    "authorization_code",
+                    "code":          code,
+                },
+            )
+            token_data = token_resp.json()
+            access_token: str = token_data.get("access_token", "")
+            if not access_token:
+                err_msg = token_data.get("error_description", token_data.get("error", "token_exchange_failed"))
+                return _deep_link_page(f"{DEEP_LINK}?error={urllib.parse.quote(err_msg)}&state={urllib.parse.quote(state)}")
+            profile_resp = await client.get(
+                "https://openidconnect.googleapis.com/v1/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            profile = profile_resp.json()
+
+        qs_params = {
+            "provider": "google",
+            "id":       profile.get("sub",     ""),
+            "name":     profile.get("name",    ""),
+            "email":    profile.get("email",   ""),
+            "picture":  profile.get("picture", ""),
+            "state":    state,
+        }
+        deep_url = DEEP_LINK + "?" + urllib.parse.urlencode(qs_params, quote_via=urllib.parse.quote)
+        _cache_set(state, deep_url)
+        return _deep_link_page(deep_url)
