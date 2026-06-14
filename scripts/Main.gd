@@ -44,6 +44,9 @@ func _play_music(path: String) -> void:
 	var stream: AudioStream = load(path) as AudioStream
 	if stream == null:
 		return
+	# Ensure looping regardless of import settings
+	if stream is AudioStreamMP3:
+		(stream as AudioStreamMP3).loop = true
 	# If nothing playing yet, start immediately
 	if not _bgm_a.playing:
 		_bgm_a.stream = stream
