@@ -70,23 +70,41 @@ def _get_state_lock(state: str) -> asyncio.Lock:
     return _state_locks[state]
 
 
-def _deep_link_page(url: str) -> HTMLResponse:
-    """Return an HTML page that opens a custom URL scheme via JS.
-    Direct HTTP 302 to capydungeon:// is mishandled by some mobile browsers
-    (Chrome treats it as a relative URL). JS window.location is reliable."""
-    escaped = url.replace("'", "%27")
+def _deep_link_page(deep_url: str) -> HTMLResponse:
+    """Return an HTML page that opens Capy Dungeon via Chrome's intent:// URL scheme.
+
+    Using intent:// is more reliable than window.location to capydungeon:// because
+    Chrome on Android sometimes fires the intent without the data URI when using a
+    raw custom scheme.  The intent:// format explicitly tells Chrome to construct a
+    full Android intent including the data URI and the target package.
+
+    Format:
+      intent://auth/callback?...#Intent;scheme=capydungeon;package=com.capydungeon.game;end
+    Chrome reconstructs data = "capydungeon://auth/callback?..." and Android routes
+    it to GodotAppOAuthCallback → GodotApp via the registered intent filter.
+    """
+    redirect_url = deep_url
+    if deep_url.startswith("capydungeon://"):
+        # Strip the scheme prefix — intent:// carries scheme separately
+        rest = deep_url[len("capydungeon://"):]   # e.g. "auth/callback?provider=..."
+        fallback = urllib.parse.quote("https://capy-dungeon.onrender.com/health", safe="")
+        redirect_url = (
+            f"intent://{rest}"
+            f"#Intent;scheme=capydungeon;package=com.capydungeon.game;"
+            f"S.browser_fallback_url={fallback};end"
+        )
+
+    esc = lambda s: s.replace("'", "%27")
     html = f"""<!DOCTYPE html>
 <html><head><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width'>
 <title>Signing in to Capy Dungeon...</title>
-<script>
-window.location.replace('{escaped}');
-</script>
+<script>window.location.replace('{esc(redirect_url)}');</script>
 </head>
 <body style='font-family:sans-serif;text-align:center;padding:60px;background:#1a1a2e;color:#eee'>
 <h2 style='color:#4ade80'>Signed in!</h2>
-<p>Returning to Capy Dungeon...</p>
-<p><a href='{escaped}' style='color:#60a5fa'>Tap here if the app didn't open</a></p>
+<p>Returning to Capy Dungeon&hellip;</p>
+<p><a href='{esc(redirect_url)}' style='color:#60a5fa'>Tap here if the app did not open</a></p>
 </body></html>"""
     return HTMLResponse(content=html)
 

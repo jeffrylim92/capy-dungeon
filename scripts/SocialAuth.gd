@@ -118,6 +118,7 @@ var _pending_state:    String      = ""
 var _step:             String      = ""          # "token" | "userinfo"
 var _mobile_waiting:   bool        = false
 var _mobile_elapsed:   float       = 0.0
+var _link_poll_timer:  float       = 0.0         # polls for deep link when app already has focus
 var _using_relay:      bool        = false   # true when Facebook relay handles exchange
 var _busy:             bool        = false   # true while an auth flow is in progress
 
@@ -127,7 +128,12 @@ func _ready() -> void:
 	add_child(_http)
 	_http.request_completed.connect(_on_http_completed)
 	# Reset busy flag whenever auth completes (success or failure)
-	auth_success.connect(func(_p: String, _pr: Dictionary) -> void: _busy = false)
+	auth_success.connect(func(_p: String, _pr: Dictionary) -> void:
+		DebugLog.log("[SocialAuth] auth_success emitted for provider=%s" % _p)
+		_busy = false)
+	auth_failed.connect(func(_p: String, _e: String) -> void:
+		DebugLog.log("[SocialAuth] auth_failed emitted for provider=%s error=%s" % [_p, _e])
+		_busy = false)
 
 ## SocialAuth handles its own Android deep-link so it doesn't depend on Main
 ## finding it via _find_social_auth.
@@ -137,7 +143,9 @@ func _notification(what: int) -> void:
 	if OS.get_name() != "Android":
 		return
 	if what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
+		DebugLog.log("[SocialAuth] _notification: focus-in fired, _mobile_waiting=%s" % str(_mobile_waiting))
 		var url := _read_own_deep_link()
+		DebugLog.log("[SocialAuth] _notification: _read_own_deep_link returned '%s'" % url)
 		if not url.is_empty():
 			handle_deep_link(url)
 
@@ -156,10 +164,12 @@ func _read_own_deep_link() -> String:
 		return ""
 	var uri: String = str(data)
 	if uri.begins_with("capydungeon://"):
+		DebugLog.log("[SocialAuth] _read_own_deep_link: FOUND url='%s'" % uri)
+		DebugLog.sticky = "LAST_URL: " + uri
 		intent.call("setData", null)
 		return uri
+	DebugLog.log("[SocialAuth] _read_own_deep_link: unexpected URI='%s'" % uri)
 	return ""
-	auth_failed.connect(func(_p: String, _e: String) -> void: _busy = false)
 
 func _load_secrets() -> void:
 	if not FileAccess.file_exists(_SECRETS_PATH):
@@ -204,6 +214,7 @@ func _active_redirect_uri() -> String:
 
 ## Begin the OAuth flow for a provider string ("google" | "facebook").
 func start(provider: String) -> void:
+	DebugLog.log("[SocialAuth] start() called: provider=%s _busy=%s _mobile_waiting=%s" % [provider, str(_busy), str(_mobile_waiting)])
 	# Allow re-starting if the previous mobile flow is still waiting (user retrying).
 	# In that case, reset state so a fresh flow begins.
 	if _busy and _mobile_waiting:
@@ -229,6 +240,7 @@ func start(provider: String) -> void:
 	if _is_mobile():
 		_mobile_waiting  = true
 		_mobile_elapsed  = 0.0
+		_link_poll_timer = 1.0
 	else:
 		_start_local_server()
 	OS.shell_open(_build_auth_url(provider))
@@ -237,9 +249,16 @@ func start(provider: String) -> void:
 ## e.g. from Main.gd's _notification(NOTIFICATION_APPLICATION_FOCUS_IN):
 ##   SocialAuth.handle_deep_link(url)
 func handle_deep_link(url: String) -> void:
+	DebugLog.log("[SocialAuth] handle_deep_link called: url='%s' _mobile_waiting=%s _pending_state=%s" % [url, str(_mobile_waiting), _pending_state])
 	if not _mobile_waiting:
+		DebugLog.log("[SocialAuth] handle_deep_link: ignoring — not waiting for mobile auth")
 		return
 	if not url.begins_with(REDIRECT_URI_MOBILE):
+		DebugLog.log("[SocialAuth] handle_deep_link: WRONG URL='%s' expected prefix='%s'" % [url, REDIRECT_URI_MOBILE])
+		DebugLog.sticky = "WRONG_URL: " + url
+		_mobile_waiting = false
+		_busy = false
+		auth_failed.emit(_pending_provider, "Unexpected redirect URL — please try again")
 		return
 	_mobile_waiting = false
 	_mobile_elapsed = 0.0
@@ -253,12 +272,14 @@ func handle_deep_link(url: String) -> void:
 	if params.has("error"):
 		auth_failed.emit(_pending_provider, String(params["error"]))
 		return
-	if String(params.get("state", "")) != _pending_state:
-		push_error("SocialAuth state mismatch (deep link): got='%s' expected='%s'" % [
-			String(params.get("state", "")), _pending_state])
+	var got_state := String(params.get("state", ""))
+	DebugLog.log("[SocialAuth] handle_deep_link: state check got='%s' expected='%s'" % [got_state, _pending_state])
+	if got_state != _pending_state:
+		push_error("SocialAuth state mismatch (deep link): got='%s' expected='%s'" % [got_state, _pending_state])
 		auth_failed.emit(_pending_provider, "State mismatch — possible CSRF attack")
 		return
 	# Relay flow: profile data already included in the URL — no code exchange needed.
+	DebugLog.log("[SocialAuth] handle_deep_link: was_relay=%s has_provider=%s" % [str(was_relay), str(params.has("provider"))])
 	if was_relay and params.has("provider"):
 		var profile: Dictionary = {
 			"provider":     String(params.get("provider", _pending_provider)),
@@ -315,12 +336,24 @@ func _stop_server() -> void:
 		_server = null
 
 func _process(delta: float) -> void:
-	# ── Mobile: timeout watchdog ──────────────────────────────────────────────
+	# ── Mobile: timeout watchdog + deep-link poll ─────────────────────────────
 	if _mobile_waiting:
 		_mobile_elapsed += delta
 		if _mobile_elapsed >= MOBILE_AUTH_TIMEOUT:
 			_mobile_waiting = false
 			auth_failed.emit(_pending_provider, "Authentication timed out")
+			return
+		# Poll the Android intent every ~1 s while waiting. Covers the case where
+		# the deep-link intent arrives while the app is already in the foreground
+		# (e.g. the user manually switched back before the relay responded), so no
+		# NOTIFICATION_APPLICATION_FOCUS_IN fires to trigger _read_own_deep_link.
+		if OS.get_name() == "Android":
+			_link_poll_timer -= delta
+			if _link_poll_timer <= 0.0:
+				_link_poll_timer = 1.0
+				var url := _read_own_deep_link()
+				if not url.is_empty():
+					handle_deep_link(url)
 		return
 
 	# ── Desktop: TCPServer poll ───────────────────────────────────────────────

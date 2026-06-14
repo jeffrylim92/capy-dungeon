@@ -351,7 +351,8 @@ var _joy_zone:     Rect2
 # ─── State flags ──────────────────────────────────────────────────────────────
 var _paused:    bool = false
 var _game_over: bool = false
-var _revive_used: bool = false   # true once the player has used the ad revive
+var _revive_used: bool = false      # true once the player has used the ad revive
+var _skill_reroll_used: bool = false  # true once the player has rerolled skills this level-up
 
 # ─── Ads ──────────────────────────────────────────────────────────────────────
 var _ad_manager: AdManager = null
@@ -2057,7 +2058,9 @@ func _update_skill_icons() -> void:
 # SKILL SELECT UI
 # ═════════════════════════════════════════════════════════════════════════════
 
-func _show_skill_select(is_initial: bool) -> void:
+func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
+	if not _is_reroll:
+		_skill_reroll_used = false
 	_paused = true
 	var choices: Array[Dictionary] = _build_skill_choices()
 	var view: Vector2 = get_viewport_rect().size
@@ -2195,6 +2198,66 @@ func _show_skill_select(is_initial: bool) -> void:
 			_paused = false
 		)
 		layer.add_child(card)
+
+	# ── Watch Ad to Reroll button ─────────────────────────────────────────────
+	var reroll_y: float = start_y + 3.0 * (card_h + gap) + 20.0
+	var reroll_btn := Button.new()
+	reroll_btn.custom_minimum_size = Vector2(card_w, 62)
+	reroll_btn.size     = Vector2(card_w, 62)
+	reroll_btn.position = Vector2(40, reroll_y)
+	reroll_btn.focus_mode = Control.FOCUS_NONE
+
+	if _skill_reroll_used:
+		reroll_btn.text = "Reroll used for this level-up"
+		reroll_btn.disabled = true
+		var ds := StyleBoxFlat.new()
+		ds.bg_color = Color(0.16, 0.16, 0.16, 0.55)
+		ds.corner_radius_top_left = 18; ds.corner_radius_top_right = 18
+		ds.corner_radius_bottom_right = 18; ds.corner_radius_bottom_left = 18
+		ds.set_border_width_all(2); ds.border_color = Color(0.35, 0.35, 0.35, 0.5)
+		reroll_btn.add_theme_stylebox_override("disabled", ds)
+		reroll_btn.add_theme_color_override("font_disabled_color", Color(0.45, 0.45, 0.45))
+		reroll_btn.add_theme_font_size_override("font_size", 20)
+	else:
+		reroll_btn.text = "Watch Ad to Reroll Skills"
+		reroll_btn.add_theme_font_size_override("font_size", 22)
+		reroll_btn.add_theme_color_override("font_color", Color(0.12, 0.08, 0.02))
+		var ns := StyleBoxFlat.new()
+		ns.bg_color = Color(0.95, 0.78, 0.15, 0.95)
+		ns.corner_radius_top_left = 18; ns.corner_radius_top_right = 18
+		ns.corner_radius_bottom_right = 18; ns.corner_radius_bottom_left = 18
+		ns.set_border_width_all(2); ns.border_color = Color(1.0, 0.92, 0.38)
+		ns.shadow_color = Color(0.95, 0.78, 0.15, 0.40); ns.shadow_size = 10; ns.shadow_offset = Vector2(0, 3)
+		reroll_btn.add_theme_stylebox_override("normal", ns)
+		var hs := StyleBoxFlat.new()
+		hs.bg_color = Color(1.0, 0.88, 0.28, 1.0)
+		hs.corner_radius_top_left = 18; hs.corner_radius_top_right = 18
+		hs.corner_radius_bottom_right = 18; hs.corner_radius_bottom_left = 18
+		hs.set_border_width_all(3); hs.border_color = Color(1.0, 0.96, 0.55)
+		hs.shadow_color = Color(1.0, 0.88, 0.28, 0.55); hs.shadow_size = 14; hs.shadow_offset = Vector2(0, 3)
+		reroll_btn.add_theme_stylebox_override("hover", hs)
+
+		var cap_is_initial: bool = is_initial
+		var cap_layer: Node = layer
+		reroll_btn.pressed.connect(func() -> void:
+			reroll_btn.disabled = true
+			reroll_btn.text = "Loading ad..."
+			_ad_manager.rewarded_ad_completed.connect(
+				func() -> void:
+					_skill_reroll_used = true
+					cap_layer.queue_free()
+					_show_skill_select(cap_is_initial, true),
+				CONNECT_ONE_SHOT
+			)
+			_ad_manager.rewarded_ad_skipped.connect(
+				func() -> void:
+					reroll_btn.disabled = false
+					reroll_btn.text = "Watch Ad to Reroll Skills",
+				CONNECT_ONE_SHOT
+			)
+			_ad_manager.show_rewarded_ad()
+		)
+	layer.add_child(reroll_btn)
 
 func _build_skill_choices() -> Array[Dictionary]:
 	# ── Determine which skills this character can use ─────────────────────────

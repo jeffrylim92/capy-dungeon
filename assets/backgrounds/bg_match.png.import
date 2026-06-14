@@ -2,16 +2,12 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://gibufnky6wt0"
-path="res://.godot/imported/bg_match.png-c55578b3c859a19e6e341856e856c623.ctex"
-metadata={
-"vram_texture": false
-}
+uid="uid://bkojoo010gi16"
+valid=false
 
 [deps]
 
 source_file="res://assets/backgrounds/bg_match.png"
-dest_files=["res://.godot/imported/bg_match.png-c55578b3c859a19e6e341856e856c623.ctex"]
 
 [params]
 

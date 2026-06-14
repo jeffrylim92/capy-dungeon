@@ -100,18 +100,19 @@ func _process(delta: float) -> void:
 ##   iOS — in your Godot iOS plugin's URL-opened callback:
 ##     Main._on_deep_link(url_string)
 func _on_deep_link(url: String) -> void:
+	DebugLog.log("[Main] _on_deep_link: url='%s'" % url)
 	if url.begins_with("capydungeon://auth/"):
-		# Forward to whichever SocialAuth node is currently active.
 		var auth_node := _find_social_auth()
 		if auth_node:
 			auth_node.handle_deep_link(url)
+		else:
+			DebugLog.log("[Main] _on_deep_link: WARN SocialAuth not found — URL dropped!")
 
 func _notification(what: int) -> void:
 	if OS.get_name() != "Android":
 		return
 	match what:
 		NOTIFICATION_APPLICATION_FOCUS_IN, NOTIFICATION_WM_WINDOW_FOCUS_IN:
-			# Called when app comes to foreground — read deep link from current intent
 			var url := _read_android_deep_link()
 			if not url.is_empty():
 				_on_deep_link(url)
@@ -133,15 +134,33 @@ func _read_android_deep_link() -> String:
 		return ""
 	var uri: String = str(data)
 	if uri.begins_with("capydungeon://"):
+		DebugLog.log("[Main] _read_android_deep_link: FOUND url='%s'" % uri)
+		DebugLog.sticky = "LAST_URL: " + uri
 		intent.call("setData", null)   # consume — prevents reprocessing on resume
 		return uri
 	return ""
 
 func _find_social_auth() -> SocialAuth:
-	# Search recursively so we find it regardless of nesting depth
-	var result := find_child("SocialAuth", true, false)
-	if result is SocialAuth:
-		return result as SocialAuth
+	# Try by name first (fast path — works when Login.gd sets node.name = "SocialAuth")
+	var by_name := find_child("SocialAuth", true, false)
+	if by_name is SocialAuth:
+		return by_name as SocialAuth
+	# Fallback: walk the entire subtree and match by type.
+	# Necessary because SocialAuth.new() may not set the node name to the class name
+	# in all Godot 4 versions, causing find_child to return null even though the
+	# node is present and receives notifications correctly.
+	var result := _find_social_auth_recursive(self)
+	if result == null:
+		DebugLog.log("[Main] _find_social_auth: not found anywhere in tree")
+	return result
+
+func _find_social_auth_recursive(node: Node) -> SocialAuth:
+	for child in node.get_children():
+		if child is SocialAuth:
+			return child as SocialAuth
+		var found := _find_social_auth_recursive(child)
+		if found:
+			return found
 	return null
 
 func _show_login() -> void:

@@ -42,12 +42,45 @@ var _characters: Array[CharacterData] = []
 var _remembered_login: Dictionary = {}
 
 var _social_auth: SocialAuth = null
+var _debug_label: Label = null
+var _debug_timer: float  = 0.0
 
 func _ready() -> void:
 	_characters = CharacterLoader.load_all()
 	_build_ui()
 	_apply_mode()
 	_load_remember()
+	if OS.get_name() == "Android":
+		_build_debug_overlay()
+
+func _build_debug_overlay() -> void:
+	var view := get_viewport_rect().size
+	var panel := Panel.new()
+	panel.position = Vector2(0, view.y * 0.55)
+	panel.size     = Vector2(view.x, view.y * 0.45)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0, 0, 0, 0.78)
+	panel.add_theme_stylebox_override("panel", style)
+	add_child(panel)
+	_debug_label = Label.new()
+	_debug_label.position = Vector2(8, 6)
+	_debug_label.size     = Vector2(view.x - 16, view.y * 0.45 - 12)
+	_debug_label.add_theme_font_size_override("font_size", 18)
+	_debug_label.add_theme_color_override("font_color", Color(0.2, 1, 0.4))
+	_debug_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_debug_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	_debug_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(_debug_label)
+
+func _process(delta: float) -> void:
+	if _debug_label == null:
+		return
+	_debug_timer -= delta
+	if _debug_timer <= 0.0:
+		_debug_timer = 0.25
+		if DebugLog.dirty:
+			_debug_label.text = DebugLog.get_text()
 
 func _build_ui() -> void:
 	var view := get_viewport_rect().size
@@ -206,8 +239,11 @@ func _build_social_section() -> void:
 	_root.add_child(col)
 	_social_section = col
 
-	# Wire up the SocialAuth node
+	# Wire up the SocialAuth node.
+	# Name must be set explicitly — SocialAuth.new() may not set the node name
+	# to the class name in all Godot 4 versions, breaking Main._find_social_auth().
 	_social_auth = SocialAuth.new()
+	_social_auth.name = "SocialAuth"
 	add_child(_social_auth)
 	_social_auth.auth_success.connect(_on_social_success)
 	_social_auth.auth_failed.connect(_on_social_failed)
