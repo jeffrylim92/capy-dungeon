@@ -119,26 +119,39 @@ var _step:             String      = ""          # "token" | "userinfo"
 var _mobile_waiting:   bool        = false
 var _mobile_elapsed:   float       = 0.0
 var _using_relay:      bool        = false   # true when Facebook relay handles exchange
+var _busy:             bool        = false   # true while an auth flow is in progress
 
 func _ready() -> void:
 	_load_secrets()
 	_http = HTTPRequest.new()
 	add_child(_http)
 	_http.request_completed.connect(_on_http_completed)
+	# Reset busy flag whenever auth completes (success or failure)
+	auth_success.connect(func(_p: String, _pr: Dictionary) -> void: _busy = false)
+	auth_failed.connect(func(_p: String, _e: String) -> void: _busy = false)
 
 func _load_secrets() -> void:
+	if not FileAccess.file_exists(_SECRETS_PATH):
+		push_error("SocialAuth: secrets file not found at '%s'. Copy secrets/oauth_config.cfg.example to secrets/oauth_config.cfg and fill in your credentials." % _SECRETS_PATH)
+		return
 	var cfg := ConfigFile.new()
 	var err := cfg.load(_SECRETS_PATH)
 	if err != OK:
-		push_warning("SocialAuth: could not load %s (err %d) — OAuth will not work" % [_SECRETS_PATH, err])
+		push_error("SocialAuth: could not parse %s (err %d) — OAuth will not work" % [_SECRETS_PATH, err])
 		return
-	OAUTH_CONFIG["google"]["client_id"]     = cfg.get_value("google",   "client_id",     "")
-	OAUTH_CONFIG["google"]["client_secret"] = cfg.get_value("google",   "client_secret", "")
-	OAUTH_CONFIG["facebook"]["client_id"]   = cfg.get_value("facebook", "client_id",     "")
-	OAUTH_CONFIG["facebook"]["client_secret"]= cfg.get_value("facebook","client_secret", "")
+	var google_dict: Dictionary = OAUTH_CONFIG["google"]
+	google_dict["client_id"]     = cfg.get_value("google",   "client_id",     "")
+	google_dict["client_secret"] = cfg.get_value("google",   "client_secret", "")
+	var fb_dict: Dictionary = OAUTH_CONFIG["facebook"]
+	fb_dict["client_id"]     = cfg.get_value("facebook", "client_id",     "")
+	fb_dict["client_secret"] = cfg.get_value("facebook", "client_secret", "")
 	var relay: String = cfg.get_value("relay", "facebook_relay_url", FACEBOOK_RELAY_URL)
 	if not relay.is_empty():
 		FACEBOOK_RELAY_URL = relay
+	print("SocialAuth: secrets loaded — google client_id=%s… facebook client_id=%s" % [
+		(google_dict["client_id"] as String).left(12),
+		(fb_dict["client_id"] as String).left(6),
+	])
 
 ## Returns the list of providers to show on the current device.
 ## Facebook uses the relay server on mobile so it works on all platforms.
@@ -156,9 +169,17 @@ func _active_redirect_uri() -> String:
 
 ## Begin the OAuth flow for a provider string ("google" | "facebook").
 func start(provider: String) -> void:
+	if _busy:
+		return   # ignore if a flow is already in progress
 	if not OAUTH_CONFIG.has(provider):
 		auth_failed.emit(provider, "Unknown provider: " + provider)
 		return
+	var cid: String = (OAUTH_CONFIG[provider] as Dictionary).get("client_id", "") as String
+	if cid.is_empty():
+		push_error("SocialAuth: %s client_id is empty — did you fill in secrets/oauth_config.cfg?" % provider)
+		auth_failed.emit(provider, "App credentials not configured. Please check oauth_config.cfg.")
+		return
+	_busy             = true
 	_pending_provider = provider
 	_pending_state    = _random_state()
 	_step             = "token"
@@ -192,6 +213,8 @@ func handle_deep_link(url: String) -> void:
 		auth_failed.emit(_pending_provider, String(params["error"]))
 		return
 	if String(params.get("state", "")) != _pending_state:
+		push_error("SocialAuth state mismatch (deep link): got='%s' expected='%s'" % [
+			String(params.get("state", "")), _pending_state])
 		auth_failed.emit(_pending_provider, "State mismatch — possible CSRF attack")
 		return
 	# Relay flow: profile data already included in the URL — no code exchange needed.
@@ -258,35 +281,42 @@ func _process(delta: float) -> void:
 		return
 	if not _server.is_connection_available():
 		return
-
 	var conn := _server.take_connection()
-	if conn == null:
-		return
+	if conn != null:
+		_handle_callback_connection(conn)
 
-	# Read the HTTP request (with a simple busy-wait; fine for a one-shot callback)
+func _handle_callback_connection(conn: StreamPeerTCP) -> void:
 	var raw := PackedByteArray()
-	var waited: int = 0
-	while waited < 40:  # up to ~2 s
+	var frames: int = 0
+	while frames < 60:   # up to ~1s at 60fps — no OS.delay_msec, no freeze
+		conn.poll()
 		if conn.get_available_bytes() > 0:
 			var chunk: Array = conn.get_data(conn.get_available_bytes())
 			if chunk[0] == OK:
 				raw.append_array(chunk[1] as PackedByteArray)
-		var text := raw.get_string_from_utf8()
-		if text.contains("\r\n\r\n"):
+		if raw.get_string_from_utf8().contains("\r\n\r\n"):
 			break
-		OS.delay_msec(50)
-		waited += 1
+		await get_tree().process_frame
+		frames += 1
 
 	_stop_server()
 
-	# Reply so the browser shows a friendly close-me page
-	var html := "<html><body style='font-family:sans-serif;text-align:center;padding:80px'>" \
-		+ "<h2>\u2705 Signed in! Switch back to Capy Dungeon.</h2>" \
-		+ "<p style='color:#888'>You can close this tab.</p></body></html>"
+	# Reply with a page that auto-closes itself after 1 second
+	var html := "<!DOCTYPE html><html><head><meta charset='utf-8'>" \
+		+ "<script>setTimeout(function(){window.close();},1000);</script></head>" \
+		+ "<body style='font-family:sans-serif;text-align:center;padding:80px;background:#1a1a2e;color:#eee'>" \
+		+ "<h2 style='color:#4ade80'>&#10003; Signed in!</h2>" \
+		+ "<p style='color:#aaa'>You can close this tab and return to Capy Dungeon.</p>" \
+		+ "</body></html>"
 	var reply := "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n" \
 		+ "Content-Length: %d\r\nConnection: close\r\n\r\n%s" % [html.to_utf8_buffer().size(), html]
 	conn.put_data(reply.to_utf8_buffer())
+	await get_tree().process_frame
 	conn.disconnect_from_host()
+
+	# Bring game window to front
+	if not _is_mobile():
+		get_window().grab_focus()
 
 	# Parse the query string from the GET request line
 	var request_text := raw.get_string_from_utf8()
@@ -310,6 +340,8 @@ func _process(delta: float) -> void:
 		auth_failed.emit(_pending_provider, "Missing authorization code")
 		return
 	if String(params.get("state", "")) != _pending_state:
+		push_error("SocialAuth state mismatch (desktop): got='%s' expected='%s'" % [
+			String(params.get("state", "")), _pending_state])
 		auth_failed.emit(_pending_provider, "State mismatch — possible CSRF attack")
 		return
 
@@ -392,9 +424,10 @@ static func _random_state() -> String:
 
 static func _parse_qs(qs: String) -> Dictionary:
 	var result: Dictionary = {}
-	for part in qs.split("&"):
-		var kv := part.split("=", true)
-		if kv.size() >= 2:
+	for part in qs.split("&", false):
+		# maxsplit=1 ensures values containing "=" (e.g. base64 auth codes) are preserved
+		var kv := part.split("=", true, 1)
+		if kv.size() == 2:
 			result[kv[0]] = kv[1].uri_decode()
 		elif kv.size() == 1 and kv[0] != "":
 			result[kv[0]] = ""
