@@ -23,7 +23,7 @@ import urllib.parse
 
 import httpx
 from fastapi import FastAPI, Query
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 app = FastAPI()
 
@@ -36,6 +36,27 @@ RELAY_BASE           = os.environ.get("RELAY_BASE_URL",       "https://capy-dung
 DEEP_LINK            = "capydungeon://auth/callback"
 
 
+def _deep_link_page(url: str) -> HTMLResponse:
+    """Return an HTML page that opens a custom URL scheme via JS.
+    Direct HTTP 302 to capydungeon:// is mishandled by some mobile browsers
+    (Chrome treats it as a relative URL). JS window.location is reliable."""
+    escaped = url.replace("'", "%27")
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width'>
+<title>Signing in to Capy Dungeon...</title>
+<script>
+window.location.replace('{escaped}');
+</script>
+</head>
+<body style='font-family:sans-serif;text-align:center;padding:60px;background:#1a1a2e;color:#eee'>
+<h2 style='color:#4ade80'>Signed in!</h2>
+<p>Returning to Capy Dungeon...</p>
+<p><a href='{escaped}' style='color:#60a5fa'>Tap here if the app didn't open</a></p>
+</body></html>"""
+    return HTMLResponse(content=html)
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "service": "capy-oauth-relay"}
@@ -45,7 +66,7 @@ async def health() -> dict:
 async def fb_callback(
     code:  str = Query(...),
     state: str = Query(""),
-) -> RedirectResponse:
+) -> HTMLResponse:
     redirect_uri = f"{RELAY_BASE}/fb/callback"
     async with httpx.AsyncClient(timeout=10.0) as client:
         token_resp = await client.get(
@@ -61,10 +82,7 @@ async def fb_callback(
         access_token: str = token_data.get("access_token", "")
         if not access_token:
             err_msg = token_data.get("error", {}).get("message", "token_exchange_failed")
-            return RedirectResponse(
-                url=f"{DEEP_LINK}?error={urllib.parse.quote(err_msg)}&state={urllib.parse.quote(state)}",
-                status_code=302,
-            )
+            return _deep_link_page(f"{DEEP_LINK}?error={urllib.parse.quote(err_msg)}&state={urllib.parse.quote(state)}")
         profile_resp = await client.get(
             "https://graph.facebook.com/v18.0/me",
             params={"fields": "id,name,email,picture.type(large)", "access_token": access_token},
@@ -80,17 +98,14 @@ async def fb_callback(
         "picture":  avatar,
         "state":    state,
     }
-    return RedirectResponse(
-        url=DEEP_LINK + "?" + urllib.parse.urlencode(params, quote_via=urllib.parse.quote),
-        status_code=302,
-    )
+    return _deep_link_page(DEEP_LINK + "?" + urllib.parse.urlencode(params, quote_via=urllib.parse.quote))
 
 
 @app.get("/google/callback")
 async def google_callback(
     code:  str = Query(...),
     state: str = Query(""),
-) -> RedirectResponse:
+) -> HTMLResponse:
     redirect_uri = f"{RELAY_BASE}/google/callback"
     async with httpx.AsyncClient(timeout=10.0) as client:
         token_resp = await client.post(
@@ -107,10 +122,7 @@ async def google_callback(
         access_token: str = token_data.get("access_token", "")
         if not access_token:
             err_msg = token_data.get("error_description", token_data.get("error", "token_exchange_failed"))
-            return RedirectResponse(
-                url=f"{DEEP_LINK}?error={urllib.parse.quote(err_msg)}&state={urllib.parse.quote(state)}",
-                status_code=302,
-            )
+            return _deep_link_page(f"{DEEP_LINK}?error={urllib.parse.quote(err_msg)}&state={urllib.parse.quote(state)}")
         profile_resp = await client.get(
             "https://openidconnect.googleapis.com/v1/userinfo",
             headers={"Authorization": f"Bearer {access_token}"},
@@ -125,7 +137,4 @@ async def google_callback(
         "picture":  profile.get("picture", ""),
         "state":    state,
     }
-    return RedirectResponse(
-        url=DEEP_LINK + "?" + urllib.parse.urlencode(params, quote_via=urllib.parse.quote),
-        status_code=302,
-    )
+    return _deep_link_page(DEEP_LINK + "?" + urllib.parse.urlencode(params, quote_via=urllib.parse.quote))
