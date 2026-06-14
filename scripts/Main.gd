@@ -28,6 +28,14 @@ func _ready() -> void:
 	SettingsStore.apply.call_deferred(get_tree())
 	_setup_music()
 	_show_login()
+	# Handle cold-start via capydungeon:// deep link (app launched by URL scheme)
+	if OS.get_name() == "Android":
+		call_deferred("_check_launch_deep_link")
+
+func _check_launch_deep_link() -> void:
+	var url := _read_android_deep_link()
+	if not url.is_empty():
+		_on_deep_link(url)
 
 func _setup_music() -> void:
 	_bgm_a = AudioStreamPlayer.new()
@@ -99,10 +107,14 @@ func _on_deep_link(url: String) -> void:
 			auth_node.handle_deep_link(url)
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_FOCUS_IN and OS.get_name() == "Android":
-		var url := _read_android_deep_link()
-		if not url.is_empty():
-			_on_deep_link(url)
+	if OS.get_name() != "Android":
+		return
+	match what:
+		NOTIFICATION_APPLICATION_FOCUS_IN, NOTIFICATION_WM_WINDOW_FOCUS_IN:
+			# Called when app comes to foreground — read deep link from current intent
+			var url := _read_android_deep_link()
+			if not url.is_empty():
+				_on_deep_link(url)
 
 ## Reads the deep-link URL from the Android Activity intent, then clears it
 ## so the same URL isn't processed again on the next focus event.

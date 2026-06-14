@@ -173,8 +173,14 @@ func _active_redirect_uri() -> String:
 
 ## Begin the OAuth flow for a provider string ("google" | "facebook").
 func start(provider: String) -> void:
+	# Allow re-starting if the previous mobile flow is still waiting (user retrying).
+	# In that case, reset state so a fresh flow begins.
+	if _busy and _mobile_waiting:
+		_mobile_waiting = false
+		_mobile_elapsed = 0.0
+		_busy = false
 	if _busy:
-		return   # ignore if a flow is already in progress
+		return   # a non-mobile flow (desktop TCP) is genuinely in progress
 	if not OAUTH_CONFIG.has(provider):
 		auth_failed.emit(provider, "Unknown provider: " + provider)
 		return
