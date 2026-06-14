@@ -23,7 +23,7 @@ config/name="Capy Dungeon"
 config/description="Tap-combo capybara battler"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
-config/icon="res://icon.svg"
+config/icon="res://assets/icon.png"
 
 [display]
 
