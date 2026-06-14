@@ -10,12 +10,76 @@ const INVENTORY_SCENE := preload("res://scenes/Inventory.tscn")
 const MATCH_SCENE := preload("res://scenes/Match.tscn")
 const HISTORY_SCENE := preload("res://scenes/History.tscn")
 
+const BGM_LOBBY_PATH:   String = "res://assets/sfx/bgm_lobby.ogg"
+const BGM_DUNGEON_PATH: String = "res://assets/sfx/bgm_dungeon.ogg"
+const BGM_FADE_TIME:    float  = 1.2   # crossfade duration in seconds
+
 var _account: Dictionary = {}
 var _last_character: CharacterData = null
 
+# ── Music players ─────────────────────────────────────────────────────────────
+var _bgm_a: AudioStreamPlayer = null
+var _bgm_b: AudioStreamPlayer = null
+var _bgm_fading: bool  = false
+var _bgm_fade_t: float = 0.0
+var _bgm_current_path: String = ""
+
 func _ready() -> void:
 	SettingsStore.apply.call_deferred(get_tree())
+	_setup_music()
 	_show_login()
+
+func _setup_music() -> void:
+	_bgm_a = AudioStreamPlayer.new()
+	_bgm_a.bus = "Master"
+	add_child(_bgm_a)
+	_bgm_b = AudioStreamPlayer.new()
+	_bgm_b.bus = "Master"
+	add_child(_bgm_b)
+
+func _play_music(path: String) -> void:
+	if path == _bgm_current_path:
+		return
+	_bgm_current_path = path
+	var stream: AudioStream = load(path) as AudioStream
+	if stream == null:
+		return
+	# If nothing playing yet, start immediately
+	if not _bgm_a.playing:
+		_bgm_a.stream = stream
+		_bgm_a.volume_db = 0.0
+		_bgm_a.play()
+		_bgm_b.stop()
+		_bgm_fading = false
+		return
+	# Crossfade: start new track on B, fade A out
+	_bgm_b.stream = stream
+	_bgm_b.volume_db = -80.0
+	_bgm_b.play()
+	_bgm_fading = true
+	_bgm_fade_t = 0.0
+
+func _stop_music() -> void:
+	_bgm_current_path = ""
+	_bgm_a.stop()
+	_bgm_b.stop()
+	_bgm_fading = false
+
+func _process(delta: float) -> void:
+	if not _bgm_fading:
+		return
+	_bgm_fade_t += delta
+	var t: float = clamp(_bgm_fade_t / BGM_FADE_TIME, 0.0, 1.0)
+	_bgm_a.volume_db = linear_to_db(1.0 - t)
+	_bgm_b.volume_db = linear_to_db(t)
+	if t >= 1.0:
+		_bgm_a.stop()
+		# Swap so A is always the active player
+		var tmp: AudioStreamPlayer = _bgm_a
+		_bgm_a = _bgm_b
+		_bgm_b = tmp
+		_bgm_a.volume_db = 0.0
+		_bgm_fading = false
 
 ## Called by the OS when the app is (re)opened via a capydungeon:// deep link.
 ## Wire this up from your platform bridge:
@@ -67,6 +131,7 @@ func _find_social_auth() -> SocialAuth:
 func _show_login() -> void:
 	_account = {}
 	_clear_children()
+	_play_music(BGM_LOBBY_PATH)
 	var login := LOGIN_SCENE.instantiate()
 	login.logged_in.connect(_on_logged_in)
 	add_child(login)
@@ -77,6 +142,7 @@ func _on_logged_in(account: Dictionary) -> void:
 
 func _show_lobby() -> void:
 	_clear_children()
+	_play_music(BGM_LOBBY_PATH)
 	var lobby := LOBBY_SCENE.instantiate()
 	lobby.account = _account
 	lobby.start_game_requested.connect(_show_select)
@@ -120,6 +186,7 @@ func _on_inventory_confirmed(data: CharacterData) -> void:
 
 func _start_match(data: CharacterData) -> void:
 	_clear_children()
+	_play_music(BGM_DUNGEON_PATH)
 	var m := MATCH_SCENE.instantiate()
 	m.selected_player_character = data
 	m.account_username = String(_account.get("username", ""))
