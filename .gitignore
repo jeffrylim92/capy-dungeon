@@ -21,6 +21,9 @@ dist/
 *.aab
 *.ipa
 
+# Keep Android custom build template (our build.gradle fix lives here)
+!android/build/
+
 # macOS
 .DS_Store
 
