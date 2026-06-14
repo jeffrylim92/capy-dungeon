@@ -142,6 +142,7 @@ func _load_secrets() -> void:
 	var google_dict: Dictionary = OAUTH_CONFIG["google"]
 	google_dict["client_id"]     = cfg.get_value("google",   "client_id",     "")
 	google_dict["client_secret"] = cfg.get_value("google",   "client_secret", "")
+	google_dict["web_client_id"] = cfg.get_value("google",   "web_client_id", "")
 	var fb_dict: Dictionary = OAUTH_CONFIG["facebook"]
 	fb_dict["client_id"]     = cfg.get_value("facebook", "client_id",     "")
 	fb_dict["client_secret"] = cfg.get_value("facebook", "client_secret", "")
@@ -244,8 +245,14 @@ func handle_deep_link(url: String) -> void:
 
 func _build_auth_url(provider: String) -> String:
 	var cfg: Dictionary = OAUTH_CONFIG[provider] as Dictionary
+	# On mobile use the Web application client ID so the relay can exchange the code
+	var cid: String = cfg["client_id"] as String
+	if _using_relay and provider == "google":
+		var web_id: String = cfg.get("web_client_id", "") as String
+		if not web_id.is_empty():
+			cid = web_id
 	var params: Dictionary = {
-		"client_id":     cfg["client_id"] as String,
+		"client_id":     cid,
 		"redirect_uri":  _active_redirect_uri(),
 		"response_type": "code",
 		"scope":         cfg["scope"] as String,
