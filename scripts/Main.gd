@@ -128,19 +128,20 @@ func _read_android_deep_link() -> String:
 	var intent = activity.call("getIntent")
 	if not intent:
 		return ""
-	var uri: String = str(intent.call("getDataString"))
+	var data = intent.call("getDataString")
+	if data == null:
+		return ""
+	var uri: String = str(data)
 	if uri.begins_with("capydungeon://"):
 		intent.call("setData", null)   # consume — prevents reprocessing on resume
 		return uri
 	return ""
 
 func _find_social_auth() -> SocialAuth:
-	for child in get_children():
-		var auth := child.get_node_or_null("SocialAuth") as SocialAuth
-		if auth:
-			return auth
-		if child is SocialAuth:
-			return child as SocialAuth
+	# Search recursively so we find it regardless of nesting depth
+	var result := find_child("SocialAuth", true, false)
+	if result is SocialAuth:
+		return result as SocialAuth
 	return null
 
 func _show_login() -> void:

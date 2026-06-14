@@ -128,6 +128,37 @@ func _ready() -> void:
 	_http.request_completed.connect(_on_http_completed)
 	# Reset busy flag whenever auth completes (success or failure)
 	auth_success.connect(func(_p: String, _pr: Dictionary) -> void: _busy = false)
+
+## SocialAuth handles its own Android deep-link so it doesn't depend on Main
+## finding it via _find_social_auth.
+func _notification(what: int) -> void:
+	if not _mobile_waiting:
+		return
+	if OS.get_name() != "Android":
+		return
+	if what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
+		var url := _read_own_deep_link()
+		if not url.is_empty():
+			handle_deep_link(url)
+
+func _read_own_deep_link() -> String:
+	if not Engine.has_singleton("AndroidRuntime"):
+		return ""
+	var runtime = Engine.get_singleton("AndroidRuntime")
+	var activity = runtime.call("getActivity")
+	if not activity:
+		return ""
+	var intent = activity.call("getIntent")
+	if not intent:
+		return ""
+	var data = intent.call("getDataString")
+	if data == null:
+		return ""
+	var uri: String = str(data)
+	if uri.begins_with("capydungeon://"):
+		intent.call("setData", null)
+		return uri
+	return ""
 	auth_failed.connect(func(_p: String, _e: String) -> void: _busy = false)
 
 func _load_secrets() -> void:
