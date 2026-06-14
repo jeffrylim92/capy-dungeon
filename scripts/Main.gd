@@ -10,8 +10,8 @@ const INVENTORY_SCENE := preload("res://scenes/Inventory.tscn")
 const MATCH_SCENE := preload("res://scenes/Match.tscn")
 const HISTORY_SCENE := preload("res://scenes/History.tscn")
 
-const BGM_LOBBY_PATH:   String = "res://assets/sfx/bgm_lobby.ogg"
-const BGM_DUNGEON_PATH: String = "res://assets/sfx/bgm_dungeon.ogg"
+const BGM_LOBBY_PATH:   String = "res://assets/sfx/bgm_lobby.mp3"
+const BGM_DUNGEON_PATH: String = "res://assets/sfx/bgm_dungeon.mp3"
 const BGM_FADE_TIME:    float  = 1.2   # crossfade duration in seconds
 
 var _account: Dictionary = {}
