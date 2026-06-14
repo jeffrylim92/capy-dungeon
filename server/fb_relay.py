@@ -39,7 +39,7 @@ app = FastAPI()
 # Set via environment variables in production; fall back to dev values here.
 FB_APP_ID     = os.environ.get("FB_APP_ID",     "1572914337762590")
 FB_APP_SECRET = os.environ.get("FB_APP_SECRET", "12cc1b8eedbb212f94112b8c8ebe97d6")
-RELAY_BASE    = os.environ.get("RELAY_BASE_URL", "https://capy-fb-relay.onrender.com")
+RELAY_BASE    = os.environ.get("RELAY_BASE_URL", "https://capy-dungeon.onrender.com")
 DEEP_LINK     = "capydungeon://auth/callback"
 
 # ── Routes ────────────────────────────────────────────────────────────────────
