@@ -2076,10 +2076,10 @@ func _show_pause_menu() -> void:
 	var settings_btn := _pause_btn("⚙  Settings", Color(0.18, 0.22, 0.45), Color(0.85, 0.88, 1.0))
 	vbox.add_child(settings_btn)
 	settings_btn.pressed.connect(func() -> void:
-		var SETTINGS_SCENE := load("res://scenes/Settings.tscn")
+		var SETTINGS_SCENE := load("res://scenes/Settings.tscn") as PackedScene
 		if SETTINGS_SCENE == null:
 			return
-		var s := SETTINGS_SCENE.instantiate()
+		var s: Node = SETTINGS_SCENE.instantiate()
 		s.layer = 95
 		s.closed.connect(func() -> void: s.queue_free())
 		s.logout_requested.connect(func() -> void:
