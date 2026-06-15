@@ -48,9 +48,9 @@ _PH = "%s" if _USE_PG else "?"
 
 def _db_connect():
     if _USE_PG:
-        import psycopg2
-        from psycopg2.extras import RealDictCursor
-        conn = psycopg2.connect(_DATABASE_URL, cursor_factory=RealDictCursor)
+        import psycopg
+        from psycopg.rows import dict_row
+        conn = psycopg.connect(_DATABASE_URL, row_factory=dict_row)
         return conn
     conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
