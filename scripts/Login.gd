@@ -114,7 +114,7 @@ func _build_ui() -> void:
 
 	_subtitle = Label.new()
 	_subtitle.text = "Sign in to play"
-	_subtitle.add_theme_font_size_override("font_size", 26)
+	_subtitle.add_theme_font_size_override("font_size", 30)
 	_subtitle.add_theme_color_override("font_color", Color(0.45, 0.3, 0.18))
 	_subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_root.add_child(_subtitle)
@@ -136,7 +136,7 @@ func _build_ui() -> void:
 	if _characters.is_empty():
 		var empty_fav := Label.new()
 		empty_fav.text = "(no characters found)"
-		empty_fav.add_theme_font_size_override("font_size", 22)
+		empty_fav.add_theme_font_size_override("font_size", 26)
 		_favorite_row = _make_labeled_row("Favorite capybara", empty_fav)
 	else:
 		_favorite_row = _make_labeled_row("Favorite capybara", _build_fav_picker())
@@ -144,7 +144,7 @@ func _build_ui() -> void:
 
 	_remember_check = CheckBox.new()
 	_remember_check.text = "Remember me on this device"
-	_remember_check.add_theme_font_size_override("font_size", 22)
+	_remember_check.add_theme_font_size_override("font_size", 26)
 	# AA-compliant: ~11:1 contrast against the parchment background.
 	# All interactive states must be set explicitly; Godot's default theme uses
 	# near-white for hover/pressed which is unreadable on a light background.
@@ -165,7 +165,7 @@ func _build_ui() -> void:
 	_submit.text = "Log In"
 	_submit.custom_minimum_size = Vector2(0, 88)
 	_submit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_submit.add_theme_font_size_override("font_size", 34)
+	_submit.add_theme_font_size_override("font_size", 38)
 	_style_primary(_submit)
 	_submit.pressed.connect(_on_submit)
 	btn_row.add_child(_submit)
@@ -174,7 +174,7 @@ func _build_ui() -> void:
 	_btn_new.text = "Sign Up"
 	_btn_new.custom_minimum_size = Vector2(0, 88)
 	_btn_new.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_btn_new.add_theme_font_size_override("font_size", 34)
+	_btn_new.add_theme_font_size_override("font_size", 38)
 	_style_secondary(_btn_new)
 	_btn_new.pressed.connect(_on_mode_toggle)
 	btn_row.add_child(_btn_new)
@@ -184,7 +184,7 @@ func _build_ui() -> void:
 
 	_status = Label.new()
 	_status.text = ""
-	_status.add_theme_font_size_override("font_size", 22)
+	_status.add_theme_font_size_override("font_size", 26)
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.custom_minimum_size = Vector2(0, 60)
@@ -194,7 +194,7 @@ func _make_input(placeholder: String, is_secret: bool = false) -> LineEdit:
 	var le := LineEdit.new()
 	le.placeholder_text = placeholder
 	le.secret = is_secret
-	le.add_theme_font_size_override("font_size", 28)
+	le.add_theme_font_size_override("font_size", 32)
 	le.custom_minimum_size = Vector2(0, 64)
 	return le
 
@@ -282,7 +282,7 @@ func _make_social_button(provider: String, meta: Dictionary) -> Button:
 	var btn := Button.new()
 	btn.text = meta["label"] as String
 	btn.custom_minimum_size = Vector2(0, 72)
-	btn.add_theme_font_size_override("font_size", 20)
+	btn.add_theme_font_size_override("font_size", 24)
 	btn.add_theme_stylebox_override("normal", n)
 	btn.add_theme_stylebox_override("hover", h)
 	btn.add_theme_stylebox_override("pressed", p)
@@ -319,7 +319,7 @@ func _make_labeled_row(label_text: String, control: Control) -> Control:
 	row.add_theme_constant_override("separation", 4)
 	var lbl := Label.new()
 	lbl.text = label_text
-	lbl.add_theme_font_size_override("font_size", 20)
+	lbl.add_theme_font_size_override("font_size", 24)
 	lbl.add_theme_color_override("font_color", Color(0.35, 0.22, 0.1))
 	row.add_child(lbl)
 	row.add_child(control)
@@ -398,7 +398,7 @@ func _make_fav_button(data: CharacterData, size: Vector2, idx: int) -> Button:
 		btn.add_child(col)
 	var name_label := Label.new()
 	name_label.text = data.display_name
-	name_label.add_theme_font_size_override("font_size", 22)
+	name_label.add_theme_font_size_override("font_size", 26)
 	name_label.add_theme_color_override("font_color", Color(0.12, 0.07, 0.02))
 	name_label.add_theme_color_override("font_hover_color", Color(0.12, 0.07, 0.02))
 	name_label.position = Vector2(portrait_x, padding + portrait_size + 6.0)

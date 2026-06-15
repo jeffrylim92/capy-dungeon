@@ -58,7 +58,7 @@ func _build_ui() -> void:
 	var display_name: String = String(account.get("display_name", account.get("username", "trainer")))
 	var subtitle := Label.new()
 	subtitle.text = "%s · all matches" % display_name
-	subtitle.add_theme_font_size_override("font_size", 32)
+	subtitle.add_theme_font_size_override("font_size", 36)
 	subtitle.add_theme_color_override("font_color", Color(0.88, 0.80, 0.66))
 	subtitle.position = Vector2(0, 162)
 	subtitle.size     = Vector2(view.x, 30)
@@ -77,7 +77,7 @@ func _build_ui() -> void:
 	for i in tab_labels.size():
 		var btn := Button.new()
 		btn.text = tab_labels[i]
-		btn.add_theme_font_size_override("font_size", 28)
+		btn.add_theme_font_size_override("font_size", 32)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.custom_minimum_size   = Vector2(0, 64)
 		btn.focus_mode            = Control.FOCUS_NONE
@@ -104,7 +104,7 @@ func _build_ui() -> void:
 	# ── Back button ────────────────────────────────────────────────────────────
 	var back := Button.new()
 	back.text = "← Back"
-	back.add_theme_font_size_override("font_size", 36)
+	back.add_theme_font_size_override("font_size", 40)
 	back.custom_minimum_size = Vector2(260, 88)
 	back.size     = Vector2(260, 88)
 	back.position = Vector2(60, view.y - 116.0)
@@ -173,7 +173,7 @@ func _build_history_panel(y: float, h: float, w: float) -> Control:
 	if characters.is_empty():
 		var msg := Label.new()
 		msg.text = "No characters available."
-		msg.add_theme_font_size_override("font_size", 28)
+		msg.add_theme_font_size_override("font_size", 32)
 		msg.add_theme_color_override("font_color", Color(0.78, 0.70, 0.58))
 		list.add_child(msg)
 	else:
@@ -274,7 +274,7 @@ func _personal_rank_row(rank: int, data: CharacterData, value_text: String, valu
 
 	var rank_lbl := Label.new()
 	rank_lbl.text = "#%d" % rank
-	rank_lbl.add_theme_font_size_override("font_size", 32)
+	rank_lbl.add_theme_font_size_override("font_size", 36)
 	rank_lbl.add_theme_color_override("font_color",
 		Color(0.95, 0.78, 0.25) if rank == 1 else
 		(Color(0.75, 0.75, 0.78) if rank == 2 else
@@ -294,13 +294,13 @@ func _personal_rank_row(rank: int, data: CharacterData, value_text: String, valu
 
 	var name_lbl := Label.new()
 	name_lbl.text = data.display_name
-	name_lbl.add_theme_font_size_override("font_size", 30)
+	name_lbl.add_theme_font_size_override("font_size", 34)
 	name_lbl.add_theme_color_override("font_color", Color(0.18, 0.10, 0.04))
 	col.add_child(name_lbl)
 
 	var val_lbl := Label.new()
 	val_lbl.text = value_text
-	val_lbl.add_theme_font_size_override("font_size", 28)
+	val_lbl.add_theme_font_size_override("font_size", 32)
 	val_lbl.add_theme_color_override("font_color", value_color)
 	col.add_child(val_lbl)
 
@@ -370,7 +370,7 @@ func _populate_global_section(section: String, entries: Array, is_survive: bool)
 		insert_idx += 1
 		var retry := Button.new()
 		retry.text = "↺  Retry"
-		retry.add_theme_font_size_override("font_size", 26)
+		retry.add_theme_font_size_override("font_size", 30)
 		retry.custom_minimum_size = Vector2(160, 56)
 		retry.focus_mode = Control.FOCUS_NONE
 		_style_retry(retry)
@@ -442,7 +442,7 @@ func _global_rank_row(entry: Dictionary, is_survive: bool) -> Control:
 
 	var rank_lbl := Label.new()
 	rank_lbl.text = "#%d" % rank
-	rank_lbl.add_theme_font_size_override("font_size", 32)
+	rank_lbl.add_theme_font_size_override("font_size", 36)
 	rank_lbl.add_theme_color_override("font_color",
 		Color(0.95, 0.78, 0.25) if rank == 1 else
 		(Color(0.75, 0.75, 0.78) if rank == 2 else
@@ -462,13 +462,13 @@ func _global_rank_row(entry: Dictionary, is_survive: bool) -> Control:
 
 	var name_lbl := Label.new()
 	name_lbl.text = player
-	name_lbl.add_theme_font_size_override("font_size", 30)
+	name_lbl.add_theme_font_size_override("font_size", 34)
 	name_lbl.add_theme_color_override("font_color", Color(0.93, 0.90, 1.0))
 	col.add_child(name_lbl)
 
 	var val_lbl := Label.new()
 	val_lbl.text = value_text
-	val_lbl.add_theme_font_size_override("font_size", 28)
+	val_lbl.add_theme_font_size_override("font_size", 32)
 	val_lbl.add_theme_color_override("font_color", value_color)
 	col.add_child(val_lbl)
 
@@ -502,7 +502,7 @@ func _make_portrait_panel(char_id: String, size: int, bg: Color) -> Panel:
 func _section_header(text: String, accent: Color) -> Label:
 	var lbl := Label.new()
 	lbl.text = text
-	lbl.add_theme_font_size_override("font_size", 32)
+	lbl.add_theme_font_size_override("font_size", 36)
 	lbl.add_theme_color_override("font_color", accent)
 	return lbl
 
@@ -510,14 +510,14 @@ func _loading_label(section: String) -> Label:
 	var lbl := Label.new()
 	lbl.name = "Loading_" + section
 	lbl.text = "Loading…"
-	lbl.add_theme_font_size_override("font_size", 26)
+	lbl.add_theme_font_size_override("font_size", 30)
 	lbl.add_theme_color_override("font_color", Color(0.65, 0.60, 0.50))
 	return lbl
 
 func _empty_hint(text: String) -> Label:
 	var lbl := Label.new()
 	lbl.text = text
-	lbl.add_theme_font_size_override("font_size", 26)
+	lbl.add_theme_font_size_override("font_size", 30)
 	lbl.add_theme_color_override("font_color", Color(0.65, 0.60, 0.50))
 	return lbl
 
@@ -628,14 +628,14 @@ func _make_char_card(data: CharacterData, stats: Dictionary, card_w: float) -> P
 
 	var name_lbl := Label.new()
 	name_lbl.text = data.display_name
-	name_lbl.add_theme_font_size_override("font_size", 36)
+	name_lbl.add_theme_font_size_override("font_size", 40)
 	name_lbl.add_theme_color_override("font_color", Color(0.18, 0.10, 0.04))
 	col.add_child(name_lbl)
 
 	if matches <= 0:
 		var hint := Label.new()
 		hint.text = "Not played yet"
-		hint.add_theme_font_size_override("font_size", 32)
+		hint.add_theme_font_size_override("font_size", 36)
 		hint.add_theme_color_override("font_color", Color(0.40, 0.30, 0.18))
 		col.add_child(hint)
 		return panel
@@ -647,19 +647,19 @@ func _make_char_card(data: CharacterData, stats: Dictionary, card_w: float) -> P
 
 	var runs_lbl := Label.new()
 	runs_lbl.text = "%d run%s" % [matches, "s" if matches != 1 else ""]
-	runs_lbl.add_theme_font_size_override("font_size", 30)
+	runs_lbl.add_theme_font_size_override("font_size", 34)
 	runs_lbl.add_theme_color_override("font_color", Color(0.38, 0.26, 0.12))
 	col.add_child(runs_lbl)
 
 	var line2 := Label.new()
 	line2.text = "Best survive: %s  ·  %d kills" % [StatsStore.format_seconds(best_survive), total_kills]
-	line2.add_theme_font_size_override("font_size", 28)
+	line2.add_theme_font_size_override("font_size", 32)
 	line2.add_theme_color_override("font_color", Color(0.45, 0.32, 0.18))
 	col.add_child(line2)
 
 	var line3 := Label.new()
 	line3.text = "%s played  ·  Last: %s" % [StatsStore.format_seconds(total_time), _short_date(last_played)]
-	line3.add_theme_font_size_override("font_size", 28)
+	line3.add_theme_font_size_override("font_size", 32)
 	line3.add_theme_color_override("font_color", Color(0.42, 0.30, 0.16))
 	col.add_child(line3)
 
@@ -685,13 +685,13 @@ func _make_stat_col(value: String, key: String) -> VBoxContainer:
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var val_lbl := Label.new()
 	val_lbl.text = value
-	val_lbl.add_theme_font_size_override("font_size", 36)
+	val_lbl.add_theme_font_size_override("font_size", 40)
 	val_lbl.add_theme_color_override("font_color", Color(0.97, 0.93, 0.82))
 	val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(val_lbl)
 	var key_lbl := Label.new()
 	key_lbl.text = key
-	key_lbl.add_theme_font_size_override("font_size", 26)
+	key_lbl.add_theme_font_size_override("font_size", 30)
 	key_lbl.add_theme_color_override("font_color", Color(0.75, 0.68, 0.55))
 	key_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(key_lbl)

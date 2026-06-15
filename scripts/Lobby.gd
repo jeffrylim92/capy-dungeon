@@ -85,7 +85,7 @@ func _build_ui() -> void:
 	var welcome := Label.new()
 	var display_name: String = String(account.get("display_name", account.get("username", "trainer")))
 	welcome.text = "Welcome back, %s" % display_name
-	welcome.add_theme_font_size_override("font_size", 32)
+	welcome.add_theme_font_size_override("font_size", 36)
 	welcome.add_theme_color_override("font_color", Color(0.28, 0.14, 0.04))
 	welcome.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(welcome)

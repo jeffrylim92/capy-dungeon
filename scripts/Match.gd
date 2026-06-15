@@ -1953,7 +1953,7 @@ func _build_hud() -> void:
 	# Level label
 	_level_lbl = Label.new()
 	_level_lbl.text = "LV 1"
-	_level_lbl.add_theme_font_size_override("font_size", 30)
+	_level_lbl.add_theme_font_size_override("font_size", 34)
 	_level_lbl.add_theme_color_override("font_color", Color(0.98, 0.88, 0.50))
 	_level_lbl.position = Vector2(370, 42)
 	hud.add_child(_level_lbl)
@@ -1961,7 +1961,7 @@ func _build_hud() -> void:
 	# Time (top-right)
 	_time_lbl = Label.new()
 	_time_lbl.text = "0:00"
-	_time_lbl.add_theme_font_size_override("font_size", 28)
+	_time_lbl.add_theme_font_size_override("font_size", 32)
 	_time_lbl.add_theme_color_override("font_color", Color(0.90, 0.86, 0.76))
 	_time_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_time_lbl.position = Vector2(view.x - 170, 44); _time_lbl.size = Vector2(142, 40)
@@ -1970,7 +1970,7 @@ func _build_hud() -> void:
 	# Kill count
 	_kill_lbl = Label.new()
 	_kill_lbl.text = "Kills: 0"
-	_kill_lbl.add_theme_font_size_override("font_size", 20)
+	_kill_lbl.add_theme_font_size_override("font_size", 24)
 	_kill_lbl.add_theme_color_override("font_color", Color(0.75, 0.70, 0.60))
 	_kill_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_kill_lbl.position = Vector2(view.x - 170, 82); _kill_lbl.size = Vector2(142, 28)
@@ -1978,7 +1978,7 @@ func _build_hud() -> void:
 
 	_wave_lbl = Label.new()
 	_wave_lbl.text = "Wave 1"
-	_wave_lbl.add_theme_font_size_override("font_size", 22)
+	_wave_lbl.add_theme_font_size_override("font_size", 26)
 	_wave_lbl.add_theme_color_override("font_color", Color(1.0, 0.80, 0.20))
 	_wave_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_wave_lbl.position = Vector2(view.x - 170, 112); _wave_lbl.size = Vector2(142, 28)
@@ -1994,7 +1994,7 @@ func _build_hud() -> void:
 	# Pause button (top-right corner)
 	var pause_btn := Button.new()
 	pause_btn.text = "⏸"
-	pause_btn.add_theme_font_size_override("font_size", 28)
+	pause_btn.add_theme_font_size_override("font_size", 32)
 	pause_btn.position = Vector2(view.x - 80, 6)
 	pause_btn.size     = Vector2(72, 72)
 	pause_btn.focus_mode = Control.FOCUS_NONE
@@ -2109,7 +2109,7 @@ func _show_pause_menu() -> void:
 func _pause_btn(label: String, bg: Color, fg: Color) -> Button:
 	var btn := Button.new()
 	btn.text = label
-	btn.add_theme_font_size_override("font_size", 34)
+	btn.add_theme_font_size_override("font_size", 38)
 	btn.custom_minimum_size = Vector2(0, 88)
 	btn.focus_mode = Control.FOCUS_NONE
 	var s := StyleBoxFlat.new()
@@ -2200,7 +2200,7 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 	# Title
 	var title := Label.new()
 	title.text = "Choose a Bonus Skill!" if is_initial else "Level Up! Pick a Skill"
-	title.add_theme_font_size_override("font_size", 42)
+	title.add_theme_font_size_override("font_size", 46)
 	title.add_theme_color_override("font_color", Color(0.98, 0.88, 0.50))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.position = Vector2(0, view.y * 0.14); title.size = Vector2(view.x, 65)
@@ -2210,7 +2210,7 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 	if not is_initial:
 		var lv_lbl := Label.new()
 		lv_lbl.text = "Now Level %d" % _level
-		lv_lbl.add_theme_font_size_override("font_size", 24)
+		lv_lbl.add_theme_font_size_override("font_size", 28)
 		lv_lbl.add_theme_color_override("font_color", Color(0.72, 0.66, 0.50))
 		lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lv_lbl.position = Vector2(0, view.y * 0.14 + 58); lv_lbl.size = Vector2(view.x, 36)
@@ -2286,7 +2286,7 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 		# Name
 		var nm := Label.new()
 		nm.text = sdef["name"] as String
-		nm.add_theme_font_size_override("font_size", 34)
+		nm.add_theme_font_size_override("font_size", 38)
 		nm.add_theme_color_override("font_color", scol)
 		nm.position = Vector2(16, 36); nm.size = Vector2(card_w - 120, 46)
 		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -2305,7 +2305,7 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 		# Description
 		var desc := Label.new()
 		desc.text = ldata["note"] as String
-		desc.add_theme_font_size_override("font_size", 22)
+		desc.add_theme_font_size_override("font_size", 26)
 		desc.add_theme_color_override("font_color", Color(0.82, 0.76, 0.65))
 		desc.position = Vector2(16, 90); desc.size = Vector2(card_w - 32, 72)
 		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -2340,10 +2340,10 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 		ds.set_border_width_all(2); ds.border_color = Color(0.35, 0.35, 0.35, 0.5)
 		reroll_btn.add_theme_stylebox_override("disabled", ds)
 		reroll_btn.add_theme_color_override("font_disabled_color", Color(0.45, 0.45, 0.45))
-		reroll_btn.add_theme_font_size_override("font_size", 20)
+		reroll_btn.add_theme_font_size_override("font_size", 24)
 	else:
 		reroll_btn.text = "Watch Ad to Reroll Skills"
-		reroll_btn.add_theme_font_size_override("font_size", 22)
+		reroll_btn.add_theme_font_size_override("font_size", 26)
 		reroll_btn.add_theme_color_override("font_color", Color(0.12, 0.08, 0.02))
 		var ns := StyleBoxFlat.new()
 		ns.bg_color = Color(0.95, 0.78, 0.15, 0.95)
@@ -2501,7 +2501,7 @@ func _on_death() -> void:
 	var s: int = int(_elapsed) % 60
 	var stats := Label.new()
 	stats.text = "Survived  %d:%02d\nLevel %d  ·  %d kills" % [m, s, _level, _kills]
-	stats.add_theme_font_size_override("font_size", 34)
+	stats.add_theme_font_size_override("font_size", 38)
 	stats.add_theme_color_override("font_color", Color(0.88, 0.82, 0.68))
 	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stats.position = Vector2(0, view.y * 0.36); stats.size = Vector2(view.x, 110)
@@ -2511,7 +2511,7 @@ func _on_death() -> void:
 	if not _revive_used:
 		var revive_btn := Button.new()
 		revive_btn.text = "📺  Watch Ad to Revive"
-		revive_btn.add_theme_font_size_override("font_size", 30)
+		revive_btn.add_theme_font_size_override("font_size", 34)
 		revive_btn.custom_minimum_size = Vector2(440, 88)
 		revive_btn.size = Vector2(440, 88)
 		revive_btn.position = Vector2((view.x - 440) * 0.5, view.y * 0.56)
@@ -2546,7 +2546,7 @@ func _on_death() -> void:
 	var back_y: float = view.y * 0.74 if not _revive_used else view.y * 0.62
 	var back := Button.new()
 	back.text = "← Back to Lobby"
-	back.add_theme_font_size_override("font_size", 32)
+	back.add_theme_font_size_override("font_size", 36)
 	back.custom_minimum_size = Vector2(420, 84)
 	back.size = Vector2(420, 84)
 	back.position = Vector2((view.x - 420) * 0.5, back_y)

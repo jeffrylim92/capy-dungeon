@@ -55,7 +55,7 @@ func _build_ui() -> void:
 
 	var title := Label.new()
 	title.text = "Settings"
-	title.add_theme_font_size_override("font_size", 44)
+	title.add_theme_font_size_override("font_size", 52)
 	title.add_theme_color_override("font_color", Color(0.35, 0.18, 0.08))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(title)
@@ -64,42 +64,42 @@ func _build_ui() -> void:
 	_music_slider = _add_slider(col, "Music", "music_volume", 0.0, 100.0, 1.0)
 	_bright_slider = _add_slider(col, "Brightness", "brightness", 0.4, 1.0, 0.01, true)
 
-	_mute_check = _add_check(col, "Mute all audio", "muted")
-	_fps_check = _add_check(col, "Show FPS counter", "show_fps")
+	_mute_check = _add_toggle(col, "Mute all audio", "muted")
+	_fps_check   = _add_toggle(col, "Show FPS counter", "show_fps")
 
 	var sep := HSeparator.new()
 	col.add_child(sep)
 
 	var reset_btn := Button.new()
 	reset_btn.text = "Reset my stats"
-	reset_btn.add_theme_font_size_override("font_size", 32)
-	reset_btn.custom_minimum_size = Vector2(0, 60)
+	reset_btn.add_theme_font_size_override("font_size", 36)
+	reset_btn.custom_minimum_size = Vector2(0, 80)
 	_style_secondary(reset_btn)
 	reset_btn.pressed.connect(_on_reset_stats)
 	col.add_child(reset_btn)
 
 	var logout_btn := Button.new()
 	logout_btn.text = "Log out / switch account"
-	logout_btn.add_theme_font_size_override("font_size", 32)
-	logout_btn.custom_minimum_size = Vector2(0, 60)
+	logout_btn.add_theme_font_size_override("font_size", 36)
+	logout_btn.custom_minimum_size = Vector2(0, 80)
 	_style_danger(logout_btn)
 	logout_btn.pressed.connect(func() -> void: logout_requested.emit())
 	col.add_child(logout_btn)
 
-	var version := Label.new()
-	version.text = "Capy Dungeon v1.0"
-	version.add_theme_font_size_override("font_size", 28)
-	version.add_theme_color_override("font_color", Color(0.30, 0.20, 0.10))
-	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(version)
-
 	var close_btn := Button.new()
 	close_btn.text = "Done"
-	close_btn.add_theme_font_size_override("font_size", 36)
-	close_btn.custom_minimum_size = Vector2(0, 72)
+	close_btn.add_theme_font_size_override("font_size", 40)
+	close_btn.custom_minimum_size = Vector2(0, 88)
 	_style_primary(close_btn)
 	close_btn.pressed.connect(func() -> void: closed.emit())
 	col.add_child(close_btn)
+
+	var version := Label.new()
+	version.text = "Capy Dungeon v1.0"
+	version.add_theme_font_size_override("font_size", 26)
+	version.add_theme_color_override("font_color", Color(0.55, 0.40, 0.25))
+	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(version)
 
 func _add_slider(parent: Node, label_text: String, key: String, min_v: float, max_v: float, step: float, is_percent_one: bool = false) -> HSlider:
 	var row := VBoxContainer.new()
@@ -108,12 +108,12 @@ func _add_slider(parent: Node, label_text: String, key: String, min_v: float, ma
 	var header := HBoxContainer.new()
 	var lbl := Label.new()
 	lbl.text = label_text
-	lbl.add_theme_font_size_override("font_size", 30)
+	lbl.add_theme_font_size_override("font_size", 34)
 	lbl.add_theme_color_override("font_color", Color(0.35, 0.22, 0.1))
 	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(lbl)
 	var value_lbl := Label.new()
-	value_lbl.add_theme_font_size_override("font_size", 30)
+	value_lbl.add_theme_font_size_override("font_size", 34)
 	value_lbl.add_theme_color_override("font_color", Color(0.35, 0.22, 0.1))
 	header.add_child(value_lbl)
 	row.add_child(header)
@@ -136,24 +136,94 @@ func _add_slider(parent: Node, label_text: String, key: String, min_v: float, ma
 		SettingsStore.apply(get_tree()))
 	return slider
 
-func _add_check(parent: Node, label_text: String, key: String) -> CheckBox:
+## Full-width toggle row — large hit area, easy to press on phone.
+## Returns a CheckBox (for API compat) but the actual tappable area is the row button.
+func _add_toggle(parent: Node, label_text: String, key: String) -> CheckBox:
+	var is_on: bool = bool(_data.get(key, false))
+
+	# Invisible CheckBox kept off-screen so the rest of the code can read .button_pressed
 	var cb := CheckBox.new()
-	cb.text = label_text
-	cb.add_theme_font_size_override("font_size", 30)
-	cb.button_pressed = bool(_data.get(key, false))
-	# AA-compliant: all interactive states pinned to a dark ink colour (~11:1
-	# contrast on the panel's warm-cream background). Godot's default theme
-	# uses near-white for hover/pressed which would be unreadable here.
+	cb.button_pressed = is_on
+	cb.visible = false
+	parent.add_child(cb)
+
+	# The tappable row
+	var row := Button.new()
+	row.toggle_mode = true
+	row.button_pressed = is_on
+	row.focus_mode = Control.FOCUS_NONE
+	row.custom_minimum_size = Vector2(0, 80)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	# Style the row itself
 	var ink := Color(0.15, 0.08, 0.02)
-	cb.add_theme_color_override("font_color", ink)
-	cb.add_theme_color_override("font_hover_color", ink)
-	cb.add_theme_color_override("font_pressed_color", ink)
-	cb.add_theme_color_override("font_hover_pressed_color", ink)
-	cb.add_theme_color_override("font_focus_color", ink)
-	cb.toggled.connect(func(pressed: bool) -> void:
+	var s_off := StyleBoxFlat.new()
+	s_off.bg_color = Color(0.90, 0.86, 0.76, 0.60)
+	s_off.corner_radius_top_left = 14; s_off.corner_radius_top_right = 14
+	s_off.corner_radius_bottom_right = 14; s_off.corner_radius_bottom_left = 14
+	s_off.border_color = Color(0.65, 0.52, 0.35, 0.60); s_off.set_border_width_all(2)
+	var s_on := StyleBoxFlat.new()
+	s_on.bg_color = Color(0.88, 0.70, 0.12, 0.30)
+	s_on.corner_radius_top_left = 14; s_on.corner_radius_top_right = 14
+	s_on.corner_radius_bottom_right = 14; s_on.corner_radius_bottom_left = 14
+	s_on.border_color = Color(0.80, 0.60, 0.10, 0.80); s_on.set_border_width_all(2)
+	row.add_theme_stylebox_override("normal",         s_off)
+	row.add_theme_stylebox_override("hover",          s_off)
+	row.add_theme_stylebox_override("pressed",        s_on)
+	row.add_theme_stylebox_override("normal_mirrored", s_on)  # toggled-on state
+	row.add_theme_color_override("font_color",         ink)
+	row.add_theme_color_override("font_hover_color",   ink)
+	row.add_theme_color_override("font_pressed_color", ink)
+
+	# Build the inside manually so we can put text left and the pill right
+	var inner := HBoxContainer.new()
+	inner.set_anchors_preset(Control.PRESET_FULL_RECT)
+	inner.add_theme_constant_override("separation", 12)
+	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(inner)
+
+	# Pad left
+	var lpad := Control.new(); lpad.custom_minimum_size = Vector2(16, 0)
+	lpad.mouse_filter = Control.MOUSE_FILTER_IGNORE; inner.add_child(lpad)
+
+	var lbl := Label.new()
+	lbl.text = label_text
+	lbl.add_theme_font_size_override("font_size", 34)
+	lbl.add_theme_color_override("font_color", ink)
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inner.add_child(lbl)
+
+	# Pill indicator
+	var pill := Label.new()
+	pill.add_theme_font_size_override("font_size", 28)
+	pill.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inner.add_child(pill)
+
+	# Pad right
+	var rpad := Control.new(); rpad.custom_minimum_size = Vector2(16, 0)
+	rpad.mouse_filter = Control.MOUSE_FILTER_IGNORE; inner.add_child(rpad)
+
+	var update_pill := func(on: bool) -> void:
+		pill.text = "ON" if on else "OFF"
+		pill.add_theme_color_override("font_color",
+			Color(0.65, 0.45, 0.05) if on else Color(0.45, 0.35, 0.22))
+		row.add_theme_stylebox_override("normal",
+			s_on if on else s_off)
+		row.add_theme_stylebox_override("hover",
+			s_on if on else s_off)
+
+	update_pill.call(is_on)
+
+	row.toggled.connect(func(pressed: bool) -> void:
+		cb.button_pressed = pressed
+		update_pill.call(pressed)
 		_data = SettingsStore.set_value(key, pressed)
 		SettingsStore.apply(get_tree()))
-	parent.add_child(cb)
+
+	parent.add_child(row)
 	return cb
 
 func _on_reset_stats() -> void:

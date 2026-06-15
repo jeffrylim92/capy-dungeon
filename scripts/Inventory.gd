@@ -59,7 +59,7 @@ func _build_ui() -> void:
 
 	var slots_lbl := Label.new()
 	slots_lbl.text = "Equipped Rings"
-	slots_lbl.add_theme_font_size_override("font_size", 32)
+	slots_lbl.add_theme_font_size_override("font_size", 36)
 	slots_lbl.add_theme_color_override("font_color", Color(0.78, 0.72, 0.60))
 	vbox.add_child(slots_lbl)
 
@@ -90,14 +90,14 @@ func _build_ui() -> void:
 
 	_info_lbl = Label.new()
 	_info_lbl.text = "Tap a ring in your stash to select it, then tap a slot to equip.\nTap an equipped slot to unequip."
-	_info_lbl.add_theme_font_size_override("font_size", 28)
+	_info_lbl.add_theme_font_size_override("font_size", 32)
 	_info_lbl.add_theme_color_override("font_color", Color(0.72, 0.66, 0.58))
 	_info_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 	vbox.add_child(_info_lbl)
 
 	var stash_lbl := Label.new()
 	stash_lbl.text = "Ring Stash  (%d rings)" % _stash.size()
-	stash_lbl.add_theme_font_size_override("font_size", 32)
+	stash_lbl.add_theme_font_size_override("font_size", 36)
 	stash_lbl.add_theme_color_override("font_color", Color(0.78, 0.72, 0.60))
 	vbox.add_child(stash_lbl)
 
@@ -121,7 +121,7 @@ func _build_ui() -> void:
 
 	_back_btn = Button.new()
 	_back_btn.text = "← Back"
-	_back_btn.add_theme_font_size_override("font_size", 34)
+	_back_btn.add_theme_font_size_override("font_size", 38)
 	_back_btn.custom_minimum_size = Vector2(200, 72)
 	_back_btn.pressed.connect(_on_back)
 	btn_row.add_child(_back_btn)
@@ -132,7 +132,7 @@ func _build_ui() -> void:
 
 	_confirm_btn = Button.new()
 	_confirm_btn.text = "Play ▶"
-	_confirm_btn.add_theme_font_size_override("font_size", 36)
+	_confirm_btn.add_theme_font_size_override("font_size", 40)
 	var cst := StyleBoxFlat.new()
 	cst.bg_color = Color(0.18, 0.55, 0.22)
 	cst.corner_radius_top_left = 14; cst.corner_radius_top_right = 14
@@ -149,7 +149,7 @@ func _rebuild_stash() -> void:
 	if _stash.is_empty():
 		var empty_lbl := Label.new()
 		empty_lbl.text = "No rings yet. Defeat Normal Bosses to earn rings!"
-		empty_lbl.add_theme_font_size_override("font_size", 28)
+		empty_lbl.add_theme_font_size_override("font_size", 32)
 		empty_lbl.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
 		_stash_vbox.add_child(empty_lbl)
 		return
@@ -175,7 +175,7 @@ func _rebuild_stash() -> void:
 			ring.get("attr", "") as String,
 		]
 		row.text = rtext
-		row.add_theme_font_size_override("font_size", 28)
+		row.add_theme_font_size_override("font_size", 32)
 		row.add_theme_color_override("font_color", rc)
 		var ridx := i
 		row.pressed.connect(func(): _on_stash_pressed(ridx))
@@ -187,13 +187,13 @@ func _refresh_slot_btn(btn: Button, slot: int) -> void:
 	var ring         = _equipped.get(key, null)
 	if ring == null:
 		btn.text = "Ring Slot %d\n(empty)" % (slot + 1)
-		btn.add_theme_font_size_override("font_size", 28)
+		btn.add_theme_font_size_override("font_size", 32)
 		btn.add_theme_color_override("font_color", Color(0.55, 0.50, 0.45))
 	else:
 		var rd: Dictionary = ring as Dictionary
 		var rc: Color      = _rarity_color(rd.get("rarity", "common") as String)
 		btn.text = "Slot %d: %s\n+%.2f %s" % [slot + 1, rd.get("name", ""), float(rd.get("value", 0.0)), rd.get("attr", "")]
-		btn.add_theme_font_size_override("font_size", 28)
+		btn.add_theme_font_size_override("font_size", 32)
 		btn.add_theme_color_override("font_color", rc)
 
 func _on_slot_pressed(slot: int) -> void:

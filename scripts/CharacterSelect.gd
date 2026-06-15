@@ -200,7 +200,7 @@ func _build_start_button() -> void:
 
 	_back_btn = Button.new()
 	_back_btn.text = "← Menu"
-	_back_btn.add_theme_font_size_override("font_size", 36)
+	_back_btn.add_theme_font_size_override("font_size", 40)
 	_back_btn.add_theme_color_override("font_color", Color(0.90, 0.90, 1.0))
 	_back_btn.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0))
 	_back_btn.add_theme_color_override("font_pressed_color", Color(0.72, 0.72, 0.88))
@@ -265,7 +265,7 @@ func _build_start_button() -> void:
 	_start_btn = Button.new()
 	_start_btn.text = "Start Match"
 	_start_btn.disabled = _selected_data == null
-	_start_btn.add_theme_font_size_override("font_size", 38)
+	_start_btn.add_theme_font_size_override("font_size", 42)
 	_start_btn.add_theme_color_override("font_color", Color(0.10, 0.05, 0.0))
 	_start_btn.add_theme_color_override("font_hover_color", Color(0.08, 0.04, 0.0))
 	_start_btn.add_theme_color_override("font_pressed_color", Color(0.08, 0.04, 0.0))
@@ -393,21 +393,21 @@ func _show_iap_confirm(idx: int) -> void:
 	var badge := Label.new()
 	badge.text = "✨ Premium Job"
 	badge.add_theme_color_override("font_color", Color(0.78, 0.52, 1.0))
-	badge.add_theme_font_size_override("font_size", 28)
+	badge.add_theme_font_size_override("font_size", 32)
 	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(badge)
 
 	var name_lbl := Label.new()
 	name_lbl.text = String(data.display_name)
 	name_lbl.add_theme_color_override("font_color", Color(0.97, 0.93, 0.98))
-	name_lbl.add_theme_font_size_override("font_size", 32)
+	name_lbl.add_theme_font_size_override("font_size", 36)
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(name_lbl)
 
 	var skills_lbl := Label.new()
 	skills_lbl.text = JOB_SKILLS.get(char_id, "") as String
 	skills_lbl.add_theme_color_override("font_color", Color(0.82, 0.78, 0.92))
-	skills_lbl.add_theme_font_size_override("font_size", 24)
+	skills_lbl.add_theme_font_size_override("font_size", 28)
 	skills_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	skills_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(skills_lbl)
@@ -415,7 +415,7 @@ func _show_iap_confirm(idx: int) -> void:
 	var price_lbl := Label.new()
 	price_lbl.text = price
 	price_lbl.add_theme_color_override("font_color", Color(1.0, 0.82, 0.22))
-	price_lbl.add_theme_font_size_override("font_size", 28)
+	price_lbl.add_theme_font_size_override("font_size", 32)
 	price_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(price_lbl)
 
@@ -435,7 +435,7 @@ func _show_iap_confirm(idx: int) -> void:
 	buy_s.corner_radius_bottom_left  = 14
 	buy_btn.add_theme_stylebox_override("normal", buy_s)
 	buy_btn.add_theme_color_override("font_color", Color(1, 1, 1))
-	buy_btn.add_theme_font_size_override("font_size", 28)
+	buy_btn.add_theme_font_size_override("font_size", 32)
 	hbox.add_child(buy_btn)
 
 	var cancel_btn := Button.new()
@@ -600,7 +600,7 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 	# Character name.
 	var name_lbl := Label.new()
 	name_lbl.text = data.display_name
-	name_lbl.add_theme_font_size_override("font_size", 34)
+	name_lbl.add_theme_font_size_override("font_size", 38)
 	name_lbl.add_theme_color_override("font_color",
 		Color(0.12, 0.07, 0.02) if (not locked and not iap) else (Color(0.88, 0.82, 0.96) if iap else Color(0.52, 0.48, 0.44)))
 	name_lbl.position = Vector2(stats_x, pad)
@@ -620,7 +620,7 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 
 		var lock_lbl := Label.new()
 		lock_lbl.text = "🔒 Locked"
-		lock_lbl.add_theme_font_size_override("font_size", 28)
+		lock_lbl.add_theme_font_size_override("font_size", 32)
 		lock_lbl.add_theme_color_override("font_color", Color(0.72, 0.15, 0.10))
 		lock_lbl.position = Vector2(stats_x, pad + 46)
 		lock_lbl.size = Vector2(left_w, 38)
@@ -630,7 +630,7 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 		# Right column: subtitle at top, then 3 progress rows
 		var sub_lbl := Label.new()
 		sub_lbl.text = "Win 3 games (5+ min) with each:"
-		sub_lbl.add_theme_font_size_override("font_size", 24)
+		sub_lbl.add_theme_font_size_override("font_size", 28)
 		sub_lbl.add_theme_color_override("font_color", Color(0.25, 0.18, 0.10))
 		sub_lbl.position = Vector2(right_x, pad)
 		sub_lbl.size = Vector2(right_w, 34)
@@ -655,7 +655,7 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 				dots += ("●" if d < count else "○")
 			var row_lbl := Label.new()
 			row_lbl.text = cname + "  " + dots + "  " + str(count) + "/3"
-			row_lbl.add_theme_font_size_override("font_size", 26)
+			row_lbl.add_theme_font_size_override("font_size", 30)
 			row_lbl.add_theme_color_override("font_color",
 				Color(0.20, 0.62, 0.25) if count >= 3 else Color(0.30, 0.25, 0.18))
 			row_lbl.position = Vector2(right_x, right_top + float(ri) * row_h)
@@ -667,7 +667,7 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 		# ── IAP state: show premium badge + skills + price ────────────────
 		var badge_lbl := Label.new()
 		badge_lbl.text = "✨ Premium Job"
-		badge_lbl.add_theme_font_size_override("font_size", 26)
+		badge_lbl.add_theme_font_size_override("font_size", 30)
 		badge_lbl.add_theme_color_override("font_color", Color(0.78, 0.52, 1.0))
 		badge_lbl.position = Vector2(stats_x, pad + 44)
 		badge_lbl.size = Vector2(stats_w, 26)
@@ -678,7 +678,7 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 		var skills_text: String = JOB_SKILLS.get(char_id, "") as String
 		var sjobs_lbl := Label.new()
 		sjobs_lbl.text = skills_text
-		sjobs_lbl.add_theme_font_size_override("font_size", 24)
+		sjobs_lbl.add_theme_font_size_override("font_size", 28)
 		sjobs_lbl.add_theme_color_override("font_color", Color(0.76, 0.72, 0.88))
 		sjobs_lbl.position = Vector2(stats_x, pad + 72)
 		sjobs_lbl.size = Vector2(stats_w, 52)
@@ -688,7 +688,7 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 
 		var price_lbl := Label.new()
 		price_lbl.text = PurchaseStore.PRICES.get(char_id, "$2.99") as String + " — Tap to unlock"
-		price_lbl.add_theme_font_size_override("font_size", 24)
+		price_lbl.add_theme_font_size_override("font_size", 28)
 		price_lbl.add_theme_color_override("font_color", Color(1.0, 0.82, 0.22))
 		price_lbl.position = Vector2(stats_x, pad + 128)
 		price_lbl.size = Vector2(stats_w, 28)
@@ -700,7 +700,7 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 			var skill_lbl := Label.new()
 			var sname: String = SKILL_NAMES.get(data.base_skill, data.base_skill) as String
 			skill_lbl.text = "Starts with: " + sname
-			skill_lbl.add_theme_font_size_override("font_size", 26)
+			skill_lbl.add_theme_font_size_override("font_size", 30)
 			skill_lbl.add_theme_color_override("font_color", Color(0.62, 0.38, 0.04))
 			skill_lbl.position = Vector2(stats_x, pad + 52)
 			skill_lbl.size = Vector2(stats_w, 28)
@@ -723,7 +723,7 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 
 			var ulti_lbl := Label.new()
 			ulti_lbl.text = "✦ Ulti: " + ulti_name_c
-			ulti_lbl.add_theme_font_size_override("font_size", 26)
+			ulti_lbl.add_theme_font_size_override("font_size", 30)
 			ulti_lbl.add_theme_color_override("font_color", Color(0.65, 0.20, 0.01))
 			ulti_lbl.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 			ulti_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -747,7 +747,7 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 			info_btn.add_theme_color_override("font_color", Color(0.65, 0.20, 0.01))
 			info_btn.add_theme_color_override("font_hover_color", Color(0.65, 0.20, 0.01))
 			info_btn.add_theme_color_override("font_pressed_color", Color(0.45, 0.12, 0.00))
-			info_btn.add_theme_font_size_override("font_size", 26)
+			info_btn.add_theme_font_size_override("font_size", 30)
 			info_btn.focus_mode = Control.FOCUS_NONE
 			var cap_char: String = char_id_str
 			var cap_ulti: String = ulti_sid_c
@@ -794,14 +794,14 @@ func _show_ulti_info(char_id: String, ulti_sid: String) -> void:
 
 	var title_lbl := Label.new()
 	title_lbl.text = "✦ Ultimate Skill"
-	title_lbl.add_theme_font_size_override("font_size", 28)
+	title_lbl.add_theme_font_size_override("font_size", 32)
 	title_lbl.add_theme_color_override("font_color", Color(1.0, 0.78, 0.10))
 	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title_lbl)
 
 	var name_lbl := Label.new()
 	name_lbl.text = ulti_name
-	name_lbl.add_theme_font_size_override("font_size", 38)
+	name_lbl.add_theme_font_size_override("font_size", 42)
 	name_lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.55))
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(name_lbl)
@@ -815,7 +815,7 @@ func _show_ulti_info(char_id: String, ulti_sid: String) -> void:
 
 	var desc_lbl := Label.new()
 	desc_lbl.text = desc
-	desc_lbl.add_theme_font_size_override("font_size", 26)
+	desc_lbl.add_theme_font_size_override("font_size", 30)
 	desc_lbl.add_theme_color_override("font_color", Color(0.88, 0.82, 0.68))
 	desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -832,7 +832,7 @@ func _show_ulti_info(char_id: String, ulti_sid: String) -> void:
 	cb_s.corner_radius_bottom_left  = 14
 	close_btn.add_theme_stylebox_override("normal", cb_s)
 	close_btn.add_theme_color_override("font_color", Color(1, 1, 1))
-	close_btn.add_theme_font_size_override("font_size", 30)
+	close_btn.add_theme_font_size_override("font_size", 34)
 	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	vbox.add_child(close_btn)
 
@@ -859,7 +859,7 @@ func _show_empty_state() -> void:
 	var view := get_viewport_rect().size
 	var msg := Label.new()
 	msg.text = "No characters found in\nres://resources/characters/"
-	msg.add_theme_font_size_override("font_size", 32)
+	msg.add_theme_font_size_override("font_size", 36)
 	msg.add_theme_color_override("font_color", Color(0.6, 0.1, 0.1))
 	msg.position = Vector2(0, view.y * 0.5 - 40)
 	msg.size = Vector2(view.x, 100)
