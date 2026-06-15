@@ -13,6 +13,8 @@ const HISTORY_SCENE := preload("res://scenes/History.tscn")
 const BGM_LOBBY_PATH:   String = "res://assets/sfx/bgm_lobby.mp3"
 const BGM_DUNGEON_PATH: String = "res://assets/sfx/bgm_dungeon.mp3"
 const BGM_FADE_TIME:    float  = 1.2   # crossfade duration in seconds
+const BGM_LOBBY_VOLUME_DB: float = 0.0
+const BGM_DUNGEON_VOLUME_DB: float = -14.0
 
 var _account: Dictionary = {}
 var _last_character: CharacterData = null
@@ -23,6 +25,8 @@ var _bgm_b: AudioStreamPlayer = null
 var _bgm_fading: bool  = false
 var _bgm_fade_t: float = 0.0
 var _bgm_current_path: String = ""
+var _bgm_active_volume_db: float = BGM_LOBBY_VOLUME_DB
+var _bgm_next_volume_db: float = BGM_LOBBY_VOLUME_DB
 
 func _ready() -> void:
 	SettingsStore.apply.call_deferred(get_tree())
@@ -39,16 +43,20 @@ func _check_launch_deep_link() -> void:
 
 func _setup_music() -> void:
 	_bgm_a = AudioStreamPlayer.new()
-	_bgm_a.bus = "Master"
+	_bgm_a.bus = "Music"
 	add_child(_bgm_a)
 	_bgm_b = AudioStreamPlayer.new()
-	_bgm_b.bus = "Master"
+	_bgm_b.bus = "Music"
 	add_child(_bgm_b)
 
-func _play_music(path: String) -> void:
+func _play_music(path: String, volume_db: float = BGM_LOBBY_VOLUME_DB) -> void:
 	if path == _bgm_current_path:
+		_bgm_active_volume_db = volume_db
+		if _bgm_a != null and _bgm_a.playing and not _bgm_fading:
+			_bgm_a.volume_db = volume_db
 		return
 	_bgm_current_path = path
+	_bgm_next_volume_db = volume_db
 	var stream: AudioStream = load(path) as AudioStream
 	if stream == null:
 		return
@@ -58,10 +66,11 @@ func _play_music(path: String) -> void:
 	# If nothing playing yet, start immediately
 	if not _bgm_a.playing:
 		_bgm_a.stream = stream
-		_bgm_a.volume_db = 0.0
+		_bgm_a.volume_db = volume_db
 		_bgm_a.play()
 		_bgm_b.stop()
 		_bgm_fading = false
+		_bgm_active_volume_db = volume_db
 		return
 	# Crossfade: start new track on B, fade A out
 	_bgm_b.stream = stream
@@ -76,20 +85,26 @@ func _stop_music() -> void:
 	_bgm_b.stop()
 	_bgm_fading = false
 
+func _scaled_music_db(target_db: float, factor: float) -> float:
+	if factor <= 0.001:
+		return -80.0
+	return target_db + linear_to_db(clamp(factor, 0.0001, 1.0))
+
 func _process(delta: float) -> void:
 	if not _bgm_fading:
 		return
 	_bgm_fade_t += delta
 	var t: float = clamp(_bgm_fade_t / BGM_FADE_TIME, 0.0, 1.0)
-	_bgm_a.volume_db = linear_to_db(1.0 - t)
-	_bgm_b.volume_db = linear_to_db(t)
+	_bgm_a.volume_db = _scaled_music_db(_bgm_active_volume_db, 1.0 - t)
+	_bgm_b.volume_db = _scaled_music_db(_bgm_next_volume_db, t)
 	if t >= 1.0:
 		_bgm_a.stop()
 		# Swap so A is always the active player
 		var tmp: AudioStreamPlayer = _bgm_a
 		_bgm_a = _bgm_b
 		_bgm_b = tmp
-		_bgm_a.volume_db = 0.0
+		_bgm_active_volume_db = _bgm_next_volume_db
+		_bgm_a.volume_db = _bgm_active_volume_db
 		_bgm_fading = false
 
 ## Called by the OS when the app is (re)opened via a capydungeon:// deep link.
@@ -166,7 +181,7 @@ func _find_social_auth_recursive(node: Node) -> SocialAuth:
 func _show_login() -> void:
 	_account = {}
 	_clear_children()
-	_play_music(BGM_LOBBY_PATH)
+	_play_music(BGM_LOBBY_PATH, BGM_LOBBY_VOLUME_DB)
 	var login := LOGIN_SCENE.instantiate()
 	login.logged_in.connect(_on_logged_in)
 	add_child(login)
@@ -185,7 +200,7 @@ func _on_logged_in(account: Dictionary) -> void:
 
 func _show_lobby() -> void:
 	_clear_children()
-	_play_music(BGM_LOBBY_PATH)
+	_play_music(BGM_LOBBY_PATH, BGM_LOBBY_VOLUME_DB)
 	var lobby := LOBBY_SCENE.instantiate()
 	lobby.account = _account
 	lobby.start_game_requested.connect(_show_select)
@@ -229,7 +244,7 @@ func _on_inventory_confirmed(data: CharacterData) -> void:
 
 func _start_match(data: CharacterData) -> void:
 	_clear_children()
-	_play_music(BGM_DUNGEON_PATH)
+	_play_music(BGM_DUNGEON_PATH, BGM_DUNGEON_VOLUME_DB)
 	var m := MATCH_SCENE.instantiate()
 	m.selected_player_character = data
 	m.account_username     = String(_account.get("username", ""))

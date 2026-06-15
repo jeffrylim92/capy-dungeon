@@ -62,12 +62,14 @@ var _card_iap: Array[bool] = []
 var _char_list: Array[CharacterData] = []
 var _start_btn: Button
 var _back_btn: Button
+var _store_btn: Button
 var _card_w: float = 0.0
 var _cards_vbox: VBoxContainer = null
 
 func _ready() -> void:
 	_build_background()
 	_build_title()
+	_build_store_button()
 	_build_cards()
 	_build_start_button()
 
@@ -100,6 +102,29 @@ func _build_title() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(title)
+
+func _build_store_button() -> void:
+	var view := get_viewport_rect().size
+	_store_btn = Button.new()
+	_store_btn.text = "Store"
+	_store_btn.add_theme_font_size_override("font_size", 32)
+	_store_btn.add_theme_color_override("font_color", Color(0.12, 0.06, 0.0))
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(1.0, 0.78, 0.20, 0.96)
+	style.corner_radius_top_left = 18
+	style.corner_radius_top_right = 18
+	style.corner_radius_bottom_right = 18
+	style.corner_radius_bottom_left = 18
+	style.border_color = Color(0.72, 0.42, 0.0, 0.86)
+	style.set_border_width_all(2)
+	_store_btn.add_theme_stylebox_override("normal", style)
+	_store_btn.add_theme_stylebox_override("hover", style)
+	_store_btn.add_theme_stylebox_override("pressed", style)
+	_store_btn.size = Vector2(150, 58)
+	_store_btn.position = Vector2(view.x - 174.0, 92.0)
+	_store_btn.focus_mode = Control.FOCUS_NONE
+	_store_btn.pressed.connect(func() -> void: _open_store("character"))
+	add_child(_store_btn)
 
 func _build_cards() -> void:
 	var view := get_viewport_rect().size
@@ -137,7 +162,7 @@ func _build_cards() -> void:
 		var has_ulti: bool = CHAR_ULTI.has(String(data.id)) and not locked and not iap
 		_card_locked.append(locked)
 		_card_iap.append(iap)
-		var h: float = 190.0 if locked else (220.0 if iap else (202.0 if has_ulti else card_h))
+		var h: float = 190.0 if locked else (240.0 if iap else (202.0 if has_ulti else card_h))
 		var btn := _make_char_button(data, card_w, h, i, locked, iap)
 		list.add_child(btn)
 		_card_list.append(btn)
@@ -291,7 +316,7 @@ func _on_card_pressed(idx: int) -> void:
 	if _card_locked.size() > idx and _card_locked[idx]:
 		return
 	if _card_iap.size() > idx and _card_iap[idx]:
-		_show_iap_confirm(idx)
+		_open_store("character")
 		return
 	_select_card(idx)
 
@@ -356,125 +381,14 @@ func _is_brown_locked(data: CharacterData) -> bool:
 func _is_iap_locked(data: CharacterData) -> bool:
 	return PurchaseStore.PURCHASABLE.has(String(data.id)) and not PurchaseStore.is_purchased(String(data.id))
 
-func _show_iap_confirm(idx: int) -> void:
-	var view := get_viewport_rect().size
-	var data: CharacterData = _char_list[idx]
-	var char_id: String = String(data.id)
-	var price: String   = PurchaseStore.PRICES.get(char_id, "$2.99") as String
-
-	var overlay := ColorRect.new()
-	overlay.color = Color(0.0, 0.0, 0.0, 0.72)
-	overlay.size  = view
-	overlay.z_index = 100
-	add_child(overlay)
-
-	var panel := PanelContainer.new()
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.14, 0.09, 0.22, 1.0)
-	panel_style.corner_radius_top_left    = 22
-	panel_style.corner_radius_top_right   = 22
-	panel_style.corner_radius_bottom_right = 22
-	panel_style.corner_radius_bottom_left  = 22
-	panel_style.border_color = Color(0.68, 0.38, 1.0, 0.80)
-	panel_style.set_border_width_all(3)
-	panel.add_theme_stylebox_override("panel", panel_style)
-	var pw: float = 520.0
-	var ph: float = 320.0
-	panel.position = Vector2((view.x - pw) * 0.5, (view.y - ph) * 0.5)
-	panel.custom_minimum_size = Vector2(pw, ph)
-	panel.z_index = 101
-	add_child(panel)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 14)
-	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 28)
-	panel.add_child(vbox)
-
-	var badge := Label.new()
-	badge.text = "✨ Premium Job"
-	badge.add_theme_color_override("font_color", Color(0.78, 0.52, 1.0))
-	badge.add_theme_font_size_override("font_size", 32)
-	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(badge)
-
-	var name_lbl := Label.new()
-	name_lbl.text = String(data.display_name)
-	name_lbl.add_theme_color_override("font_color", Color(0.97, 0.93, 0.98))
-	name_lbl.add_theme_font_size_override("font_size", 36)
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(name_lbl)
-
-	var skills_lbl := Label.new()
-	skills_lbl.text = JOB_SKILLS.get(char_id, "") as String
-	skills_lbl.add_theme_color_override("font_color", Color(0.82, 0.78, 0.92))
-	skills_lbl.add_theme_font_size_override("font_size", 28)
-	skills_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	skills_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vbox.add_child(skills_lbl)
-
-	var price_lbl := Label.new()
-	price_lbl.text = price
-	price_lbl.add_theme_color_override("font_color", Color(1.0, 0.82, 0.22))
-	price_lbl.add_theme_font_size_override("font_size", 32)
-	price_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(price_lbl)
-
-	var hbox := HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 18)
-	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_child(hbox)
-
-	var buy_btn := Button.new()
-	buy_btn.text = "Buy Now"
-	buy_btn.custom_minimum_size = Vector2(160, 52)
-	var buy_s := StyleBoxFlat.new()
-	buy_s.bg_color = Color(0.58, 0.28, 0.88)
-	buy_s.corner_radius_top_left    = 14
-	buy_s.corner_radius_top_right   = 14
-	buy_s.corner_radius_bottom_right = 14
-	buy_s.corner_radius_bottom_left  = 14
-	buy_btn.add_theme_stylebox_override("normal", buy_s)
-	buy_btn.add_theme_color_override("font_color", Color(1, 1, 1))
-	buy_btn.add_theme_font_size_override("font_size", 32)
-	hbox.add_child(buy_btn)
-
-	var cancel_btn := Button.new()
-	cancel_btn.text = "Cancel"
-	cancel_btn.custom_minimum_size = Vector2(130, 52)
-	hbox.add_child(cancel_btn)
-
-	buy_btn.pressed.connect(func() -> void:
-		buy_btn.disabled = true
-		buy_btn.text = "Processing…"
-		cancel_btn.disabled = true
-
-		PurchaseStore.purchase_success.connect(func(cid: String) -> void:
-			if cid != char_id:
-				return
-			overlay.queue_free()
-			panel.queue_free()
-			_rebuild_cards()
-		, CONNECT_ONE_SHOT)
-
-		PurchaseStore.purchase_failed.connect(func(cid: String, _msg: String) -> void:
-			if cid != char_id:
-				return
-			buy_btn.disabled = false
-			buy_btn.text = "Buy Now"
-			cancel_btn.disabled = false
-		, CONNECT_ONE_SHOT)
-
-		PurchaseStore.purchase(char_id)
+func _open_store(tab: String = "character") -> void:
+	var store := StorePopup.new()
+	store.account_username = account_username
+	store.initial_tab = tab
+	store.purchase_completed.connect(func(_product_id: String) -> void:
+		_rebuild_cards()
 	)
-	cancel_btn.pressed.connect(func() -> void:
-		overlay.queue_free()
-		panel.queue_free()
-	)
-	overlay.gui_input.connect(func(event: InputEvent) -> void:
-		if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
-			overlay.queue_free()
-			panel.queue_free()
-	)
+	add_child(store)
 
 func _rebuild_cards() -> void:
 	if not is_instance_valid(_cards_vbox):
@@ -497,7 +411,7 @@ func _rebuild_cards() -> void:
 		var has_ulti: bool = CHAR_ULTI.has(String(data.id)) and not locked and not iap
 		_card_locked.append(locked)
 		_card_iap.append(iap)
-		var h: float = 190.0 if locked else (220.0 if iap else (202.0 if has_ulti else card_h))
+		var h: float = 190.0 if locked else (240.0 if iap else (202.0 if has_ulti else card_h))
 		var btn := _make_char_button(data, _card_w, h, i, locked, iap)
 		_cards_vbox.add_child(btn)
 		_card_list.append(btn)
@@ -664,13 +578,13 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 			row_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			btn.add_child(row_lbl)
 	elif iap:
-		# ── IAP state: show premium badge + skills + price ────────────────
+		# ── IAP state: show premium badge + skills + Store direction ──────
 		var badge_lbl := Label.new()
 		badge_lbl.text = "✨ Premium Job"
 		badge_lbl.add_theme_font_size_override("font_size", 30)
 		badge_lbl.add_theme_color_override("font_color", Color(0.78, 0.52, 1.0))
 		badge_lbl.position = Vector2(stats_x, pad + 44)
-		badge_lbl.size = Vector2(stats_w, 26)
+		badge_lbl.size = Vector2(stats_w, 34)
 		badge_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(badge_lbl)
 
@@ -680,20 +594,20 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 		sjobs_lbl.text = skills_text
 		sjobs_lbl.add_theme_font_size_override("font_size", 28)
 		sjobs_lbl.add_theme_color_override("font_color", Color(0.76, 0.72, 0.88))
-		sjobs_lbl.position = Vector2(stats_x, pad + 72)
-		sjobs_lbl.size = Vector2(stats_w, 52)
+		sjobs_lbl.position = Vector2(stats_x, pad + 86)
+		sjobs_lbl.size = Vector2(stats_w, 58)
 		sjobs_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		sjobs_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(sjobs_lbl)
 
-		var price_lbl := Label.new()
-		price_lbl.text = PurchaseStore.PRICES.get(char_id, "$2.99") as String + " — Tap to unlock"
-		price_lbl.add_theme_font_size_override("font_size", 28)
-		price_lbl.add_theme_color_override("font_color", Color(1.0, 0.82, 0.22))
-		price_lbl.position = Vector2(stats_x, pad + 128)
-		price_lbl.size = Vector2(stats_w, 28)
-		price_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		btn.add_child(price_lbl)
+		var store_lbl := Label.new()
+		store_lbl.text = "Available in Store"
+		store_lbl.add_theme_font_size_override("font_size", 28)
+		store_lbl.add_theme_color_override("font_color", Color(1.0, 0.82, 0.22))
+		store_lbl.position = Vector2(stats_x, pad + 154)
+		store_lbl.size = Vector2(stats_w, 32)
+		store_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		btn.add_child(store_lbl)
 	else:
 		# ── Unlocked state: show starting skill ──────────────────────────
 		if not data.base_skill.is_empty():

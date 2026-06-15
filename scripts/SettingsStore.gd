@@ -49,12 +49,16 @@ static func apply(tree: SceneTree) -> void:
 	if tree == null:
 		return
 	var data := load_all()
-	# Audio: drive master bus with the SFX volume + mute toggle.
+	_ensure_audio_bus("Music")
+	_ensure_audio_bus("SFX")
+	# Audio: mute all from Master, but keep Music and SFX sliders independent.
 	var muted: bool = bool(data.get("muted", false))
 	var sfx: float = float(data.get("sfx_volume", 80))
-	var db: float = -80.0 if muted or sfx <= 0.001 else linear_to_db(clamp(sfx / 100.0, 0.0001, 1.0))
-	AudioServer.set_bus_volume_db(0, db)
+	var music: float = float(data.get("music_volume", 60))
+	AudioServer.set_bus_volume_db(0, 0.0)
 	AudioServer.set_bus_mute(0, muted)
+	_set_audio_bus_volume("Music", music)
+	_set_audio_bus_volume("SFX", sfx)
 	# Brightness overlay + optional FPS label, owned by an autorestoring
 	# CanvasLayer under the scene tree root so they survive scene swaps.
 	var root := tree.root
@@ -98,3 +102,16 @@ static func _fps_script() -> GDScript:
 	gd.source_code = src
 	gd.reload()
 	return gd
+
+static func _ensure_audio_bus(bus_name: String) -> void:
+	if AudioServer.get_bus_index(bus_name) >= 0:
+		return
+	AudioServer.add_bus()
+	AudioServer.set_bus_name(AudioServer.bus_count - 1, bus_name)
+
+static func _set_audio_bus_volume(bus_name: String, value: float) -> void:
+	var idx: int = AudioServer.get_bus_index(bus_name)
+	if idx < 0:
+		return
+	var normalized: float = clamp(value / 100.0, 0.0, 1.0)
+	AudioServer.set_bus_volume_db(idx, -80.0 if normalized <= 0.001 else linear_to_db(normalized))

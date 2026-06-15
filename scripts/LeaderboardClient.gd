@@ -15,19 +15,17 @@ static func submit_stats(host: Node, username: String, display_name: String) -> 
 	if all.is_empty():
 		return
 
-	var total_kills: int    = 0
+	var best_character_kills: int = 0
 	var best_survive: float = 0.0
 	var best_kill_char: String    = ""
 	var best_survive_char: String = ""
-	var top_kill_count: int = 0
 
 	for cid in all:
 		var e: Dictionary = all[cid] as Dictionary
 		var kills:   int   = int(e.get("total_kills", 0))
 		var survive: float = float(e.get("best_survive_seconds", 0.0))
-		total_kills += kills
-		if kills > top_kill_count:
-			top_kill_count = kills
+		if kills > best_character_kills:
+			best_character_kills = kills
 			best_kill_char = cid
 		if survive > best_survive:
 			best_survive = survive
@@ -36,11 +34,12 @@ static func submit_stats(host: Node, username: String, display_name: String) -> 
 	var body := JSON.stringify({
 		"username":              username,
 		"display_name":          display_name,
-		"total_kills":           total_kills,
+		"total_kills":           best_character_kills,
 		"best_survive_seconds":  best_survive,
 		"best_kill_character":   best_kill_char,
 		"best_survive_character": best_survive_char,
 		"stats_json":            StatsStore.get_all_for_user(username),
+		"rings_json":            RingStore.load_equipped(username),
 	})
 
 	var http := HTTPRequest.new()
@@ -83,14 +82,34 @@ static func fetch_user_stats(host: Node, username: String, callback: Callable) -
 ## Fetch the global kill leaderboard. `callback` receives Array of entry dicts:
 ##   { rank, display_name, value (int kills), character (id string) }
 static func fetch_kills(host: Node, callback: Callable) -> void:
-	_fetch(host, BASE_URL + "/stats/leaderboard/kills", callback)
+	_fetch_payload(host, BASE_URL + "/stats/leaderboard/kills", func(payload: Dictionary) -> void:
+		callback.call(payload.get("entries", []) as Array)
+	)
+
+## Fetch the global kill leaderboard plus this user's own best rank.
+## `callback` receives { entries: Array, user_entry: Dictionary/null }.
+static func fetch_kills_with_user(host: Node, username: String, callback: Callable) -> void:
+	_fetch_payload(host, _leaderboard_url("kills", username), callback)
 
 ## Fetch the global survive leaderboard. `callback` receives Array of entry dicts:
 ##   { rank, display_name, value (float seconds), character (id string) }
 static func fetch_survive(host: Node, callback: Callable) -> void:
-	_fetch(host, BASE_URL + "/stats/leaderboard/survive", callback)
+	_fetch_payload(host, BASE_URL + "/stats/leaderboard/survive", func(payload: Dictionary) -> void:
+		callback.call(payload.get("entries", []) as Array)
+	)
 
-static func _fetch(host: Node, url: String, callback: Callable) -> void:
+## Fetch the global survive leaderboard plus this user's own best rank.
+## `callback` receives { entries: Array, user_entry: Dictionary/null }.
+static func fetch_survive_with_user(host: Node, username: String, callback: Callable) -> void:
+	_fetch_payload(host, _leaderboard_url("survive", username), callback)
+
+static func _leaderboard_url(kind: String, username: String) -> String:
+	var url := BASE_URL + "/stats/leaderboard/" + kind
+	if not username.is_empty():
+		url += "?username=" + username.to_lower().uri_encode()
+	return url
+
+static func _fetch_payload(host: Node, url: String, callback: Callable) -> void:
 	var http := HTTPRequest.new()
 	host.add_child(http)
 	http.request_completed.connect(
@@ -98,16 +117,19 @@ static func _fetch(host: Node, url: String, callback: Callable) -> void:
 			http.queue_free()
 			if result != HTTPRequest.RESULT_SUCCESS or code != 200:
 				DebugLog.log("[LeaderboardClient] fetch error result=%d code=%d" % [result, code])
-				callback.call([])
+				callback.call({"entries": [], "user_entry": null})
 				return
 			var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
-			if typeof(parsed) != TYPE_DICTIONARY:
-				callback.call([])
+			if typeof(parsed) == TYPE_ARRAY:
+				callback.call({"entries": parsed as Array, "user_entry": null})
 				return
-			callback.call(parsed.get("entries", []) as Array)
+			if typeof(parsed) != TYPE_DICTIONARY:
+				callback.call({"entries": [], "user_entry": null})
+				return
+			callback.call(parsed as Dictionary)
 	)
 	var err := http.request(url)
 	if err != OK:
 		DebugLog.log("[LeaderboardClient] fetch failed to start: %d" % err)
 		http.queue_free()
-		callback.call([])
+		callback.call({"entries": [], "user_entry": null})

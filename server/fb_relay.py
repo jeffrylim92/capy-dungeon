@@ -94,12 +94,17 @@ def _db_init() -> None:
                 best_kill_char    TEXT    DEFAULT '',
                 best_survive_char TEXT    DEFAULT '',
                 stats_json        TEXT    DEFAULT '{}',
+                rings_json        TEXT    DEFAULT '{}',
                 updated_at        TEXT    DEFAULT ''
             )
         """)
         # Migrate older tables missing the stats_json column
         try:
             _execute(conn, "ALTER TABLE leaderboard ADD COLUMN stats_json TEXT DEFAULT '{}'")
+        except Exception:
+            pass
+        try:
+            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN rings_json TEXT DEFAULT '{}'")
         except Exception:
             pass
         conn.commit()
@@ -117,6 +122,48 @@ class StatsSubmit(BaseModel):
     best_kill_character: str = ""
     best_survive_character: str = ""
     stats_json: dict = {}  # full per-character stats for cloud backup
+    rings_json: dict = {}  # full per-character equipped ring slots for leaderboard display
+
+
+def _best_kill_from_stats(stats: dict, fallback_kills: int = 0, fallback_char: str = "") -> tuple[int, str]:
+    if not isinstance(stats, dict):
+        return int(fallback_kills or 0), fallback_char or ""
+    best_kills = 0
+    best_char = ""
+    for char_id, raw_entry in stats.items():
+        if not isinstance(raw_entry, dict):
+            continue
+        kills = int(raw_entry.get("total_kills", 0) or 0)
+        if kills > best_kills:
+            best_kills = kills
+            best_char = str(char_id)
+    if best_kills <= 0 and not best_char:
+        return int(fallback_kills or 0), fallback_char or ""
+    return best_kills, best_char
+
+
+def _row_best_kill(row) -> tuple[int, str]:
+    stats = {}
+    try:
+        if row["stats_json"]:
+            stats = _json.loads(row["stats_json"])
+    except Exception:
+        stats = {}
+    return _best_kill_from_stats(stats, int(row["total_kills"] or 0), row["best_kill_char"] or "")
+
+
+def _rings_for_character(row, char_id: str) -> dict:
+    if not char_id:
+        return {}
+    try:
+        rings_blob = row["rings_json"] if row["rings_json"] else "{}"
+        all_rings = _json.loads(rings_blob)
+    except Exception:
+        all_rings = {}
+    if not isinstance(all_rings, dict):
+        return {}
+    rings = all_rings.get(char_id, {})
+    return rings if isinstance(rings, dict) else {}
 
 
 @app.post("/stats/submit")
@@ -126,29 +173,51 @@ async def stats_submit(body: StatsSubmit) -> dict:
         return {"ok": False, "error": "missing username"}
     now = datetime.now(timezone.utc).isoformat()
     stats_blob = _json.dumps(body.stats_json, ensure_ascii=False)
+    rings_blob = _json.dumps(body.rings_json, ensure_ascii=False)
+    submitted_kills, submitted_kill_char = _best_kill_from_stats(
+        body.stats_json,
+        body.total_kills,
+        body.best_kill_character,
+    )
     ph = _PH
     with _db_lock:
         conn = _db_connect()
         row = _fetchone(conn, f"SELECT * FROM leaderboard WHERE username = {ph}", (username,))
         if row:
-            new_kills   = max(body.total_kills, row["total_kills"])
-            new_survive = max(body.best_survive_seconds, row["best_survive_sec"])
-            kill_char   = body.best_kill_character    if body.total_kills            >= row["total_kills"]    else row["best_kill_char"]
-            surv_char   = body.best_survive_character if body.best_survive_seconds   >= row["best_survive_sec"] else row["best_survive_char"]
             existing_blob = row["stats_json"] if row["stats_json"] else "{}"
+            existing_rings_blob = row["rings_json"] if row["rings_json"] else "{}"
+            existing_stats = {}
+            try:
+                existing_stats = _json.loads(existing_blob)
+            except Exception:
+                existing_stats = {}
+            current_kills, current_kill_char = _best_kill_from_stats(
+                existing_stats,
+                row["total_kills"],
+                row["best_kill_char"],
+            )
+            if body.stats_json:
+                new_kills = submitted_kills
+                kill_char = submitted_kill_char
+            else:
+                new_kills = max(submitted_kills, current_kills)
+                kill_char = submitted_kill_char if submitted_kills >= current_kills else current_kill_char
+            new_survive = max(body.best_survive_seconds, row["best_survive_sec"])
+            surv_char   = body.best_survive_character if body.best_survive_seconds   >= row["best_survive_sec"] else row["best_survive_char"]
             new_blob = stats_blob if body.stats_json else existing_blob
+            new_rings_blob = rings_blob if body.rings_json else existing_rings_blob
             _execute(conn,
                 f"UPDATE leaderboard SET display_name={ph},total_kills={ph},best_survive_sec={ph},"
-                f"best_kill_char={ph},best_survive_char={ph},stats_json={ph},updated_at={ph} WHERE username={ph}",
-                (body.display_name, new_kills, new_survive, kill_char, surv_char, new_blob, now, username),
+                f"best_kill_char={ph},best_survive_char={ph},stats_json={ph},rings_json={ph},updated_at={ph} WHERE username={ph}",
+                (body.display_name, new_kills, new_survive, kill_char, surv_char, new_blob, new_rings_blob, now, username),
             )
         else:
             _execute(conn,
                 f"INSERT INTO leaderboard "
-                f"(username,display_name,total_kills,best_survive_sec,best_kill_char,best_survive_char,stats_json,updated_at)"
-                f" VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})",
-                (username, body.display_name, body.total_kills, body.best_survive_seconds,
-                 body.best_kill_character, body.best_survive_character, stats_blob, now),
+                f"(username,display_name,total_kills,best_survive_sec,best_kill_char,best_survive_char,stats_json,rings_json,updated_at)"
+                f" VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})",
+                (username, body.display_name, submitted_kills, body.best_survive_seconds,
+                 submitted_kill_char, body.best_survive_character, stats_blob, rings_blob, now),
             )
         conn.commit()
         conn.close()
@@ -175,42 +244,82 @@ async def stats_user(username: str) -> dict:
 
 
 @app.get("/stats/leaderboard/kills")
-async def leaderboard_kills(limit: int = 10) -> dict:
+async def leaderboard_kills(limit: int = 10, username: str = "") -> dict:
     limit = min(max(limit, 1), 50)
     ph = _PH
+    user_entry = None
+    uname = username.strip().lower()
     with _db_lock:
         conn = _db_connect()
         rows = _fetchall(conn,
-            f"SELECT display_name, total_kills, best_kill_char "
-            f"FROM leaderboard ORDER BY total_kills DESC LIMIT {ph}", (limit,)
+            "SELECT username, display_name, total_kills, best_kill_char, stats_json, rings_json FROM leaderboard",
+            (),
         )
         conn.close()
+
+    ranked = []
+    for row in rows:
+        kills, char_id = _row_best_kill(row)
+        if kills <= 0:
+            continue
+        ranked.append({
+            "username": row["username"],
+            "display_name": row["display_name"],
+            "value": kills,
+            "character": char_id,
+            "rings": _rings_for_character(row, char_id),
+        })
+    ranked.sort(key=lambda entry: entry["value"], reverse=True)
+    for i, entry in enumerate(ranked):
+        entry["rank"] = i + 1
+        if uname and entry["username"] == uname:
+            user_entry = dict(entry)
+
     return {
-        "entries": [
-            {"rank": i + 1, "display_name": r["display_name"],
-             "value": r["total_kills"], "character": r["best_kill_char"]}
-            for i, r in enumerate(rows)
-        ]
+        "entries": ranked[:limit],
+        "user_entry": user_entry,
     }
 
 
 @app.get("/stats/leaderboard/survive")
-async def leaderboard_survive(limit: int = 10) -> dict:
+async def leaderboard_survive(limit: int = 10, username: str = "") -> dict:
     limit = min(max(limit, 1), 50)
     ph = _PH
+    user_entry = None
+    uname = username.strip().lower()
     with _db_lock:
         conn = _db_connect()
         rows = _fetchall(conn,
-            f"SELECT display_name, best_survive_sec, best_survive_char "
+            f"SELECT username, display_name, best_survive_sec, best_survive_char, rings_json "
             f"FROM leaderboard ORDER BY best_survive_sec DESC LIMIT {ph}", (limit,)
         )
+        if uname:
+            user_row = _fetchone(conn,
+                f"SELECT username, display_name, best_survive_sec, best_survive_char, rings_json FROM leaderboard WHERE username = {ph}",
+                (uname,),
+            )
+            if user_row and user_row["best_survive_sec"] > 0.0:
+                rank_row = _fetchone(conn,
+                    f"SELECT COUNT(*) AS ahead FROM leaderboard WHERE best_survive_sec > {ph}",
+                    (user_row["best_survive_sec"],),
+                )
+                user_entry = {
+                    "rank": int(rank_row["ahead"]) + 1,
+                    "username": user_row["username"],
+                    "display_name": user_row["display_name"],
+                    "value": user_row["best_survive_sec"],
+                    "character": user_row["best_survive_char"],
+                    "rings": _rings_for_character(user_row, user_row["best_survive_char"]),
+                }
         conn.close()
     return {
         "entries": [
-            {"rank": i + 1, "display_name": r["display_name"],
-             "value": r["best_survive_sec"], "character": r["best_survive_char"]}
+            {"rank": i + 1, "username": r["username"], "display_name": r["display_name"],
+             "value": r["best_survive_sec"], "character": r["best_survive_char"],
+             "rings": _rings_for_character(r, r["best_survive_char"])}
             for i, r in enumerate(rows)
-        ]
+        ],
+        "user_entry": user_entry,
     }
 
 # Config

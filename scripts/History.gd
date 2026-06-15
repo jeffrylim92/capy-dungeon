@@ -19,6 +19,10 @@ var _tab_panels:   Array[Control] = []
 var _tab_buttons:  Array[Button]  = []
 var _global_panel: Control        = null
 var _global_loaded: bool          = false
+var _global_kills_done: bool      = false
+var _global_survive_done: bool    = false
+var _global_kill_user_entry: Variant = null
+var _global_survive_user_entry: Variant = null
 
 func _ready() -> void:
 	SettingsStore.apply(get_tree())
@@ -304,6 +308,13 @@ func _personal_rank_row(rank: int, data: CharacterData, value_text: String, valu
 	val_lbl.add_theme_color_override("font_color", value_color)
 	col.add_child(val_lbl)
 
+	var ring_lbl := Label.new()
+	ring_lbl.text = _equipped_ring_text(String(data.id))
+	ring_lbl.add_theme_font_size_override("font_size", 26)
+	ring_lbl.add_theme_color_override("font_color", Color(0.36, 0.26, 0.14))
+	ring_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
+	col.add_child(ring_lbl)
+
 	return card
 
 # ── Global ranking panel ───────────────────────────────────────────────────────
@@ -329,6 +340,8 @@ func _build_global_panel(y: float, h: float, w: float) -> Control:
 	vbox.add_child(_loading_label("kills"))
 	vbox.add_child(_section_header("⏱️ Best Survive", Color(0.55, 0.85, 0.65)))
 	vbox.add_child(_loading_label("survive"))
+	vbox.add_child(_section_header("Your Best Rank", Color(0.78, 0.72, 1.0)))
+	vbox.add_child(_loading_label("self"))
 
 	return panel
 
@@ -336,7 +349,7 @@ func _fetch_global_rankings() -> void:
 	# Rebuild the vbox contents to fresh loading state before every fetch attempt.
 	# This ensures placeholders always exist when _populate_global_section() runs,
 	# so retry works any number of times.
-	var vbox := _global_panel.get_node_or_null("GlobalScroll/GlobalVBox") as VBoxContainer
+	var vbox: VBoxContainer = _global_panel.get_node_or_null("GlobalScroll/GlobalVBox") as VBoxContainer
 	if vbox == null:
 		return
 	for child in vbox.get_children():
@@ -346,19 +359,80 @@ func _fetch_global_rankings() -> void:
 	vbox.add_child(_loading_label("kills"))
 	vbox.add_child(_section_header("⏱️ Best Survive", Color(0.55, 0.85, 0.65)))
 	vbox.add_child(_loading_label("survive"))
+	vbox.add_child(_section_header("Your Best Rank", Color(0.78, 0.72, 1.0)))
+	vbox.add_child(_loading_label("self"))
 
-	LeaderboardClient.fetch_kills(self, func(entries: Array) -> void:
+	_global_kills_done = false
+	_global_survive_done = false
+	_global_kill_user_entry = null
+	_global_survive_user_entry = null
+
+	var username := String(account.get("username", ""))
+	LeaderboardClient.fetch_kills_with_user(self, username, func(payload: Dictionary) -> void:
+		_global_kills_done = true
+		var entries: Array = payload.get("entries", []) as Array
+		_global_kill_user_entry = _best_rank_entry(payload.get("user_entry", null), entries, false)
 		_populate_global_section("kills", entries, false)
+		_populate_global_best_detail()
 	)
-	LeaderboardClient.fetch_survive(self, func(entries: Array) -> void:
+	LeaderboardClient.fetch_survive_with_user(self, username, func(payload: Dictionary) -> void:
+		_global_survive_done = true
+		var entries: Array = payload.get("entries", []) as Array
+		_global_survive_user_entry = _best_rank_entry(payload.get("user_entry", null), entries, true)
 		_populate_global_section("survive", entries, true)
+		_populate_global_best_detail()
 	)
+
+func _best_rank_entry(server_entry: Variant, entries: Array, is_survive: bool) -> Variant:
+	if typeof(server_entry) == TYPE_DICTIONARY:
+		return server_entry
+	var visible_entry: Variant = _matching_visible_rank_entry(entries)
+	if typeof(visible_entry) == TYPE_DICTIONARY:
+		return visible_entry
+	return _local_best_rank_entry(is_survive)
+
+func _matching_visible_rank_entry(entries: Array) -> Variant:
+	var username := String(account.get("username", "")).strip_edges().to_lower()
+	var display_name := String(account.get("display_name", username)).strip_edges().to_lower()
+	for entry in entries:
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var data: Dictionary = entry as Dictionary
+		var entry_user := String(data.get("username", "")).strip_edges().to_lower()
+		var entry_name := String(data.get("display_name", "")).strip_edges().to_lower()
+		if not entry_user.is_empty() and entry_user == username:
+			return entry
+		if not entry_name.is_empty() and (entry_name == display_name or entry_name == username):
+			return entry
+	return null
+
+func _local_best_rank_entry(is_survive: bool) -> Variant:
+	var username := String(account.get("username", ""))
+	if username.is_empty():
+		return null
+	var all: Dictionary = StatsStore.get_all_for_user(username)
+	var best_value: float = 0.0
+	var best_char: String = ""
+	for char_id in all:
+		var stats: Dictionary = all[char_id] as Dictionary
+		var value: float = float(stats.get("best_survive_seconds", 0.0)) if is_survive else float(int(stats.get("total_kills", 0)))
+		if value > best_value:
+			best_value = value
+			best_char = String(char_id)
+	if best_value <= 0.0:
+		return null
+	return {
+		"rank": 0,
+		"display_name": String(account.get("display_name", account.get("username", ""))),
+		"value": best_value,
+		"character": best_char,
+	}
 
 func _populate_global_section(section: String, entries: Array, is_survive: bool) -> void:
-	var vbox := _global_panel.get_node_or_null("GlobalScroll/GlobalVBox") as VBoxContainer
+	var vbox: VBoxContainer = _global_panel.get_node_or_null("GlobalScroll/GlobalVBox") as VBoxContainer
 	if vbox == null:
 		return
-	var placeholder := vbox.get_node_or_null("Loading_" + section)
+	var placeholder: Node = vbox.get_node_or_null("Loading_" + section)
 	if placeholder == null:
 		return
 	var insert_idx: int = placeholder.get_index()
@@ -388,6 +462,110 @@ func _populate_global_section(section: String, entries: Array, is_survive: bool)
 		vbox.add_child(row)
 		vbox.move_child(row, insert_idx)
 		insert_idx += 1
+
+func _populate_global_best_detail() -> void:
+	if not _global_kills_done or not _global_survive_done:
+		return
+	var vbox: VBoxContainer = _global_panel.get_node_or_null("GlobalScroll/GlobalVBox") as VBoxContainer
+	if vbox == null:
+		return
+	var placeholder: Node = vbox.get_node_or_null("Loading_self")
+	if placeholder == null:
+		return
+	var insert_idx: int = placeholder.get_index()
+	vbox.remove_child(placeholder)
+	placeholder.queue_free()
+
+	var has_kills := typeof(_global_kill_user_entry) == TYPE_DICTIONARY
+	var has_survive := typeof(_global_survive_user_entry) == TYPE_DICTIONARY
+	if not has_kills and not has_survive:
+		var hint := _empty_hint("Play a match to see your global rank here.")
+		vbox.add_child(hint)
+		vbox.move_child(hint, insert_idx)
+		return
+
+	if has_kills:
+		var kill_card: Control = _global_user_rank_card("Best Kill Rank", _global_kill_user_entry as Dictionary, false)
+		vbox.add_child(kill_card)
+		vbox.move_child(kill_card, insert_idx)
+		insert_idx += 1
+	if has_survive:
+		var survive_card: Control = _global_user_rank_card("Best Survive Rank", _global_survive_user_entry as Dictionary, true)
+		vbox.add_child(survive_card)
+		vbox.move_child(survive_card, insert_idx)
+
+func _global_user_rank_card(title: String, entry: Dictionary, is_survive: bool) -> Control:
+	var rank: int = int(entry.get("rank", 0))
+	var char_id: String = str(entry.get("character", ""))
+	var value_text: String
+	if is_survive:
+		value_text = StatsStore.format_seconds(float(entry.get("value", 0.0)))
+	else:
+		value_text = str(int(entry.get("value", 0))) + " kills"
+	if rank <= 0:
+		value_text += " · rank syncing"
+	var value_color := Color(0.50, 0.88, 0.62) if is_survive else Color(0.95, 0.72, 0.20)
+
+	var card := PanelContainer.new()
+	var cs := StyleBoxFlat.new()
+	cs.bg_color = Color(0.20, 0.18, 0.30, 0.94)
+	cs.corner_radius_top_left     = 16
+	cs.corner_radius_top_right    = 16
+	cs.corner_radius_bottom_right = 16
+	cs.corner_radius_bottom_left  = 16
+	cs.border_color  = Color(0.78, 0.72, 1.0, 0.72)
+	cs.set_border_width_all(2)
+	cs.shadow_color  = Color(0.0, 0.0, 0.0, 0.30)
+	cs.shadow_size   = 8
+	cs.shadow_offset = Vector2(0, 3)
+	cs.content_margin_left   = 16
+	cs.content_margin_right  = 16
+	cs.content_margin_top    = 12
+	cs.content_margin_bottom = 12
+	card.add_theme_stylebox_override("panel", cs)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var hbox := HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 16)
+	card.add_child(hbox)
+
+	var rank_lbl := Label.new()
+	rank_lbl.text = "#%d" % rank if rank > 0 else "#—"
+	rank_lbl.add_theme_font_size_override("font_size", 40 if rank > 0 else 34)
+	rank_lbl.add_theme_color_override("font_color", Color(0.95, 0.78, 0.25))
+	rank_lbl.custom_minimum_size = Vector2(82, 0)
+	rank_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hbox.add_child(rank_lbl)
+
+	if not char_id.is_empty():
+		hbox.add_child(_make_portrait_panel(char_id, 72, Color(0.32, 0.28, 0.45)))
+
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	col.add_theme_constant_override("separation", 4)
+	hbox.add_child(col)
+
+	var title_lbl := Label.new()
+	title_lbl.text = title
+	title_lbl.add_theme_font_size_override("font_size", 30)
+	title_lbl.add_theme_color_override("font_color", Color(0.93, 0.90, 1.0))
+	col.add_child(title_lbl)
+
+	var val_lbl := Label.new()
+	val_lbl.text = value_text
+	val_lbl.add_theme_font_size_override("font_size", 32)
+	val_lbl.add_theme_color_override("font_color", value_color)
+	col.add_child(val_lbl)
+
+	var ring_lbl := Label.new()
+	ring_lbl.text = _global_entry_ring_text(entry, char_id)
+	ring_lbl.add_theme_font_size_override("font_size", 26)
+	ring_lbl.add_theme_color_override("font_color", Color(0.82, 0.78, 0.96))
+	ring_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
+	col.add_child(ring_lbl)
+
+	return card
 
 func _style_retry(btn: Button) -> void:
 	var s := StyleBoxFlat.new()
@@ -473,6 +651,13 @@ func _global_rank_row(entry: Dictionary, is_survive: bool) -> Control:
 	val_lbl.add_theme_color_override("font_color", value_color)
 	col.add_child(val_lbl)
 
+	var ring_lbl := Label.new()
+	ring_lbl.text = _global_entry_ring_text(entry, char_id)
+	ring_lbl.add_theme_font_size_override("font_size", 26)
+	ring_lbl.add_theme_color_override("font_color", Color(0.82, 0.78, 0.96))
+	ring_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
+	col.add_child(ring_lbl)
+
 	return card
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -524,11 +709,11 @@ func _empty_hint(text: String) -> Label:
 
 func _build_summary_label() -> Control:
 	var username := String(account.get("username", ""))
-	var all := StatsStore.get_all_for_user(username)
+	var all: Dictionary = StatsStore.get_all_for_user(username)
 	var matches: int = 0; var total_kills: int = 0
 	var best_survive: float = 0.0; var total_seconds: float = 0.0
 	for cid in all:
-		var e: Dictionary = all[cid]
+		var e: Dictionary = all[cid] as Dictionary
 		matches       += int(e.get("matches", 0))
 		total_kills   += int(e.get("total_kills", 0))
 		best_survive   = max(best_survive, float(e.get("best_survive_seconds", 0.0)))
@@ -664,7 +849,62 @@ func _make_char_card(data: CharacterData, stats: Dictionary, card_w: float) -> P
 	line3.add_theme_color_override("font_color", Color(0.42, 0.30, 0.16))
 	col.add_child(line3)
 
+	var ring_lbl := Label.new()
+	ring_lbl.text = _equipped_ring_text(String(data.id))
+	ring_lbl.add_theme_font_size_override("font_size", 28)
+	ring_lbl.add_theme_color_override("font_color", Color(0.34, 0.24, 0.14))
+	ring_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
+	col.add_child(ring_lbl)
+
 	return panel
+
+func _equipped_ring_text(char_id: String) -> String:
+	var username: String = String(account.get("username", ""))
+	if username.is_empty() or char_id.is_empty():
+		return "Rings: No rings equipped"
+	var equipped: Dictionary = RingStore.get_equipped_rings(username, char_id)
+	return _ring_text_from_slots(equipped, "Rings: No rings equipped")
+
+func _global_entry_ring_text(entry: Dictionary, char_id: String) -> String:
+	var rings_value: Variant = entry.get("rings", null)
+	if typeof(rings_value) == TYPE_DICTIONARY:
+		var rings: Dictionary = rings_value as Dictionary
+		if not rings.is_empty():
+			return _ring_text_from_slots(rings, "Rings: No rings equipped")
+	var current_username: String = String(account.get("username", "")).strip_edges().to_lower()
+	var entry_username: String = String(entry.get("username", "")).strip_edges().to_lower()
+	if not current_username.is_empty() and current_username == entry_username:
+		return _equipped_ring_text(char_id)
+	return "Rings: No rings equipped"
+
+func _ring_text_from_slots(equipped: Dictionary, empty_text: String) -> String:
+	var parts: Array[String] = []
+	for slot in 2:
+		var ring = equipped.get("slot_%d" % slot, null)
+		if ring == null:
+			continue
+		var ring_data: Dictionary = RingStore.normalize_ring(ring as Dictionary)
+		parts.append("%s T%d (%s)" % [
+			ring_data.get("name", "Ring") as String,
+			int(ring_data.get("tier", 1)),
+			_format_ring_bonus(ring_data),
+		])
+	if parts.is_empty():
+		return empty_text
+	return "Rings: " + "  ·  ".join(parts)
+
+func _format_ring_bonus(ring: Dictionary) -> String:
+	var attr: String = ring.get("attr", "") as String
+	var value: float = float(ring.get("value", 0.0))
+	if attr == "revive_once":
+		return "revive once per gameplay"
+	if attr == "timed_shield":
+		return "1s shield every 10s"
+	if attr in ["potion_drop_rate", "xp_bonus", "ring_drop_rate", "skill_dmg", "skill_cd", "aoe_radius", "projectile_spd", "crit_chance", "boss_dmg"]:
+		return "+%d%% %s" % [int(round(value * 100.0)), attr]
+	if attr == "regen":
+		return "+%.1f HP/s" % value
+	return "+%.0f %s" % [value, attr]
 
 func _short_date(iso: String) -> String:
 	if iso.is_empty(): return "—"

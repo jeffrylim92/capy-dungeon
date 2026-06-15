@@ -10,6 +10,7 @@ enum Mode { LOGIN, REGISTER }
 const REMEMBER_PATH := "user://remember.json"
 const PORTRAIT_DIR := "res://assets/characters/"
 const PORTRAIT_EXTS: Array[String] = [".png", ".webp", ".jpg", ".svg"]
+const REMEMBER_FONT_SIZE := 28
 
 var _mode: int = Mode.LOGIN
 
@@ -142,69 +143,20 @@ func _build_ui() -> void:
 		_favorite_row = _make_labeled_row("Favorite capybara", _build_fav_picker())
 	_root.add_child(_favorite_row)
 
-	# Hidden CheckBox keeps the toggle state so existing code (button_pressed reads/writes) works unchanged.
+	# Remember me checkbox.
 	_remember_check = CheckBox.new()
-	_remember_check.visible = false
+	_remember_check.text = "Remember me on this device"
+	_remember_check.focus_mode = Control.FOCUS_NONE
+	_remember_check.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_remember_check.custom_minimum_size = Vector2(0, REMEMBER_FONT_SIZE + 8)
+	_remember_check.add_theme_font_size_override("font_size", REMEMBER_FONT_SIZE)
+	_remember_check.add_theme_color_override("font_color", Color(0.15, 0.08, 0.02))
+	_remember_check.add_theme_color_override("font_hover_color", Color(0.15, 0.08, 0.02))
+	_remember_check.add_theme_color_override("font_pressed_color", Color(0.15, 0.08, 0.02))
+	_remember_check.add_theme_icon_override("unchecked", _make_checkbox_icon(false, REMEMBER_FONT_SIZE))
+	_remember_check.add_theme_icon_override("checked", _make_checkbox_icon(true, REMEMBER_FONT_SIZE))
+	_remember_check.add_theme_constant_override("h_separation", 12)
 	_root.add_child(_remember_check)
-
-	# Full-width toggle row — easy to tap on phone.
-	var rem_row := Button.new()
-	rem_row.toggle_mode = true
-	rem_row.focus_mode = Control.FOCUS_NONE
-	rem_row.custom_minimum_size = Vector2(0, 72)
-	rem_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var ink := Color(0.15, 0.08, 0.02)
-	var rs_off := StyleBoxFlat.new()
-	rs_off.bg_color = Color(0.90, 0.86, 0.76, 0.50)
-	rs_off.corner_radius_top_left = 14; rs_off.corner_radius_top_right = 14
-	rs_off.corner_radius_bottom_right = 14; rs_off.corner_radius_bottom_left = 14
-	rs_off.border_color = Color(0.65, 0.52, 0.35, 0.55); rs_off.set_border_width_all(2)
-	var rs_on := StyleBoxFlat.new()
-	rs_on.bg_color = Color(0.88, 0.70, 0.12, 0.28)
-	rs_on.corner_radius_top_left = 14; rs_on.corner_radius_top_right = 14
-	rs_on.corner_radius_bottom_right = 14; rs_on.corner_radius_bottom_left = 14
-	rs_on.border_color = Color(0.80, 0.60, 0.10, 0.80); rs_on.set_border_width_all(2)
-	rem_row.add_theme_color_override("font_color",         ink)
-	rem_row.add_theme_color_override("font_hover_color",   ink)
-	rem_row.add_theme_color_override("font_pressed_color", ink)
-	var rem_inner := HBoxContainer.new()
-	rem_inner.set_anchors_preset(Control.PRESET_FULL_RECT)
-	rem_inner.add_theme_constant_override("separation", 0)
-	rem_inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	rem_row.add_child(rem_inner)
-	var rem_lpad := Control.new(); rem_lpad.custom_minimum_size = Vector2(16, 0)
-	rem_lpad.mouse_filter = Control.MOUSE_FILTER_IGNORE; rem_inner.add_child(rem_lpad)
-	var rem_lbl := Label.new()
-	rem_lbl.text = "Remember me on this device"
-	rem_lbl.add_theme_font_size_override("font_size", 28)
-	rem_lbl.add_theme_color_override("font_color", ink)
-	rem_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rem_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	rem_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	rem_inner.add_child(rem_lbl)
-	var rem_pill := Label.new()
-	rem_pill.add_theme_font_size_override("font_size", 26)
-	rem_pill.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	rem_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	rem_inner.add_child(rem_pill)
-	var rem_rpad := Control.new(); rem_rpad.custom_minimum_size = Vector2(16, 0)
-	rem_rpad.mouse_filter = Control.MOUSE_FILTER_IGNORE; rem_inner.add_child(rem_rpad)
-	var _rem_update := func(on: bool) -> void:
-		_remember_check.button_pressed = on
-		rem_pill.text = "ON" if on else "OFF"
-		rem_pill.add_theme_color_override("font_color",
-			Color(0.65, 0.45, 0.05) if on else Color(0.45, 0.35, 0.22))
-		rem_row.add_theme_stylebox_override("normal", rs_on if on else rs_off)
-		rem_row.add_theme_stylebox_override("hover",  rs_on if on else rs_off)
-	_rem_update.call(false)
-	rem_row.toggled.connect(func(on: bool) -> void: _rem_update.call(on))
-	# Keep rem_row in sync when _remember_check.button_pressed is set externally.
-	_remember_check.toggled.connect(func(on: bool) -> void:
-		if rem_row.button_pressed != on:
-			rem_row.button_pressed = on
-			_rem_update.call(on)
-	)
-	_root.add_child(rem_row)
 
 	# ── Action buttons row: [Log In] [Sign Up] ───────────────────────────────
 	var btn_row := HBoxContainer.new()
@@ -247,6 +199,39 @@ func _make_input(placeholder: String, is_secret: bool = false) -> LineEdit:
 	le.add_theme_font_size_override("font_size", 32)
 	le.custom_minimum_size = Vector2(0, 64)
 	return le
+
+func _make_checkbox_icon(checked: bool, size: int) -> Texture2D:
+	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0, 0, 0, 0))
+	var border := Color(0.46, 0.34, 0.18)
+	var fill := Color(0.98, 0.95, 0.88, 0.95)
+	var checked_fill := Color(0.88, 0.70, 0.12, 0.92)
+	var border_width := 2
+	for y in range(size):
+		for x in range(size):
+			var is_border := x < border_width or y < border_width or x >= size - border_width or y >= size - border_width
+			image.set_pixel(x, y, border if is_border else (checked_fill if checked else fill))
+	if checked:
+		_draw_icon_line(image, Vector2(size * 0.24, size * 0.52), Vector2(size * 0.42, size * 0.70), Color(0.16, 0.09, 0.03), 2.0)
+		_draw_icon_line(image, Vector2(size * 0.42, size * 0.70), Vector2(size * 0.78, size * 0.30), Color(0.16, 0.09, 0.03), 2.0)
+	return ImageTexture.create_from_image(image)
+
+func _draw_icon_line(image: Image, start: Vector2, end: Vector2, color: Color, thickness: float) -> void:
+	var segment := end - start
+	var len_sq := segment.length_squared()
+	if len_sq <= 0.0:
+		return
+	var min_x: int = maxi(0, int(floor(min(start.x, end.x) - thickness)))
+	var max_x: int = mini(image.get_width() - 1, int(ceil(max(start.x, end.x) + thickness)))
+	var min_y: int = maxi(0, int(floor(min(start.y, end.y) - thickness)))
+	var max_y: int = mini(image.get_height() - 1, int(ceil(max(start.y, end.y) + thickness)))
+	for y in range(min_y, max_y + 1):
+		for x in range(min_x, max_x + 1):
+			var point := Vector2(float(x) + 0.5, float(y) + 0.5)
+			var t := clampf((point - start).dot(segment) / len_sq, 0.0, 1.0)
+			var closest := start + segment * t
+			if point.distance_to(closest) <= thickness:
+				image.set_pixel(x, y, color)
 
 # ── Social login ─────────────────────────────────────────────────────────────
 

@@ -12,6 +12,8 @@ const SETTINGS_SCENE := preload("res://scenes/Settings.tscn")
 var account: Dictionary = {}
 
 var _settings_overlay: Node = null
+var _welcome_lbl: Label = null
+var _lobby_avatar_rect: TextureRect = null
 
 func _ready() -> void:
 	SettingsStore.apply(get_tree())
@@ -82,13 +84,28 @@ func _build_ui() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(title)
 
+	var _prof := _load_profile()
+	var _av_id: String = _prof.get("avatar", "capy_zoomer") as String
+	var _av_tex := load("res://assets/characters/" + _av_id + ".png") as Texture2D
+	if _av_tex:
+		var av_center := CenterContainer.new()
+		_lobby_avatar_rect = TextureRect.new()
+		_lobby_avatar_rect.texture = _av_tex
+		_lobby_avatar_rect.custom_minimum_size = Vector2(96, 96)
+		_lobby_avatar_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		_lobby_avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		av_center.add_child(_lobby_avatar_rect)
+		root.add_child(av_center)
+
 	var welcome := Label.new()
-	var display_name: String = String(account.get("display_name", account.get("username", "trainer")))
+	var _base_name: String = String(account.get("display_name", account.get("username", "trainer")))
+	var display_name: String = _prof.get("display_name", _base_name) as String
 	welcome.text = "Welcome back, %s" % display_name
 	welcome.add_theme_font_size_override("font_size", 36)
 	welcome.add_theme_color_override("font_color", Color(0.28, 0.14, 0.04))
 	welcome.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(welcome)
+	_welcome_lbl = welcome
 
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0, 24)
@@ -117,6 +134,27 @@ func _make_button(text: String, font_size: int, min_size: Vector2, is_primary: b
 		_style_secondary(b)
 	return b
 
+func _load_profile() -> Dictionary:
+	if not FileAccess.file_exists("user://profile.json"):
+		return {}
+	var f := FileAccess.open("user://profile.json", FileAccess.READ)
+	if f == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	return parsed as Dictionary if typeof(parsed) == TYPE_DICTIONARY else {}
+
+func _refresh_lobby_header() -> void:
+	var prof := _load_profile()
+	var base_name: String = String(account.get("display_name", account.get("username", "trainer")))
+	var new_name: String = prof.get("display_name", base_name) as String
+	if is_instance_valid(_welcome_lbl):
+		_welcome_lbl.text = "Welcome back, %s" % new_name
+	var new_av: String = prof.get("avatar", "capy_zoomer") as String
+	var ntex := load("res://assets/characters/" + new_av + ".png") as Texture2D
+	if ntex and is_instance_valid(_lobby_avatar_rect):
+		_lobby_avatar_rect.texture = ntex
+
 func _on_settings_pressed() -> void:
 	if _settings_overlay != null and is_instance_valid(_settings_overlay):
 		return
@@ -124,7 +162,12 @@ func _on_settings_pressed() -> void:
 	_settings_overlay.logout_requested.connect(func() -> void:
 		_close_settings()
 		logout_requested.emit())
-	_settings_overlay.closed.connect(_close_settings)
+	_settings_overlay.display_name_changed.connect(func(new_name: String) -> void:
+		if is_instance_valid(_welcome_lbl):
+			_welcome_lbl.text = "Welcome back, %s" % new_name)
+	_settings_overlay.closed.connect(func() -> void:
+		_refresh_lobby_header()
+		_close_settings())
 	add_child(_settings_overlay)
 
 func _close_settings() -> void:

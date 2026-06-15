@@ -21,6 +21,11 @@ dist/
 *.aab
 *.ipa
 
+# Local/generated artifacts
+.ring_image_backups/
+__pycache__/
+*.py[cod]
+
 # Android build template is generated (1.9 GB) — do not commit
 android/build/
 android/GodotGooglePlayBilling.aar
