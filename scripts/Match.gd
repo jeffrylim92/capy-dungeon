@@ -1304,7 +1304,7 @@ func _update_lava_pools(delta: float) -> void:
 					return
 
 func _xp_drop() -> int:
-	return 4 + _wave
+	return 6 + _wave
 
 func _gain_xp(amount: int) -> void:
 	var xp_mult: float = 1.0 + float(_ring_bonuses.get("xp_bonus", 0.0))
@@ -1312,7 +1312,7 @@ func _gain_xp(amount: int) -> void:
 	if _xp >= _xp_next:
 		_xp -= _xp_next
 		_level   += 1
-		_xp_next  = int(50.0 * pow(float(_level), 1.65))
+		_xp_next  = int(50.0 * pow(float(_level), 1.50))
 		_show_skill_select(false)
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -2545,7 +2545,7 @@ func _on_death() -> void:
 
 	var back_y: float = view.y * 0.74 if not _revive_used else view.y * 0.62
 	var back := Button.new()
-	back.text = "← Back to Lobby"
+	back.text = "Back to Lobby"
 	back.add_theme_font_size_override("font_size", 36)
 	back.custom_minimum_size = Vector2(420, 84)
 	back.size = Vector2(420, 84)

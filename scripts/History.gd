@@ -103,7 +103,7 @@ func _build_ui() -> void:
 
 	# ── Back button ────────────────────────────────────────────────────────────
 	var back := Button.new()
-	back.text = "← Back"
+	back.text = "Back"
 	back.add_theme_font_size_override("font_size", 40)
 	back.custom_minimum_size = Vector2(260, 88)
 	back.size     = Vector2(260, 88)

@@ -199,7 +199,7 @@ func _build_start_button() -> void:
 	back_p.shadow_offset = Vector2(0, 1)
 
 	_back_btn = Button.new()
-	_back_btn.text = "← Menu"
+	_back_btn.text = "Menu"
 	_back_btn.add_theme_font_size_override("font_size", 40)
 	_back_btn.add_theme_color_override("font_color", Color(0.90, 0.90, 1.0))
 	_back_btn.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0))

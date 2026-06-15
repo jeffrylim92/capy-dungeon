@@ -120,7 +120,7 @@ func _build_ui() -> void:
 	add_child(btn_row)
 
 	_back_btn = Button.new()
-	_back_btn.text = "← Back"
+	_back_btn.text = "Back"
 	_back_btn.add_theme_font_size_override("font_size", 38)
 	_back_btn.custom_minimum_size = Vector2(200, 72)
 	_back_btn.pressed.connect(_on_back)

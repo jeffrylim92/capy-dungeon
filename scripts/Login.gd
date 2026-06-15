@@ -142,19 +142,69 @@ func _build_ui() -> void:
 		_favorite_row = _make_labeled_row("Favorite capybara", _build_fav_picker())
 	_root.add_child(_favorite_row)
 
+	# Hidden CheckBox keeps the toggle state so existing code (button_pressed reads/writes) works unchanged.
 	_remember_check = CheckBox.new()
-	_remember_check.text = "Remember me on this device"
-	_remember_check.add_theme_font_size_override("font_size", 26)
-	# AA-compliant: ~11:1 contrast against the parchment background.
-	# All interactive states must be set explicitly; Godot's default theme uses
-	# near-white for hover/pressed which is unreadable on a light background.
-	var _cb_ink := Color(0.15, 0.08, 0.02)
-	_remember_check.add_theme_color_override("font_color", _cb_ink)
-	_remember_check.add_theme_color_override("font_hover_color", _cb_ink)
-	_remember_check.add_theme_color_override("font_pressed_color", _cb_ink)
-	_remember_check.add_theme_color_override("font_hover_pressed_color", _cb_ink)
-	_remember_check.add_theme_color_override("font_focus_color", _cb_ink)
+	_remember_check.visible = false
 	_root.add_child(_remember_check)
+
+	# Full-width toggle row — easy to tap on phone.
+	var rem_row := Button.new()
+	rem_row.toggle_mode = true
+	rem_row.focus_mode = Control.FOCUS_NONE
+	rem_row.custom_minimum_size = Vector2(0, 72)
+	rem_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var ink := Color(0.15, 0.08, 0.02)
+	var rs_off := StyleBoxFlat.new()
+	rs_off.bg_color = Color(0.90, 0.86, 0.76, 0.50)
+	rs_off.corner_radius_top_left = 14; rs_off.corner_radius_top_right = 14
+	rs_off.corner_radius_bottom_right = 14; rs_off.corner_radius_bottom_left = 14
+	rs_off.border_color = Color(0.65, 0.52, 0.35, 0.55); rs_off.set_border_width_all(2)
+	var rs_on := StyleBoxFlat.new()
+	rs_on.bg_color = Color(0.88, 0.70, 0.12, 0.28)
+	rs_on.corner_radius_top_left = 14; rs_on.corner_radius_top_right = 14
+	rs_on.corner_radius_bottom_right = 14; rs_on.corner_radius_bottom_left = 14
+	rs_on.border_color = Color(0.80, 0.60, 0.10, 0.80); rs_on.set_border_width_all(2)
+	rem_row.add_theme_color_override("font_color",         ink)
+	rem_row.add_theme_color_override("font_hover_color",   ink)
+	rem_row.add_theme_color_override("font_pressed_color", ink)
+	var rem_inner := HBoxContainer.new()
+	rem_inner.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rem_inner.add_theme_constant_override("separation", 0)
+	rem_inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rem_row.add_child(rem_inner)
+	var rem_lpad := Control.new(); rem_lpad.custom_minimum_size = Vector2(16, 0)
+	rem_lpad.mouse_filter = Control.MOUSE_FILTER_IGNORE; rem_inner.add_child(rem_lpad)
+	var rem_lbl := Label.new()
+	rem_lbl.text = "Remember me on this device"
+	rem_lbl.add_theme_font_size_override("font_size", 28)
+	rem_lbl.add_theme_color_override("font_color", ink)
+	rem_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rem_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	rem_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rem_inner.add_child(rem_lbl)
+	var rem_pill := Label.new()
+	rem_pill.add_theme_font_size_override("font_size", 26)
+	rem_pill.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	rem_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rem_inner.add_child(rem_pill)
+	var rem_rpad := Control.new(); rem_rpad.custom_minimum_size = Vector2(16, 0)
+	rem_rpad.mouse_filter = Control.MOUSE_FILTER_IGNORE; rem_inner.add_child(rem_rpad)
+	var _rem_update := func(on: bool) -> void:
+		_remember_check.button_pressed = on
+		rem_pill.text = "ON" if on else "OFF"
+		rem_pill.add_theme_color_override("font_color",
+			Color(0.65, 0.45, 0.05) if on else Color(0.45, 0.35, 0.22))
+		rem_row.add_theme_stylebox_override("normal", rs_on if on else rs_off)
+		rem_row.add_theme_stylebox_override("hover",  rs_on if on else rs_off)
+	_rem_update.call(false)
+	rem_row.toggled.connect(func(on: bool) -> void: _rem_update.call(on))
+	# Keep rem_row in sync when _remember_check.button_pressed is set externally.
+	_remember_check.toggled.connect(func(on: bool) -> void:
+		if rem_row.button_pressed != on:
+			rem_row.button_pressed = on
+			_rem_update.call(on)
+	)
+	_root.add_child(rem_row)
 
 	# ── Action buttons row: [Log In] [Sign Up] ───────────────────────────────
 	var btn_row := HBoxContainer.new()
@@ -479,7 +529,7 @@ func _apply_mode() -> void:
 	var is_register: bool = _mode == Mode.REGISTER
 	_subtitle.text = "Create your trainer profile" if is_register else "Welcome back, capy explorer!"
 	_submit.text = "Create Account" if is_register else "Log In"
-	_btn_new.text = "← Back" if is_register else "Sign Up"
+	_btn_new.text = "Back" if is_register else "Sign Up"
 	_confirm_row.visible = is_register
 	_display_row.visible = is_register
 	_favorite_row.visible = is_register
