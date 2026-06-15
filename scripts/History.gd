@@ -136,8 +136,11 @@ func _style_tab_btn(btn: Button, active: bool) -> void:
 	btn.add_theme_stylebox_override("normal",  s)
 	btn.add_theme_stylebox_override("hover",   s)
 	btn.add_theme_stylebox_override("pressed", s)
-	btn.add_theme_color_override("font_color",
-		Color(0.20, 0.10, 0.02) if active else Color(0.82, 0.75, 0.62))
+	var fg := Color(0.20, 0.10, 0.02) if active else Color(0.82, 0.75, 0.62)
+	btn.add_theme_color_override("font_color",         fg)
+	btn.add_theme_color_override("font_hover_color",   fg)
+	btn.add_theme_color_override("font_pressed_color", fg)
+	btn.add_theme_color_override("font_focus_color",   fg)
 
 # ── History panel (existing per-character cards) ───────────────────────────────
 
@@ -330,22 +333,25 @@ func _build_global_panel(y: float, h: float, w: float) -> Control:
 	return panel
 
 func _fetch_global_rankings() -> void:
-	_set_loading_text("kills",   "Loading…")
-	_set_loading_text("survive", "Loading…")
+	# Rebuild the vbox contents to fresh loading state before every fetch attempt.
+	# This ensures placeholders always exist when _populate_global_section() runs,
+	# so retry works any number of times.
+	var vbox := _global_panel.get_node_or_null("GlobalScroll/GlobalVBox") as VBoxContainer
+	if vbox == null:
+		return
+	for child in vbox.get_children():
+		child.queue_free()
+	vbox.add_child(_section_header("🗡️ Best Kill", Color(0.95, 0.78, 0.25)))
+	vbox.add_child(_loading_label("kills"))
+	vbox.add_child(_section_header("⏱️ Best Survive", Color(0.55, 0.85, 0.65)))
+	vbox.add_child(_loading_label("survive"))
+
 	LeaderboardClient.fetch_kills(self, func(entries: Array) -> void:
 		_populate_global_section("kills", entries, false)
 	)
 	LeaderboardClient.fetch_survive(self, func(entries: Array) -> void:
 		_populate_global_section("survive", entries, true)
 	)
-
-func _set_loading_text(section: String, text: String) -> void:
-	var vbox := _global_panel.get_node_or_null("GlobalScroll/GlobalVBox") as VBoxContainer
-	if vbox == null:
-		return
-	var lbl := vbox.get_node_or_null("Loading_" + section) as Label
-	if lbl:
-		lbl.text = text
 
 func _populate_global_section(section: String, entries: Array, is_survive: bool) -> void:
 	var vbox := _global_panel.get_node_or_null("GlobalScroll/GlobalVBox") as VBoxContainer
@@ -359,21 +365,18 @@ func _populate_global_section(section: String, entries: Array, is_survive: bool)
 
 	if entries.is_empty():
 		var hint := _empty_hint("No data yet — play a match to appear here!")
-		hint.name = "Loading_" + section
 		vbox.add_child(hint)
 		vbox.move_child(hint, insert_idx)
 		insert_idx += 1
-		# Retry button — server may have been on cold start
 		var retry := Button.new()
 		retry.text = "↺  Retry"
 		retry.add_theme_font_size_override("font_size", 26)
 		retry.custom_minimum_size = Vector2(160, 56)
 		retry.focus_mode = Control.FOCUS_NONE
+		_style_retry(retry)
 		vbox.add_child(retry)
 		vbox.move_child(retry, insert_idx)
 		retry.pressed.connect(func() -> void:
-			retry.queue_free()
-			hint.queue_free()
 			_global_loaded = false
 			_switch_tab(2)
 		)
@@ -384,6 +387,24 @@ func _populate_global_section(section: String, entries: Array, is_survive: bool)
 		vbox.add_child(row)
 		vbox.move_child(row, insert_idx)
 		insert_idx += 1
+
+func _style_retry(btn: Button) -> void:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(0.22, 0.22, 0.35, 0.92)
+	s.corner_radius_top_left     = 16
+	s.corner_radius_top_right    = 16
+	s.corner_radius_bottom_right = 16
+	s.corner_radius_bottom_left  = 16
+	s.border_color = Color(0.55, 0.55, 0.75, 0.75)
+	s.set_border_width_all(2)
+	var h := s.duplicate() as StyleBoxFlat
+	h.bg_color = Color(0.30, 0.30, 0.46, 0.95)
+	btn.add_theme_stylebox_override("normal",  s)
+	btn.add_theme_stylebox_override("hover",   h)
+	btn.add_theme_stylebox_override("pressed", s)
+	btn.add_theme_color_override("font_color",         Color(0.90, 0.90, 1.0))
+	btn.add_theme_color_override("font_hover_color",   Color(1.0, 1.0, 1.0))
+	btn.add_theme_color_override("font_pressed_color", Color(0.72, 0.72, 0.88))
 
 func _global_rank_row(entry: Dictionary, is_survive: bool) -> Control:
 	var rank: int       = int(entry.get("rank", 0))
