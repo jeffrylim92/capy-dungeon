@@ -21,8 +21,9 @@ dist/
 *.aab
 *.ipa
 
-# Keep Android custom build template (our build.gradle fix lives here)
-!android/build/
+# Android build template is generated (1.9 GB) — do not commit
+android/build/
+android/GodotGooglePlayBilling.aar
 
 # macOS
 .DS_Store

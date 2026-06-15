@@ -23,7 +23,14 @@ config/name="Capy Dungeon"
 config/description="Tap-combo capybara battler"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
+boot_splash/bg_color=Color(0, 0, 0, 1)
+boot_splash/image="res://assets/splash.png"
+boot_splash/fullsize=true
 config/icon="res://assets/icon.png"
+
+[autoload]
+
+PurchaseStore="*res://scripts/PurchaseStore.gd"
 
 [display]
 
@@ -35,6 +42,10 @@ window/handheld/orientation=1
 [dotnet]
 
 project/assembly_name="Capy Dungeon"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/GodotGooglePlayBilling/plugin.cfg")
 
 [input]
 

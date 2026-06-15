@@ -8,6 +8,7 @@ signal match_ended(next_action: String)
 # ─── Public (set by Main before adding to tree) ───────────────────────────────
 var selected_player_character: CharacterData = null
 var account_username: String = ""
+var account_display_name: String = ""
 
 # ─── Tuning constants ─────────────────────────────────────────────────────────
 const PLAYER_R:    float = 26.0
@@ -384,17 +385,10 @@ func _ready() -> void:
 		var base_sid: String = selected_player_character.base_skill
 		if not base_sid.is_empty() and SKILL_DEFS.has(base_sid):
 			_skills.append({"id": base_sid, "level": 1, "timer": 0.0})
-		# Load portrait texture — use Image pipeline to preserve alpha channel
+		# Load portrait texture via ResourceLoader (works on Android + desktop)
 		var tex_path: String = "res://assets/characters/" + String(selected_player_character.id) + ".png"
 		if ResourceLoader.exists(tex_path):
-			var img: Image = Image.new()
-			img.load(ProjectSettings.globalize_path(tex_path))
-			if not img.is_empty():
-				if not img.detect_alpha() == Image.ALPHA_NONE:
-					img.convert(Image.FORMAT_RGBA8)
-				else:
-					img.convert(Image.FORMAT_RGBA8)
-				_player_tex = ImageTexture.create_from_image(img)
+			_player_tex = load(tex_path) as Texture2D
 
 	# ── Apply ring bonuses ────────────────────────────────────────────────
 	if not account_username.is_empty() and not _char_id.is_empty():
@@ -427,11 +421,7 @@ func _ready() -> void:
 	for ek in _enemy_tex_map:
 		var ep2: String = _enemy_tex_map[ek]
 		if ResourceLoader.exists(ep2):
-			var eimg: Image = Image.new()
-			eimg.load(ProjectSettings.globalize_path(ep2))
-			if not eimg.is_empty():
-				eimg.convert(Image.FORMAT_RGBA8)
-				_enemy_tex[ek] = ImageTexture.create_from_image(eimg)
+			_enemy_tex[ek] = load(ep2) as Texture2D
 
 	# Initialise ad manager
 	_ad_manager = AdManager.new()
@@ -2001,9 +1991,142 @@ func _build_hud() -> void:
 	_skill_icon_row.size     = Vector2(view.x - 56, 88)
 	hud.add_child(_skill_icon_row)
 
+	# Pause button (top-right corner)
+	var pause_btn := Button.new()
+	pause_btn.text = "⏸"
+	pause_btn.add_theme_font_size_override("font_size", 28)
+	pause_btn.position = Vector2(view.x - 80, 6)
+	pause_btn.size     = Vector2(72, 72)
+	pause_btn.focus_mode = Control.FOCUS_NONE
+	var pause_s := StyleBoxFlat.new()
+	pause_s.bg_color = Color(0.08, 0.06, 0.04, 0.78)
+	pause_s.corner_radius_top_left    = 16
+	pause_s.corner_radius_top_right   = 16
+	pause_s.corner_radius_bottom_right = 16
+	pause_s.corner_radius_bottom_left  = 16
+	pause_btn.add_theme_stylebox_override("normal",  pause_s)
+	pause_btn.add_theme_stylebox_override("hover",   pause_s)
+	pause_btn.add_theme_stylebox_override("pressed", pause_s)
+	pause_btn.add_theme_color_override("font_color", Color(0.95, 0.90, 0.75))
+	pause_btn.pressed.connect(_show_pause_menu)
+	hud.add_child(pause_btn)
+
 	# Joystick visual
 	_joy_vis = JoystickVisual.new()
 	hud.add_child(_joy_vis)
+
+func _show_pause_menu() -> void:
+	if _game_over:
+		return
+	_paused = true
+	var view: Vector2 = get_viewport_rect().size
+
+	var layer := CanvasLayer.new()
+	layer.name = "pause_menu"
+	layer.layer = 90
+	add_child(layer)
+
+	var overlay := ColorRect.new()
+	overlay.color = Color(0.0, 0.0, 0.0, 0.62)
+	overlay.size  = view
+	layer.add_child(overlay)
+
+	var panel := PanelContainer.new()
+	var ps := StyleBoxFlat.new()
+	ps.bg_color = Color(0.12, 0.09, 0.06, 0.96)
+	ps.corner_radius_top_left    = 28
+	ps.corner_radius_top_right   = 28
+	ps.corner_radius_bottom_right = 28
+	ps.corner_radius_bottom_left  = 28
+	ps.border_color = Color(0.72, 0.58, 0.28, 0.80)
+	ps.set_border_width_all(3)
+	ps.shadow_color = Color(0.0, 0.0, 0.0, 0.45)
+	ps.shadow_size  = 18
+	ps.content_margin_left   = 40
+	ps.content_margin_right  = 40
+	ps.content_margin_top    = 40
+	ps.content_margin_bottom = 40
+	panel.add_theme_stylebox_override("panel", ps)
+	var pw: float = 560.0
+	panel.custom_minimum_size = Vector2(pw, 0)
+	panel.position = Vector2((view.x - pw) * 0.5, view.y * 0.22)
+	panel.z_index  = 1
+	layer.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 22)
+	panel.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "Paused"
+	title.add_theme_font_size_override("font_size", 48)
+	title.add_theme_color_override("font_color", Color(0.97, 0.90, 0.70))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	# Resume
+	var resume_btn := _pause_btn("▶  Resume", Color(0.20, 0.55, 0.22), Color(0.88, 0.98, 0.88))
+	vbox.add_child(resume_btn)
+	resume_btn.pressed.connect(func() -> void:
+		layer.queue_free()
+		_paused = false
+	)
+
+	# Settings
+	var settings_btn := _pause_btn("⚙  Settings", Color(0.18, 0.22, 0.45), Color(0.85, 0.88, 1.0))
+	vbox.add_child(settings_btn)
+	settings_btn.pressed.connect(func() -> void:
+		var SETTINGS_SCENE := load("res://scenes/Settings.tscn")
+		if SETTINGS_SCENE == null:
+			return
+		var s := SETTINGS_SCENE.instantiate()
+		s.layer = 95
+		s.closed.connect(func() -> void: s.queue_free())
+		s.logout_requested.connect(func() -> void:
+			s.queue_free()
+			layer.queue_free()
+			match_ended.emit("lobby")
+		)
+		add_child(s)
+	)
+
+	# Return to Main Menu
+	var menu_btn := _pause_btn("🏠  Return to Menu", Color(0.48, 0.18, 0.10), Color(1.0, 0.88, 0.82))
+	vbox.add_child(menu_btn)
+	menu_btn.pressed.connect(func() -> void:
+		layer.queue_free()
+		match_ended.emit("lobby")
+	)
+
+	# Cancel (same as resume)
+	var cancel_btn := _pause_btn("✕  Cancel", Color(0.20, 0.18, 0.16), Color(0.75, 0.72, 0.68))
+	vbox.add_child(cancel_btn)
+	cancel_btn.pressed.connect(func() -> void:
+		layer.queue_free()
+		_paused = false
+	)
+
+func _pause_btn(label: String, bg: Color, fg: Color) -> Button:
+	var btn := Button.new()
+	btn.text = label
+	btn.add_theme_font_size_override("font_size", 34)
+	btn.custom_minimum_size = Vector2(0, 88)
+	btn.focus_mode = Control.FOCUS_NONE
+	var s := StyleBoxFlat.new()
+	s.bg_color = bg
+	s.corner_radius_top_left    = 18
+	s.corner_radius_top_right   = 18
+	s.corner_radius_bottom_right = 18
+	s.corner_radius_bottom_left  = 18
+	var sh := s.duplicate() as StyleBoxFlat
+	sh.bg_color = bg.lightened(0.12)
+	var sp := s.duplicate() as StyleBoxFlat
+	sp.bg_color = bg.darkened(0.12)
+	btn.add_theme_stylebox_override("normal",  s)
+	btn.add_theme_stylebox_override("hover",   sh)
+	btn.add_theme_stylebox_override("pressed", sp)
+	btn.add_theme_color_override("font_color", fg)
+	return btn
 
 func _update_hud() -> void:
 	_hp_fill.size = Vector2(324.0 * clamp(_player_hp / _player_max_hp, 0.0, 1.0), 26)
@@ -2354,6 +2477,7 @@ func _on_death() -> void:
 			StatsStore.OUTCOME_LOSS,
 			0, _elapsed, 0, _kills
 		)
+		LeaderboardClient.submit_stats(self, account_username, account_display_name)
 
 	var view: Vector2 = get_viewport_rect().size
 	var layer := CanvasLayer.new()

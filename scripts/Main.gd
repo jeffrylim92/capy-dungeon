@@ -224,7 +224,8 @@ func _start_match(data: CharacterData) -> void:
 	_play_music(BGM_DUNGEON_PATH)
 	var m := MATCH_SCENE.instantiate()
 	m.selected_player_character = data
-	m.account_username = String(_account.get("username", ""))
+	m.account_username     = String(_account.get("username", ""))
+	m.account_display_name = String(_account.get("display_name", _account.get("username", "")))
 	m.match_ended.connect(_on_match_ended)
 	add_child(m)
 
@@ -242,4 +243,6 @@ func _on_match_ended(next_action: String) -> void:
 
 func _clear_children() -> void:
 	for c in get_children():
+		if c == _bgm_a or c == _bgm_b:
+			continue
 		c.queue_free()

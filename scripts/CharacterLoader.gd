@@ -42,7 +42,7 @@ static func load_all() -> Array[CharacterData]:
 static func _load_fallback() -> Array[CharacterData]:
 	var out: Array[CharacterData] = []
 	for char_id in _KNOWN_IDS:
-		for ext in [".tres", ".res"]:
+		for ext: String in [".tres", ".res"]:
 			var path := CHAR_DIR + char_id + ext
 			if ResourceLoader.exists(path):
 				var res := load(path)

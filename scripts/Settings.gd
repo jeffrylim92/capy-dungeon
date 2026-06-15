@@ -72,7 +72,7 @@ func _build_ui() -> void:
 
 	var reset_btn := Button.new()
 	reset_btn.text = "Reset my stats"
-	reset_btn.add_theme_font_size_override("font_size", 24)
+	reset_btn.add_theme_font_size_override("font_size", 32)
 	reset_btn.custom_minimum_size = Vector2(0, 60)
 	_style_secondary(reset_btn)
 	reset_btn.pressed.connect(_on_reset_stats)
@@ -80,22 +80,22 @@ func _build_ui() -> void:
 
 	var logout_btn := Button.new()
 	logout_btn.text = "Log out / switch account"
-	logout_btn.add_theme_font_size_override("font_size", 24)
+	logout_btn.add_theme_font_size_override("font_size", 32)
 	logout_btn.custom_minimum_size = Vector2(0, 60)
 	_style_danger(logout_btn)
 	logout_btn.pressed.connect(func() -> void: logout_requested.emit())
 	col.add_child(logout_btn)
 
 	var version := Label.new()
-	version.text = "Capy Dungeon · prototype build"
-	version.add_theme_font_size_override("font_size", 16)
-	version.add_theme_color_override("font_color", Color(0.5, 0.4, 0.3))
+	version.text = "Capy Dungeon v1.0"
+	version.add_theme_font_size_override("font_size", 28)
+	version.add_theme_color_override("font_color", Color(0.30, 0.20, 0.10))
 	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(version)
 
 	var close_btn := Button.new()
 	close_btn.text = "Done"
-	close_btn.add_theme_font_size_override("font_size", 28)
+	close_btn.add_theme_font_size_override("font_size", 36)
 	close_btn.custom_minimum_size = Vector2(0, 72)
 	_style_primary(close_btn)
 	close_btn.pressed.connect(func() -> void: closed.emit())
@@ -108,12 +108,12 @@ func _add_slider(parent: Node, label_text: String, key: String, min_v: float, ma
 	var header := HBoxContainer.new()
 	var lbl := Label.new()
 	lbl.text = label_text
-	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.add_theme_font_size_override("font_size", 30)
 	lbl.add_theme_color_override("font_color", Color(0.35, 0.22, 0.1))
 	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(lbl)
 	var value_lbl := Label.new()
-	value_lbl.add_theme_font_size_override("font_size", 22)
+	value_lbl.add_theme_font_size_override("font_size", 30)
 	value_lbl.add_theme_color_override("font_color", Color(0.35, 0.22, 0.1))
 	header.add_child(value_lbl)
 	row.add_child(header)
@@ -139,7 +139,7 @@ func _add_slider(parent: Node, label_text: String, key: String, min_v: float, ma
 func _add_check(parent: Node, label_text: String, key: String) -> CheckBox:
 	var cb := CheckBox.new()
 	cb.text = label_text
-	cb.add_theme_font_size_override("font_size", 22)
+	cb.add_theme_font_size_override("font_size", 30)
 	cb.button_pressed = bool(_data.get(key, false))
 	# AA-compliant: all interactive states pinned to a dark ink colour (~11:1
 	# contrast on the panel's warm-cream background). Godot's default theme
@@ -190,14 +190,14 @@ func _on_reset_stats() -> void:
 
 	var warn := Label.new()
 	warn.text = "Reset stats?"
-	warn.add_theme_font_size_override("font_size", 30)
+	warn.add_theme_font_size_override("font_size", 36)
 	warn.add_theme_color_override("font_color", Color(0.6, 0.08, 0.06))
 	warn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inner.add_child(warn)
 
 	var msg := Label.new()
 	msg.text = "This will permanently erase all your wins, losses, and combos. Cannot be undone."
-	msg.add_theme_font_size_override("font_size", 20)
+	msg.add_theme_font_size_override("font_size", 28)
 	msg.add_theme_color_override("font_color", Color(0.15, 0.08, 0.02))
 	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -211,7 +211,7 @@ func _on_reset_stats() -> void:
 	var cancel_btn := Button.new()
 	cancel_btn.text = "Cancel"
 	cancel_btn.custom_minimum_size = Vector2(180, 56)
-	cancel_btn.add_theme_font_size_override("font_size", 24)
+	cancel_btn.add_theme_font_size_override("font_size", 32)
 	_style_secondary(cancel_btn)
 	cancel_btn.pressed.connect(func() -> void:
 		scrim2.queue_free()
@@ -221,7 +221,7 @@ func _on_reset_stats() -> void:
 	var confirm_btn := Button.new()
 	confirm_btn.text = "Yes, reset"
 	confirm_btn.custom_minimum_size = Vector2(180, 56)
-	confirm_btn.add_theme_font_size_override("font_size", 24)
+	confirm_btn.add_theme_font_size_override("font_size", 32)
 	_style_danger(confirm_btn)
 	confirm_btn.pressed.connect(func() -> void:
 		scrim2.queue_free()

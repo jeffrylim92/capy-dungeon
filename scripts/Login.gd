@@ -42,45 +42,12 @@ var _characters: Array[CharacterData] = []
 var _remembered_login: Dictionary = {}
 
 var _social_auth: SocialAuth = null
-var _debug_label: Label = null
-var _debug_timer: float  = 0.0
 
 func _ready() -> void:
 	_characters = CharacterLoader.load_all()
 	_build_ui()
 	_apply_mode()
 	_load_remember()
-	if OS.get_name() == "Android":
-		_build_debug_overlay()
-
-func _build_debug_overlay() -> void:
-	var view := get_viewport_rect().size
-	var panel := Panel.new()
-	panel.position = Vector2(0, view.y * 0.55)
-	panel.size     = Vector2(view.x, view.y * 0.45)
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0, 0, 0, 0.78)
-	panel.add_theme_stylebox_override("panel", style)
-	add_child(panel)
-	_debug_label = Label.new()
-	_debug_label.position = Vector2(8, 6)
-	_debug_label.size     = Vector2(view.x - 16, view.y * 0.45 - 12)
-	_debug_label.add_theme_font_size_override("font_size", 18)
-	_debug_label.add_theme_color_override("font_color", Color(0.2, 1, 0.4))
-	_debug_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_debug_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	_debug_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(_debug_label)
-
-func _process(delta: float) -> void:
-	if _debug_label == null:
-		return
-	_debug_timer -= delta
-	if _debug_timer <= 0.0:
-		_debug_timer = 0.25
-		if DebugLog.dirty:
-			_debug_label.text = DebugLog.get_text()
 
 func _build_ui() -> void:
 	var view := get_viewport_rect().size
@@ -97,11 +64,46 @@ func _build_ui() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
+	# Explicit size: parent is Node2D so anchors alone don't resolve without a Control parent
+	var layout := Control.new()
+	layout.position = Vector2.ZERO
+	layout.size = view
+	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(layout)
+
+	var center := CenterContainer.new()
+	center.position = Vector2.ZERO
+	center.size = view
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layout.add_child(center)
+
+	# PanelContainer auto-sizes to its content — no fixed height needed
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(view.x - 80.0, 0.0)
+	var card_style := StyleBoxFlat.new()
+	card_style.bg_color = Color(0.98, 0.95, 0.88, 0.55)
+	card_style.border_color = Color(0.75, 0.55, 0.20, 0.88)
+	card_style.set_border_width_all(2)
+	card_style.corner_radius_top_left = 28
+	card_style.corner_radius_top_right = 28
+	card_style.corner_radius_bottom_right = 28
+	card_style.corner_radius_bottom_left = 28
+	card_style.shadow_color = Color(0.0, 0.0, 0.0, 0.45)
+	card_style.shadow_size = 18
+	card_style.shadow_offset = Vector2(0, 6)
+	card.add_theme_stylebox_override("panel", card_style)
+	center.add_child(card)
+
+	var inner := MarginContainer.new()
+	inner.add_theme_constant_override("margin_left", 36)
+	inner.add_theme_constant_override("margin_right", 36)
+	inner.add_theme_constant_override("margin_top", 32)
+	inner.add_theme_constant_override("margin_bottom", 32)
+	card.add_child(inner)
+
 	_root = VBoxContainer.new()
-	_root.size = Vector2(view.x - 120.0, view.y - 240.0)
-	_root.position = Vector2(60.0, 160.0)
 	_root.add_theme_constant_override("separation", 14)
-	add_child(_root)
+	inner.add_child(_root)
 
 	_title = Label.new()
 	_title.text = "Capy Dungeon"
@@ -116,19 +118,6 @@ func _build_ui() -> void:
 	_subtitle.add_theme_color_override("font_color", Color(0.45, 0.3, 0.18))
 	_subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_root.add_child(_subtitle)
-
-	# Single mode-toggle button: "Sign up" in LOGIN mode, "← Sign in" in REGISTER mode.
-	var seg := HBoxContainer.new()
-	seg.alignment = BoxContainer.ALIGNMENT_CENTER
-	_root.add_child(seg)
-
-	_btn_new = Button.new()
-	_btn_new.text = "Sign up"
-	_btn_new.custom_minimum_size = Vector2(360, 80)
-	_btn_new.add_theme_font_size_override("font_size", 28)
-	_style_secondary(_btn_new)
-	_btn_new.pressed.connect(_on_mode_toggle)
-	seg.add_child(_btn_new)
 
 	# Form.
 	_username = _make_input("Username")
@@ -167,23 +156,38 @@ func _build_ui() -> void:
 	_remember_check.add_theme_color_override("font_focus_color", _cb_ink)
 	_root.add_child(_remember_check)
 
-	# ── Social login divider + buttons (only in LOGIN mode) ─────────────────
-	_build_social_section()
+	# ── Action buttons row: [Log In] [Sign Up] ───────────────────────────────
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 12)
+	_root.add_child(btn_row)
 
 	_submit = Button.new()
-	_submit.text = "Play"
+	_submit.text = "Log In"
 	_submit.custom_minimum_size = Vector2(0, 88)
+	_submit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_submit.add_theme_font_size_override("font_size", 34)
 	_style_primary(_submit)
 	_submit.pressed.connect(_on_submit)
-	_root.add_child(_submit)
+	btn_row.add_child(_submit)
+
+	_btn_new = Button.new()
+	_btn_new.text = "Sign Up"
+	_btn_new.custom_minimum_size = Vector2(0, 88)
+	_btn_new.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_btn_new.add_theme_font_size_override("font_size", 34)
+	_style_secondary(_btn_new)
+	_btn_new.pressed.connect(_on_mode_toggle)
+	btn_row.add_child(_btn_new)
+
+	# ── Social buttons row: [Google] [Facebook] ───────────────────────────────
+	_build_social_section()
 
 	_status = Label.new()
 	_status.text = ""
 	_status.add_theme_font_size_override("font_size", 22)
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_status.custom_minimum_size = Vector2(0, 80)
+	_status.custom_minimum_size = Vector2(0, 60)
 	_root.add_child(_status)
 
 func _make_input(placeholder: String, is_secret: bool = false) -> LineEdit:
@@ -209,39 +213,20 @@ func _build_social_section() -> void:
 	if providers.is_empty():
 		return
 
-	# ── "— or —" divider ────────────────────────────────────────────────
-	var divider := HBoxContainer.new()
-	divider.add_theme_constant_override("separation", 10)
-	var line_l := _make_divider_line()
-	var or_lbl  := Label.new()
-	or_lbl.text = "— or —"
-	or_lbl.add_theme_font_size_override("font_size", 18)
-	or_lbl.add_theme_color_override("font_color", Color(0.45, 0.30, 0.15))
-	or_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	or_lbl.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var line_r := _make_divider_line()
-	divider.add_child(line_l)
-	divider.add_child(or_lbl)
-	divider.add_child(line_r)
-
-	# ── Social buttons ───────────────────────────────────────────────────
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 10)
-	col.add_child(divider)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
 
 	for p in providers:
 		if not SOCIAL_META.has(p):
 			continue
 		var meta: Dictionary = SOCIAL_META[p] as Dictionary
 		var btn := _make_social_button(p, meta)
-		col.add_child(btn)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(btn)
 
-	_root.add_child(col)
-	_social_section = col
+	_root.add_child(row)
+	_social_section = row
 
-	# Wire up the SocialAuth node.
-	# Name must be set explicitly — SocialAuth.new() may not set the node name
-	# to the class name in all Godot 4 versions, breaking Main._find_social_auth().
 	_social_auth = SocialAuth.new()
 	_social_auth.name = "SocialAuth"
 	add_child(_social_auth)
@@ -297,7 +282,7 @@ func _make_social_button(provider: String, meta: Dictionary) -> Button:
 	var btn := Button.new()
 	btn.text = meta["label"] as String
 	btn.custom_minimum_size = Vector2(0, 72)
-	btn.add_theme_font_size_override("font_size", 24)
+	btn.add_theme_font_size_override("font_size", 20)
 	btn.add_theme_stylebox_override("normal", n)
 	btn.add_theme_stylebox_override("hover", h)
 	btn.add_theme_stylebox_override("pressed", p)
@@ -343,7 +328,7 @@ func _make_labeled_row(label_text: String, control: Control) -> Control:
 func _build_fav_picker() -> Control:
 	var view := get_viewport_rect().size
 	var n: int = _characters.size()
-	var available_w: float = view.x - 120.0
+	var available_w: float = view.x - 152.0
 	var gap: float = 8.0
 	var btn_w: float = (available_w - float(n - 1) * gap) / float(n)
 	var portrait_size: float = min(btn_w - 20.0, 160.0)
@@ -493,11 +478,13 @@ func _on_mode_toggle() -> void:
 func _apply_mode() -> void:
 	var is_register: bool = _mode == Mode.REGISTER
 	_subtitle.text = "Create your trainer profile" if is_register else "Welcome back, capy explorer!"
-	_submit.text = "Create account" if is_register else "Log in"
+	_submit.text = "Create Account" if is_register else "Log In"
+	_btn_new.text = "← Back" if is_register else "Sign Up"
 	_confirm_row.visible = is_register
 	_display_row.visible = is_register
 	_favorite_row.visible = is_register
-	_btn_new.text = "← Sign in" if is_register else "Sign up"
+	if _social_section != null:
+		_social_section.visible = not is_register
 
 func _on_submit() -> void:
 	if _mode == Mode.REGISTER:

@@ -20,14 +20,131 @@ Environment variables (set in Render dashboard):
 
 import asyncio
 import os
+import sqlite3
+import threading
 import time
 import urllib.parse
+from datetime import datetime, timezone
 
 import httpx
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 
 app = FastAPI()
+
+# ── Leaderboard DB (SQLite in /tmp — persists between requests, resets on redeploy)
+# For a permanent leaderboard set DATABASE_URL and swap to PostgreSQL.
+_DB_PATH = os.environ.get("LEADERBOARD_DB", "/tmp/capy_leaderboard.db")
+_db_lock = threading.Lock()
+
+
+def _db_connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _db_init() -> None:
+    with _db_lock:
+        conn = _db_connect()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS leaderboard (
+                username          TEXT PRIMARY KEY,
+                display_name      TEXT NOT NULL,
+                total_kills       INTEGER DEFAULT 0,
+                best_survive_sec  REAL    DEFAULT 0.0,
+                best_kill_char    TEXT    DEFAULT '',
+                best_survive_char TEXT    DEFAULT '',
+                updated_at        TEXT    DEFAULT ''
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+
+_db_init()
+
+
+class StatsSubmit(BaseModel):
+    username: str
+    display_name: str
+    total_kills: int = 0
+    best_survive_seconds: float = 0.0
+    best_kill_character: str = ""
+    best_survive_character: str = ""
+
+
+@app.post("/stats/submit")
+async def stats_submit(body: StatsSubmit) -> dict:
+    username = body.username.strip().lower()
+    if not username:
+        return {"ok": False, "error": "missing username"}
+    now = datetime.now(timezone.utc).isoformat()
+    with _db_lock:
+        conn = _db_connect()
+        row = conn.execute(
+            "SELECT * FROM leaderboard WHERE username = ?", (username,)
+        ).fetchone()
+        if row:
+            new_kills   = max(body.total_kills, row["total_kills"])
+            new_survive = max(body.best_survive_seconds, row["best_survive_sec"])
+            kill_char   = body.best_kill_character   if body.total_kills       >= row["total_kills"]     else row["best_kill_char"]
+            surv_char   = body.best_survive_character if body.best_survive_seconds >= row["best_survive_sec"] else row["best_survive_char"]
+            conn.execute(
+                "UPDATE leaderboard SET display_name=?,total_kills=?,best_survive_sec=?,"
+                "best_kill_char=?,best_survive_char=?,updated_at=? WHERE username=?",
+                (body.display_name, new_kills, new_survive, kill_char, surv_char, now, username),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO leaderboard "
+                "(username,display_name,total_kills,best_survive_sec,best_kill_char,best_survive_char,updated_at)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (username, body.display_name, body.total_kills, body.best_survive_seconds,
+                 body.best_kill_character, body.best_survive_character, now),
+            )
+        conn.commit()
+        conn.close()
+    return {"ok": True}
+
+
+@app.get("/stats/leaderboard/kills")
+async def leaderboard_kills(limit: int = 10) -> dict:
+    limit = min(max(limit, 1), 50)
+    with _db_lock:
+        conn = _db_connect()
+        rows = conn.execute(
+            "SELECT display_name, total_kills, best_kill_char "
+            "FROM leaderboard ORDER BY total_kills DESC LIMIT ?", (limit,)
+        ).fetchall()
+        conn.close()
+    return {
+        "entries": [
+            {"rank": i + 1, "display_name": r["display_name"],
+             "value": r["total_kills"], "character": r["best_kill_char"]}
+            for i, r in enumerate(rows)
+        ]
+    }
+
+
+@app.get("/stats/leaderboard/survive")
+async def leaderboard_survive(limit: int = 10) -> dict:
+    limit = min(max(limit, 1), 50)
+    with _db_lock:
+        conn = _db_connect()
+        rows = conn.execute(
+            "SELECT display_name, best_survive_sec, best_survive_char "
+            "FROM leaderboard ORDER BY best_survive_sec DESC LIMIT ?", (limit,)
+        ).fetchall()
+        conn.close()
+    return {
+        "entries": [
+            {"rank": i + 1, "display_name": r["display_name"],
+             "value": r["best_survive_sec"], "character": r["best_survive_char"]}
+            for i, r in enumerate(rows)
+        ]
+    }
 
 # Config
 FB_APP_ID            = os.environ.get("FB_APP_ID",            "1572914337762590")

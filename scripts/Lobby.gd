@@ -34,41 +34,75 @@ func _build_ui() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
+	var layout := Control.new()
+	layout.position = Vector2.ZERO
+	layout.size = view
+	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(layout)
+
+	var center := CenterContainer.new()
+	center.position = Vector2.ZERO
+	center.size = view
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layout.add_child(center)
+
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(view.x - 80.0, 0.0)
+	var card_style := StyleBoxFlat.new()
+	card_style.bg_color = Color(0.98, 0.95, 0.88, 0.55)
+	card_style.border_color = Color(0.75, 0.55, 0.20, 0.88)
+	card_style.set_border_width_all(2)
+	card_style.corner_radius_top_left = 28
+	card_style.corner_radius_top_right = 28
+	card_style.corner_radius_bottom_right = 28
+	card_style.corner_radius_bottom_left = 28
+	card_style.shadow_color = Color(0.0, 0.0, 0.0, 0.45)
+	card_style.shadow_size = 18
+	card_style.shadow_offset = Vector2(0, 6)
+	card.add_theme_stylebox_override("panel", card_style)
+	center.add_child(card)
+
+	var inner := MarginContainer.new()
+	inner.add_theme_constant_override("margin_left", 48)
+	inner.add_theme_constant_override("margin_right", 48)
+	inner.add_theme_constant_override("margin_top", 48)
+	inner.add_theme_constant_override("margin_bottom", 48)
+	card.add_child(inner)
+
 	var root := VBoxContainer.new()
-	root.size = Vector2(view.x - 120.0, view.y - 240.0)
-	root.position = Vector2(60.0, 140.0)
 	root.add_theme_constant_override("separation", 22)
-	add_child(root)
+	inner.add_child(root)
 
 	var title := Label.new()
 	title.text = "Capy Dungeon"
 	title.add_theme_font_size_override("font_size", 72)
-	title.add_theme_color_override("font_color", Color(0.35, 0.18, 0.08))
+	title.add_theme_color_override("font_color", Color(0.22, 0.10, 0.02))
+	title.add_theme_color_override("font_outline_color", Color(1.0, 0.90, 0.60, 0.55))
+	title.add_theme_constant_override("outline_size", 3)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(title)
 
 	var welcome := Label.new()
 	var display_name: String = String(account.get("display_name", account.get("username", "trainer")))
 	welcome.text = "Welcome back, %s" % display_name
-	welcome.add_theme_font_size_override("font_size", 28)
-	welcome.add_theme_color_override("font_color", Color(0.45, 0.3, 0.18))
+	welcome.add_theme_font_size_override("font_size", 32)
+	welcome.add_theme_color_override("font_color", Color(0.28, 0.14, 0.04))
 	welcome.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(welcome)
 
-	# Spacer.
 	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 40)
+	spacer.custom_minimum_size = Vector2(0, 24)
 	root.add_child(spacer)
 
 	var play_btn := _make_button("PLAY", 44, Vector2(0, 140), true)
 	play_btn.pressed.connect(func() -> void: start_game_requested.emit())
 	root.add_child(play_btn)
 
-	var history_btn := _make_button("History", 30, Vector2(0, 90))
+	var history_btn := _make_button("History", 32, Vector2(0, 90))
 	history_btn.pressed.connect(func() -> void: history_requested.emit())
 	root.add_child(history_btn)
 
-	var settings_btn := _make_button("Settings", 30, Vector2(0, 90))
+	var settings_btn := _make_button("Settings", 32, Vector2(0, 90))
 	settings_btn.pressed.connect(_on_settings_pressed)
 	root.add_child(settings_btn)
 

@@ -105,7 +105,7 @@ const CALLBACK_PORT:         int    = 18742
 const REDIRECT_URI_MOBILE:  String = "capydungeon://auth/callback"
 
 # Facebook relay server URL — set in secrets/oauth_config.cfg [relay] facebook_relay_url
-var FACEBOOK_RELAY_URL: String = "https://capy-fb-relay.onrender.com"
+var FACEBOOK_RELAY_URL: String = "https://capy-dungeon.onrender.com"
 
 # Maximum seconds to wait for the user to complete auth in the browser.
 const MOBILE_AUTH_TIMEOUT:  float  = 300.0
