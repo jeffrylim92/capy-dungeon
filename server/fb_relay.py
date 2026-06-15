@@ -56,14 +56,23 @@ def _db_init() -> None:
                 best_survive_sec  REAL    DEFAULT 0.0,
                 best_kill_char    TEXT    DEFAULT '',
                 best_survive_char TEXT    DEFAULT '',
+                stats_json        TEXT    DEFAULT '{}',
                 updated_at        TEXT    DEFAULT ''
             )
         """)
+        # Migrate older tables that don't have stats_json yet
+        try:
+            conn.execute("ALTER TABLE leaderboard ADD COLUMN stats_json TEXT DEFAULT '{}'")
+        except Exception:
+            pass
         conn.commit()
         conn.close()
 
 
 _db_init()
+
+
+import json as _json
 
 
 class StatsSubmit(BaseModel):
@@ -73,6 +82,7 @@ class StatsSubmit(BaseModel):
     best_survive_seconds: float = 0.0
     best_kill_character: str = ""
     best_survive_character: str = ""
+    stats_json: dict = {}  # full per-character stats for cloud backup
 
 
 @app.post("/stats/submit")
@@ -81,6 +91,7 @@ async def stats_submit(body: StatsSubmit) -> dict:
     if not username:
         return {"ok": False, "error": "missing username"}
     now = datetime.now(timezone.utc).isoformat()
+    stats_blob = _json.dumps(body.stats_json, ensure_ascii=False)
     with _db_lock:
         conn = _db_connect()
         row = conn.execute(
@@ -91,22 +102,45 @@ async def stats_submit(body: StatsSubmit) -> dict:
             new_survive = max(body.best_survive_seconds, row["best_survive_sec"])
             kill_char   = body.best_kill_character   if body.total_kills       >= row["total_kills"]     else row["best_kill_char"]
             surv_char   = body.best_survive_character if body.best_survive_seconds >= row["best_survive_sec"] else row["best_survive_char"]
+            # Only overwrite stats_json when the new submission has more data
+            existing_blob = row["stats_json"] if row["stats_json"] else "{}"
+            new_blob = stats_blob if body.stats_json else existing_blob
             conn.execute(
                 "UPDATE leaderboard SET display_name=?,total_kills=?,best_survive_sec=?,"
-                "best_kill_char=?,best_survive_char=?,updated_at=? WHERE username=?",
-                (body.display_name, new_kills, new_survive, kill_char, surv_char, now, username),
+                "best_kill_char=?,best_survive_char=?,stats_json=?,updated_at=? WHERE username=?",
+                (body.display_name, new_kills, new_survive, kill_char, surv_char, new_blob, now, username),
             )
         else:
             conn.execute(
                 "INSERT INTO leaderboard "
-                "(username,display_name,total_kills,best_survive_sec,best_kill_char,best_survive_char,updated_at)"
-                " VALUES (?,?,?,?,?,?,?)",
+                "(username,display_name,total_kills,best_survive_sec,best_kill_char,best_survive_char,stats_json,updated_at)"
+                " VALUES (?,?,?,?,?,?,?,?)",
                 (username, body.display_name, body.total_kills, body.best_survive_seconds,
-                 body.best_kill_character, body.best_survive_character, now),
+                 body.best_kill_character, body.best_survive_character, stats_blob, now),
             )
         conn.commit()
         conn.close()
     return {"ok": True}
+
+
+@app.get("/stats/user/{username}")
+async def stats_user(username: str) -> dict:
+    uname = username.strip().lower()
+    if not uname:
+        return {"ok": False, "stats": {}}
+    with _db_lock:
+        conn = _db_connect()
+        row = conn.execute(
+            "SELECT stats_json FROM leaderboard WHERE username = ?", (uname,)
+        ).fetchone()
+        conn.close()
+    if not row or not row["stats_json"]:
+        return {"ok": True, "stats": {}}
+    try:
+        data = _json.loads(row["stats_json"])
+    except Exception:
+        data = {}
+    return {"ok": True, "stats": data}
 
 
 @app.get("/stats/leaderboard/kills")

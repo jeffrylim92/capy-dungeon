@@ -136,6 +136,19 @@ static func get_brown_unlock_progress(username: String) -> Dictionary:
 		result[cid] = mini(int(entry.get("survive_5min_count", 0)), 3)
 	return result
 
+## Restore stats from a server backup if no local data exists for this user.
+## Called once on login. Does nothing if the user already has local match history.
+static func restore_from_server(username: String, server_per_char: Dictionary) -> void:
+	if server_per_char.is_empty():
+		return
+	var key := username.to_lower()
+	var data := _load_all()
+	var local_char: Dictionary = data.get(key, {}) as Dictionary
+	if not local_char.is_empty():
+		return
+	data[key] = server_per_char
+	_save_all(data)
+
 static func is_brown_unlocked(username: String) -> bool:
 	if AdminStore.is_admin(username):
 		return true

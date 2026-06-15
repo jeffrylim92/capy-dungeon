@@ -173,6 +173,14 @@ func _show_login() -> void:
 
 func _on_logged_in(account: Dictionary) -> void:
 	_account = account
+	var username: String = String(account.get("username", ""))
+	if not username.is_empty():
+		# Silently restore cloud-backed stats on login so history survives reinstalls.
+		# Runs in background — lobby shows immediately; stats populate before user
+		# can navigate to History.
+		LeaderboardClient.fetch_user_stats(self, username, func(data: Dictionary) -> void:
+			StatsStore.restore_from_server(username, data)
+		)
 	_show_lobby()
 
 func _show_lobby() -> void:

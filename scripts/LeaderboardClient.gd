@@ -40,6 +40,7 @@ static func submit_stats(host: Node, username: String, display_name: String) -> 
 		"best_survive_seconds":  best_survive,
 		"best_kill_character":   best_kill_char,
 		"best_survive_character": best_survive_char,
+		"stats_json":            StatsStore.get_all_for_user(username),
 	})
 
 	var http := HTTPRequest.new()
@@ -53,6 +54,31 @@ static func submit_stats(host: Node, username: String, display_name: String) -> 
 	if err != OK:
 		DebugLog.log("[LeaderboardClient] submit failed to start: %d" % err)
 		http.queue_free()
+
+## Fetch the cloud-backed stats for a user. `callback` receives a Dictionary
+## (the per-character stats dict from StatsStore) or {} on failure.
+static func fetch_user_stats(host: Node, username: String, callback: Callable) -> void:
+	if username.is_empty():
+		callback.call({})
+		return
+	var http := HTTPRequest.new()
+	host.add_child(http)
+	http.request_completed.connect(
+		func(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+			http.queue_free()
+			if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+				callback.call({})
+				return
+			var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+			if typeof(parsed) != TYPE_DICTIONARY:
+				callback.call({})
+				return
+			callback.call(parsed.get("stats", {}) as Dictionary)
+	)
+	var err := http.request(BASE_URL + "/stats/user/" + username.to_lower())
+	if err != OK:
+		http.queue_free()
+		callback.call({})
 
 ## Fetch the global kill leaderboard. `callback` receives Array of entry dicts:
 ##   { rank, display_name, value (int kills), character (id string) }
