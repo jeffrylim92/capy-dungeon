@@ -19,6 +19,7 @@ Environment variables (set in Render dashboard):
 """
 
 import asyncio
+import json as _json
 import os
 import sqlite3
 import threading
@@ -33,22 +34,58 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-# ── Leaderboard DB (SQLite in /tmp — persists between requests, resets on redeploy)
-# For a permanent leaderboard set DATABASE_URL and swap to PostgreSQL.
+# ── Database layer ─────────────────────────────────────────────────────────────
+# Set DATABASE_URL (PostgreSQL) in Render env vars for persistent storage.
+# Without it, falls back to SQLite in /tmp (resets on redeploy).
+_DATABASE_URL = os.environ.get("DATABASE_URL", "")
+_USE_PG = bool(_DATABASE_URL)
 _DB_PATH = os.environ.get("LEADERBOARD_DB", "/tmp/capy_leaderboard.db")
 _db_lock = threading.Lock()
 
+# Placeholder token differs between drivers
+_PH = "%s" if _USE_PG else "?"
 
-def _db_connect() -> sqlite3.Connection:
+
+def _db_connect():
+    if _USE_PG:
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        conn = psycopg2.connect(_DATABASE_URL, cursor_factory=RealDictCursor)
+        return conn
     conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
 
+def _execute(conn, sql: str, params: tuple = ()):
+    """Run a statement, handling the cursor difference between psycopg2 and sqlite3."""
+    if _USE_PG:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        return cur
+    return conn.execute(sql, params)
+
+
+def _fetchone(conn, sql: str, params: tuple = ()):
+    if _USE_PG:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        return cur.fetchone()
+    return conn.execute(sql, params).fetchone()
+
+
+def _fetchall(conn, sql: str, params: tuple = ()):
+    if _USE_PG:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        return cur.fetchall()
+    return conn.execute(sql, params).fetchall()
+
+
 def _db_init() -> None:
     with _db_lock:
         conn = _db_connect()
-        conn.execute("""
+        _execute(conn, """
             CREATE TABLE IF NOT EXISTS leaderboard (
                 username          TEXT PRIMARY KEY,
                 display_name      TEXT NOT NULL,
@@ -60,9 +97,9 @@ def _db_init() -> None:
                 updated_at        TEXT    DEFAULT ''
             )
         """)
-        # Migrate older tables that don't have stats_json yet
+        # Migrate older tables missing the stats_json column
         try:
-            conn.execute("ALTER TABLE leaderboard ADD COLUMN stats_json TEXT DEFAULT '{}'")
+            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN stats_json TEXT DEFAULT '{}'")
         except Exception:
             pass
         conn.commit()
@@ -70,9 +107,6 @@ def _db_init() -> None:
 
 
 _db_init()
-
-
-import json as _json
 
 
 class StatsSubmit(BaseModel):
@@ -92,29 +126,27 @@ async def stats_submit(body: StatsSubmit) -> dict:
         return {"ok": False, "error": "missing username"}
     now = datetime.now(timezone.utc).isoformat()
     stats_blob = _json.dumps(body.stats_json, ensure_ascii=False)
+    ph = _PH
     with _db_lock:
         conn = _db_connect()
-        row = conn.execute(
-            "SELECT * FROM leaderboard WHERE username = ?", (username,)
-        ).fetchone()
+        row = _fetchone(conn, f"SELECT * FROM leaderboard WHERE username = {ph}", (username,))
         if row:
             new_kills   = max(body.total_kills, row["total_kills"])
             new_survive = max(body.best_survive_seconds, row["best_survive_sec"])
-            kill_char   = body.best_kill_character   if body.total_kills       >= row["total_kills"]     else row["best_kill_char"]
-            surv_char   = body.best_survive_character if body.best_survive_seconds >= row["best_survive_sec"] else row["best_survive_char"]
-            # Only overwrite stats_json when the new submission has more data
+            kill_char   = body.best_kill_character    if body.total_kills            >= row["total_kills"]    else row["best_kill_char"]
+            surv_char   = body.best_survive_character if body.best_survive_seconds   >= row["best_survive_sec"] else row["best_survive_char"]
             existing_blob = row["stats_json"] if row["stats_json"] else "{}"
             new_blob = stats_blob if body.stats_json else existing_blob
-            conn.execute(
-                "UPDATE leaderboard SET display_name=?,total_kills=?,best_survive_sec=?,"
-                "best_kill_char=?,best_survive_char=?,stats_json=?,updated_at=? WHERE username=?",
+            _execute(conn,
+                f"UPDATE leaderboard SET display_name={ph},total_kills={ph},best_survive_sec={ph},"
+                f"best_kill_char={ph},best_survive_char={ph},stats_json={ph},updated_at={ph} WHERE username={ph}",
                 (body.display_name, new_kills, new_survive, kill_char, surv_char, new_blob, now, username),
             )
         else:
-            conn.execute(
-                "INSERT INTO leaderboard "
-                "(username,display_name,total_kills,best_survive_sec,best_kill_char,best_survive_char,stats_json,updated_at)"
-                " VALUES (?,?,?,?,?,?,?,?)",
+            _execute(conn,
+                f"INSERT INTO leaderboard "
+                f"(username,display_name,total_kills,best_survive_sec,best_kill_char,best_survive_char,stats_json,updated_at)"
+                f" VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})",
                 (username, body.display_name, body.total_kills, body.best_survive_seconds,
                  body.best_kill_character, body.best_survive_character, stats_blob, now),
             )
@@ -128,11 +160,10 @@ async def stats_user(username: str) -> dict:
     uname = username.strip().lower()
     if not uname:
         return {"ok": False, "stats": {}}
+    ph = _PH
     with _db_lock:
         conn = _db_connect()
-        row = conn.execute(
-            "SELECT stats_json FROM leaderboard WHERE username = ?", (uname,)
-        ).fetchone()
+        row = _fetchone(conn, f"SELECT stats_json FROM leaderboard WHERE username = {ph}", (uname,))
         conn.close()
     if not row or not row["stats_json"]:
         return {"ok": True, "stats": {}}
@@ -146,12 +177,13 @@ async def stats_user(username: str) -> dict:
 @app.get("/stats/leaderboard/kills")
 async def leaderboard_kills(limit: int = 10) -> dict:
     limit = min(max(limit, 1), 50)
+    ph = _PH
     with _db_lock:
         conn = _db_connect()
-        rows = conn.execute(
-            "SELECT display_name, total_kills, best_kill_char "
-            "FROM leaderboard ORDER BY total_kills DESC LIMIT ?", (limit,)
-        ).fetchall()
+        rows = _fetchall(conn,
+            f"SELECT display_name, total_kills, best_kill_char "
+            f"FROM leaderboard ORDER BY total_kills DESC LIMIT {ph}", (limit,)
+        )
         conn.close()
     return {
         "entries": [
@@ -165,12 +197,13 @@ async def leaderboard_kills(limit: int = 10) -> dict:
 @app.get("/stats/leaderboard/survive")
 async def leaderboard_survive(limit: int = 10) -> dict:
     limit = min(max(limit, 1), 50)
+    ph = _PH
     with _db_lock:
         conn = _db_connect()
-        rows = conn.execute(
-            "SELECT display_name, best_survive_sec, best_survive_char "
-            "FROM leaderboard ORDER BY best_survive_sec DESC LIMIT ?", (limit,)
-        ).fetchall()
+        rows = _fetchall(conn,
+            f"SELECT display_name, best_survive_sec, best_survive_char "
+            f"FROM leaderboard ORDER BY best_survive_sec DESC LIMIT {ph}", (limit,)
+        )
         conn.close()
     return {
         "entries": [
