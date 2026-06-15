@@ -176,17 +176,16 @@ func set_username(username: String) -> void:
 func is_purchased(product_id: String) -> bool:
 	if not PURCHASABLE.has(product_id):
 		return true
-	if CHARACTER_PRODUCTS.has(product_id) and AdminStore.is_admin(_current_username):
+	# Dev account gets all purchases
+	if _is_dev_account():
 		return true
 	return _load().has(product_id)
 
 ## Launch the billing flow. Listen to purchase_success / purchase_failed signals for the result.
-## On PC/editor (no plugin) grants immediately so the UI can be tested.
 func purchase(product_id: String) -> void:
 	if _billing == null:
-		DebugLog.log("[PurchaseStore] Dev mode — granting '%s' directly" % product_id)
-		_grant(product_id)
-		purchase_success.emit(product_id)
+		DebugLog.log("[PurchaseStore] No GodotGooglePlayBilling plugin — purchases disabled")
+		purchase_failed.emit(product_id, "Billing not available")
 		return
 	if not _pending_id.is_empty():
 		DebugLog.log("[PurchaseStore] Purchase already in progress for '%s'" % _pending_id)
@@ -224,6 +223,9 @@ func _sync_purchased_rings_to_stash() -> void:
 		var product_id: String = product as String
 		if is_ring_product(product_id):
 			RingStore.ensure_ring_in_stash(_current_username, ring_product_to_ring(product_id))
+
+func _is_dev_account() -> bool:
+	return _current_username.to_lower() == AccountStore.DEV_USERNAME.to_lower()
 
 func _load() -> Array:
 	if not FileAccess.file_exists(PATH):
