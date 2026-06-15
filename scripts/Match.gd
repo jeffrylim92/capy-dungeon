@@ -1143,46 +1143,46 @@ func _make_enemy_data(kind: String, ws: float) -> Dictionary:
 			return {
 				"kind": "teleporter_boss",
 				"hp_mult": 14.0 * ws, "spd_fixed": 130.0, "dmg_mult": 1.5 * ws,
-				"r": 36.0, "col": Color(0.55, 0.10, 0.82)
+				"r": 62.0, "col": Color(0.55, 0.10, 0.82)
 			}
 		"shield_boss":
 			return {
 				"kind": "shield_boss",
 				"hp_mult": 30.0 * ws, "spd_fixed": 75.0, "dmg_mult": 2.0 * ws,
-				"r": 46.0, "col": Color(0.20, 0.55, 0.90)
+				"r": 78.0, "col": Color(0.20, 0.55, 0.90)
 			}
 		"shooter_boss":
 			return {
 				"kind": "shooter_boss",
 				"hp_mult": 20.0 * ws, "spd_fixed": 60.0, "dmg_mult": 1.2 * ws,
-				"r": 40.0, "col": Color(0.85, 0.55, 0.05)
+				"r": 68.0, "col": Color(0.85, 0.55, 0.05)
 			}
 		"lava_boss":
 			return {
 				"kind": "lava_boss",
 				"hp_mult": 35.0 * ws, "spd_fixed": 50.0, "dmg_mult": 1.8 * ws,
-				"r": 52.0, "col": Color(0.90, 0.25, 0.02)
+				"r": 88.0, "col": Color(0.90, 0.25, 0.02)
 			}
 		# ── Normal subtypes ───────────────────────────────────────────────────
 		"normal_tank":  # Slow, bulky, high damage
 			return {
 				"kind": "normal_tank",
 				"hp_mult": ws * 2.8, "spd_mult": 0.52, "dmg_mult": ws * 1.6,
-				"r": randf_range(22.0, 28.0),
+				"r": randf_range(38.0, 48.0),
 				"col": Color.from_hsv(0.06, 0.85, 0.45 + randf() * 0.15)  # dark orange-brown
 			}
 		"normal_fast":  # Fast, fragile, low damage
 			return {
 				"kind": "normal_fast",
 				"hp_mult": ws * 0.45, "spd_mult": 1.70, "dmg_mult": ws * 0.65,
-				"r": randf_range(10.0, 15.0),
+				"r": randf_range(18.0, 26.0),
 				"col": Color.from_hsv(0.55, 0.70, 0.80 + randf() * 0.20)  # bright cyan-blue
 			}
 		_:  # normal — balanced
 			return {
 				"kind": "normal",
 				"hp_mult": ws, "spd_mult": 1.0, "dmg_mult": ws,
-				"r": randf_range(16.0, 22.0),
+				"r": randf_range(28.0, 38.0),
 				"col": Color.from_hsv(randf_range(0.0, 0.12), 0.8, 0.35 + randf() * 0.2)
 			}
 

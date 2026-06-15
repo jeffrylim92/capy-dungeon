@@ -340,6 +340,7 @@ func _fetch_global_rankings() -> void:
 	if vbox == null:
 		return
 	for child in vbox.get_children():
+		vbox.remove_child(child)  # detach immediately so queue_free won't sweep new children
 		child.queue_free()
 	vbox.add_child(_section_header("🗡️ Best Kill", Color(0.95, 0.78, 0.25)))
 	vbox.add_child(_loading_label("kills"))
