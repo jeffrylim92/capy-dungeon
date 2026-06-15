@@ -402,8 +402,12 @@ def _deep_link_page(deep_url: str) -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-@app.get("/health")
-async def health() -> dict:
+@app.api_route("/", methods=["GET", "HEAD"])
+async def root():
+    return {"status": "ok", "service": "capy-oauth-relay"}
+
+@app.api_route("/health", methods=["GET", "HEAD"])
+async def health():
     return {"status": "ok", "service": "capy-oauth-relay"}
 
 
