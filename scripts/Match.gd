@@ -378,7 +378,8 @@ var _joy_zone:     Rect2
 # ─── State flags ──────────────────────────────────────────────────────────────
 var _paused:    bool = false
 var _game_over: bool = false
-var _revive_used: bool = false      # true once the player has used any revive this run
+var _ring_revive_used: bool = false     # true once the player has used ring revive this run
+var _ad_revive_used: bool = false       # true once the player has used ad revive this run
 var _skill_reroll_used: bool = false  # true once the player has rerolled skills this level-up
 var _loss_recorded: bool = false
 
@@ -461,6 +462,22 @@ func _ready() -> void:
 	# Initialise ad manager
 	_ad_manager = AdManager.new()
 	add_child(_ad_manager)
+
+	# ========== SKILL SYSTEM INITIALIZATION ==========
+	var anim_player = get_node_or_null("AnimationPlayer")
+	if anim_player == null:
+		anim_player = AnimationPlayer.new()
+		add_child(anim_player)
+
+	SetupSkillAnimations.setup_all_animations(anim_player)
+	await SkillMgr.tree_entered
+	while not SkillMgr.is_ready:
+		await get_tree().process_frame
+	
+	# Log final status
+	var skill_count = SkillMgr.skill_manager._skill_data.size() if SkillMgr.skill_manager else 0
+	print("✓ Skill system ready with %d skills loaded!" % skill_count)
+	# ====================================================
 
 # ═════════════════════════════════════════════════════════════════════════════
 # INPUT
@@ -768,6 +785,7 @@ func _update_skills(delta: float) -> void:
 				ao["timer"] = aodef["cd"] as float
 				var slow_val: float = aodef.get("slow", 0.0) as float
 				_trigger_aoe(aoe_sid, aodef["dmg"] as float, slow_val)
+
 func _check_orb_hits() -> void:
 	if _has_skill("orb"):
 		var orb_def: Dictionary = _slvl("orb", _get_skill("orb")["level"] as int)
@@ -821,6 +839,15 @@ func _trigger_wave_kind(r: float, dmg: float, kind: String = "wave") -> void:
 	_waves.append({"pos": _player_pos, "r": 0.0, "max_r": r, "life": 0.55, "max_life": 0.55, "kind": kind})
 
 func _trigger_aoe(kind: String, dmg: float, slow: float) -> void:
+	# Trigger SkillMgr animations/effects for AOE skills (updated for new JSON format)
+	if SkillMgr and SkillMgr.cast_skill:
+		# Map old skill IDs to new JSON skill names
+		var skill_name = _get_json_skill_name(kind)
+		if SkillMgr.cast_skill(skill_name, self):
+			print("[Match] ✓ Triggered skill effect: %s" % skill_name)
+		else:
+			print("[Match] ✗ Failed to trigger skill: %s (ID: %s)" % [skill_name, kind])
+	
 	_play_skill_sfx("skill_" + kind, -3.0, 1.0, 0.5)
 	var vp: Rect2 = get_viewport_rect()
 	for i in range(_enemies.size() - 1, -1, -1):
@@ -833,6 +860,45 @@ func _trigger_aoe(kind: String, dmg: float, slow: float) -> void:
 			var aoe_min_s: float  = max(aoe_base_s * max(0.50 - float(_level) * 0.012, 0.20), 30.0)
 			_enemies[i]["spd"] = max((_enemies[i]["spd"] as float) * (1.0 - slow), aoe_min_s)
 	_aoe_flashes.append({"life": 1.4, "max_life": 1.4, "kind": kind})
+
+## Convert old internal skill ID to new JSON skill name
+## Maps old skill slots (e.g., "blizzard", "orb") to new proper names (e.g., "Blizzard", "Capy Orb")
+func _get_json_skill_name(skill_id: String) -> String:
+	var mapping = {
+		# Common (7/7 updated)
+		"orb": "Capy Orb",
+		"bolt": "Capy Bolt",
+		"ice_orb": "Ice Orb",
+		"mud_aura": "Mud Aura",
+		"squeal_wave": "Squeal Wave",
+		"calm": "Capy Calm",
+		"xp_bonus": "XP Magnet",
+		
+		# Wizard (4/4 updated)
+		"fireball": "Fireball",
+		"elec_wave": "Elec Shockwave",
+		"wave": "Hurricane",
+		"blizzard": "Blizzard",
+		
+		# Archer (4/4 updated)
+		"arrow": "Arrow Shot",
+		"split_arrow": "Split Arrow",
+		"pierce_arrow": "Pierce Arrow",
+		"sky_fall": "Sky Fall",
+		
+		# Pending skills (not yet in updated JSON)
+		# Assassin (4 pending)
+		"star_knife": "Star Knife",
+		"knife_storm": "Knife Storm",
+		"boomerang": "Boomerang Star",
+		"seven_slash": "7 Slash",
+		
+		# Special (2 pending)
+		"swirl_tangerine": "Swirl Tangerine",
+		"capy_brown": "Capy Brown",
+	}
+	
+	return mapping.get(skill_id, skill_id)  # Return mapped name or original if not in mapping
 
 func _fire_shooter_boss_pattern(boss: Dictionary) -> void:
 	var boss_pos: Vector2 = boss["pos"] as Vector2
@@ -1698,26 +1764,55 @@ func _draw() -> void:
 	# Inner glow ring
 		draw_arc(_player_pos, ar * 0.62, 0.0, TAU, 24, Color(0.52, 0.33, 0.11, 0.16 + alv * 0.03), 2.0)
 
-	# Hurricane aura — small tornados forming and disappearing
+# Hurricane aura — data-driven from skill_data.json with enhanced visuals
 	if _has_skill("hurricane"):
 		var hs_sk: Dictionary = _get_skill("hurricane")
 		var hdef: Dictionary  = _slvl("hurricane", hs_sk["level"] as int)
 		var hr: float = hdef["r"] as float
 		var hlv: int  = hs_sk["level"] as int
-		# Faint boundary ring
-		draw_arc(_player_pos, hr, 0.0, TAU, 48, Color(0.60, 0.88, 0.96, 0.18 + float(hlv) * 0.03), 2.0)
+		
+		# Get color and animation specs from skill_data.json
+		var h_color = SkillMgr.get_skill_color("hurricane") if SkillMgr else Color(0.6, 0.9, 1.0, 1.0)
+		
+		var h_rot_speed = 360.0
+		var h_wobble = 0.5
+		var h_glow = 1.0
+		var h_specs = hs_sk.get("animation_specs", {})
+		if h_specs.size() > 0:
+			var first_spec = h_specs.values()[0]
+			if first_spec is Dictionary:
+				h_rot_speed = float(first_spec.get("rotation_speed", 360.0))
+				h_wobble = float(first_spec.get("wobble_amplitude", 0.5))
+				h_glow = float(first_spec.get("glow_intensity", 1.0))
+		
+		# Multiple concentric rings with varying speeds for depth
+		for ring_layer in range(1, 4):
+			var ring_alpha = (1.0 - float(ring_layer) / 4.0) * 0.4
+			var ring_width = 3.5 - float(ring_layer) * 0.5
+			var layer_rot = _elapsed * deg_to_rad(h_rot_speed) * (1.0 - float(ring_layer) * 0.2)
+			var layer_r = hr * (0.4 + float(ring_layer) * 0.2)
+			
+			var points: PackedVector2Array = PackedVector2Array()
+			for seg in range(0, 72):
+				var angle = float(seg) / 72.0 * TAU + layer_rot
+				var wobble_amt = sin(_elapsed * (2.0 + float(ring_layer)) + float(seg) * 0.1) * h_wobble * 5.0
+				var pt = _player_pos + Vector2(cos(angle), sin(angle)) * (layer_r + wobble_amt)
+				points.append(pt)
+			
+			var col = Color(h_color.r, h_color.g, h_color.b, ring_alpha * h_glow)
+			draw_polyline(points, col, ring_width)
+		
 		# Draw several mini-tornados scattered in the area
 		var n_tornados: int = 3 + hlv
 		for i in n_tornados:
-			# Each tornado has its own slow orbit + life cycle (form → peak → fade)
 			var torbit_speed: float = 0.45 + float(i) * 0.12
 			var torbit_ang: float   = float(i) * TAU / float(n_tornados) + _elapsed * torbit_speed
 			var torbit_dist: float  = hr * (0.30 + 0.55 * float(i % 3) / 2.0)
 			var tpos: Vector2       = _player_pos + Vector2(cos(torbit_ang), sin(torbit_ang)) * torbit_dist
-			# Life pulse: each tornado phases in/out on its own period
+			
 			var tperiod: float  = 1.4 + float(i) * 0.3
 			var tphase: float   = fmod(_elapsed + float(i) * tperiod * 0.6, tperiod) / tperiod
-			# Alpha: fade in for first 30%, full for middle 40%, fade out last 30%
+			
 			var talpha: float
 			if tphase < 0.3:
 				talpha = tphase / 0.3
@@ -1725,115 +1820,184 @@ func _draw() -> void:
 				talpha = 1.0
 			else:
 				talpha = (1.0 - tphase) / 0.3
-			talpha *= (0.55 + float(hlv) * 0.06)
-			# Tornado scale grows with life
+			talpha *= (0.55 + float(hlv) * 0.06) * h_glow  # Apply glow intensity
+			
 			var tscale: float = 8.0 + float(hlv) * 3.0 + tphase * 6.0
-			# Draw tornado as stacked ellipse-arcs narrowing toward top (3 rings)
 			var n_rings: int = 4 + hlv
+			
 			for r in n_rings:
 				var rheight: float    = float(r) / float(n_rings)
-				var ring_rx: float    = tscale * (1.0 - rheight * 0.75)  # narrows toward top
+				var ring_rx: float    = tscale * (1.0 - rheight * 0.75)
 				var ring_ry: float    = ring_rx * 0.38
-				var ring_y: float     = -rheight * tscale * 2.2           # stacked upward
-				var ring_rot: float   = _elapsed * (3.5 + float(hlv) * 0.5) + float(r) * 0.9
+				var ring_y: float     = -rheight * tscale * 2.2
+				var ring_rot: float   = _elapsed * deg_to_rad(h_rot_speed) * (1.0 + h_wobble) + float(r) * 0.9
 				var ring_alpha: float = talpha * (0.35 + rheight * 0.45)
-				var ring_col: Color   = Color(0.72, 0.94, 0.99, ring_alpha)
-				# Approximate an ellipse arc as polyline
+				var ring_col: Color   = Color(h_color.r, h_color.g, h_color.b, ring_alpha)
+				
 				var ellpts: PackedVector2Array = PackedVector2Array()
 				var ell_segs: int = 14
 				for s in ell_segs + 1:
 					var sa: float = float(s) / float(ell_segs) * TAU + ring_rot
-					var ex: float = cos(sa) * ring_rx
-					var ey: float = sin(sa) * ring_ry
-					# Rotate ex/ey slightly with ring_rot for spin feel
+					var wobble_var = sin(_elapsed * (1.5 + h_wobble) + float(s) * 0.3) * h_wobble * 2.0
+					var ex: float = (cos(sa) * ring_rx + wobble_var)
+					var ey: float = (sin(sa) * ring_ry + wobble_var * 0.5)
 					ellpts.append(tpos + Vector2(ex, ey + ring_y))
 				draw_polyline(ellpts, ring_col, 1.5)
-			# Dusty base swirl at the bottom
-			draw_circle(tpos, tscale * 0.55 + sin(_elapsed * 6.0 + float(i)) * 2.0, Color(0.80, 0.96, 1.0, talpha * 0.30))
+			
+			draw_circle(tpos, tscale * 0.55 + sin(_elapsed * 6.0 + float(i)) * 2.0, Color(h_color.r, h_color.g, h_color.b, talpha * 0.30))
 
-	# Knife Storm aura — spinning blades
+	# Knife Storm aura — data-driven with enhanced visual dynamics
 	if _has_skill("knife_storm"):
 		var ks_sk: Dictionary = _get_skill("knife_storm")
 		var kdef: Dictionary  = _slvl("knife_storm", ks_sk["level"] as int)
 		var kr: float = kdef["r"] as float
 		var klv: int  = ks_sk["level"] as int
+		
+		# Get color and animation specs from skill_data.json
+		var k_color = SkillMgr.get_skill_color("knife_storm") if SkillMgr else Color(0.7, 0.5, 1.0, 1.0)
+		
+		var k_rot_speed = 900.0
+		var k_wobble = 0.8
+		var k_glow = 1.0
+		var k_specs = ks_sk.get("animation_specs", {})
+		if k_specs.size() > 0:
+			var first_spec = k_specs.values()[0]
+			if first_spec is Dictionary:
+				k_rot_speed = float(first_spec.get("rotation_speed", 900.0))
+				k_wobble = float(first_spec.get("wobble_amplitude", 0.8))
+				k_glow = float(first_spec.get("glow_intensity", 1.0))
+		
+		# Core spinning vortex - layered rings at different speeds
+		for layer in range(1, 3):
+			var layer_rot = _elapsed * deg_to_rad(k_rot_speed) * float(layer) * 0.6
+			var layer_alpha = (1.0 - float(layer) * 0.3) * 0.3 * k_glow
+			var n_blades = 6 + layer * 2
+			
+			for blade in range(n_blades):
+				var blade_ang = float(blade) / float(n_blades) * TAU + layer_rot
+				var blade_len = kr * (0.5 + float(layer) * 0.3)
+				var blade_pt1 = _player_pos
+				var blade_pt2 = _player_pos + Vector2(cos(blade_ang), sin(blade_ang)) * blade_len
+				var blade_color = Color(k_color.r, k_color.g, k_color.b, layer_alpha)
+				draw_line(blade_pt1, blade_pt2, blade_color, 1.2 + float(layer) * 0.5)
+		
 		# Scattered cross slashes that flicker in and out
 		var n_crosses: int = 5 + klv * 2
 		for i in n_crosses:
 			var seed_t: float  = _elapsed * 2.2 + float(i) * 1.618
-			# Each cross has an independent life cycle (appear/fade) driven by sin
 			var life: float    = 0.5 + 0.5 * sin(seed_t * (1.3 + float(i) * 0.17))
 			if life < 0.12:
-				continue  # invisible this frame — gives flicker effect
-			var alpha: float   = life * 0.88
-			# Random position within the aura radius, unique per cross per cycle
+				continue
+			var alpha: float   = life * 0.88 * k_glow
 			var angle: float   = float(i) * 2.399963 + _elapsed * (0.8 + float(i % 3) * 0.35)
-			var dist: float    = kr * (0.25 + 0.70 * fmod(float(i) * 0.618 + _elapsed * 0.15, 1.0))
+			var dist: float    = kr * (0.25 + 0.70 * fmod(float(i) * 0.618 + _elapsed * 0.15 * k_wobble, 1.0))
 			var cp: Vector2    = _player_pos + Vector2(cos(angle), sin(angle)) * dist
-			# Rotation of the cross itself
-			var rot: float     = _elapsed * (1.4 + float(i % 4) * 0.6) + float(i) * 0.8
+			var rot: float     = _elapsed * (deg_to_rad(k_rot_speed) * 0.5 + float(i % 4) * 0.6) + float(i) * 0.8
 			var arm: float     = 10.0 + float(klv) * 1.8
-			var col1: Color    = Color(0.86, 0.82, 0.98, alpha)
-			var col2: Color    = Color(1.0, 0.95, 1.0, alpha * 0.70)
-			# Draw X (two diagonal lines)
+			var col1: Color    = Color(k_color.r, k_color.g, k_color.b, alpha)
+			var col2: Color    = Color(k_color.r, k_color.g, k_color.b, alpha * 0.70)
+			
 			var d1: Vector2 = Vector2(cos(rot), sin(rot)) * arm
 			var d2: Vector2 = Vector2(cos(rot + PI * 0.5), sin(rot + PI * 0.5)) * arm
 			draw_line(cp - d1, cp + d1, col1, 2.2)
 			draw_line(cp - d2, cp + d2, col1, 2.2)
-			# Second thinner cross rotated 45° for a star shape
+			
 			var d3: Vector2 = Vector2(cos(rot + PI * 0.25), sin(rot + PI * 0.25)) * (arm * 0.65)
 			var d4: Vector2 = Vector2(cos(rot + PI * 0.75), sin(rot + PI * 0.75)) * (arm * 0.65)
 			draw_line(cp - d3, cp + d3, col2, 1.4)
 			draw_line(cp - d4, cp + d4, col2, 1.4)
-			# Bright centre dot
+			
+			# Enhanced glow center
 			draw_circle(cp, 2.0 + life * 2.0, Color(1.0, 1.0, 1.0, alpha * 0.90))
-		draw_arc(_player_pos, kr, 0.0, TAU, 24, Color(0.78, 0.74, 0.88, 0.14 + float(klv) * 0.03), 1.8)
+			draw_circle(cp, 4.0 + life * 1.0, Color(k_color.r, k_color.g, k_color.b, alpha * 0.40))
+		
+		draw_arc(_player_pos, kr, 0.0, TAU, 24, Color(k_color.r, k_color.g, k_color.b, k_color.a * (0.2 + k_glow * 0.1) + float(klv) * 0.03), 1.8)
 
-	# Wave rings — kind-aware
+	# Wave rings — data-driven with enhanced visual effects
 	for w in _waves:
 		var lf: float    = (w["life"] as float) / (w["max_life"] as float)
 		var wr: float    = w["r"] as float
 		var wp: Vector2  = w["pos"] as Vector2
 		var wkind: String = w.get("kind", "wave") as String
+		
 		if wkind == "elec_wave":
+			var elec_color = SkillMgr.get_skill_color("elec_wave") if SkillMgr else Color(1.0, 1.0, 0.2, 1.0)
 			var ewlv: int = 1
-			if _has_skill("elec_wave"): ewlv = _get_skill("elec_wave")["level"] as int
-			draw_arc(wp, wr, 0.0, TAU, 72, Color(0.92, 0.98, 0.18, lf * 0.90), (5.0 + float(ewlv) * 0.6) * lf)
-			if wr > 14.0:
-				draw_arc(wp, wr - 12.0, 0.0, TAU, 56, Color(1.0, 1.0, 0.65, lf * 0.50), 3.0 * lf)
+			var ew_glow = 1.0
+			if _has_skill("elec_wave"):
+				var ew_sk = _get_skill("elec_wave")
+				ewlv = ew_sk["level"] as int
+				var ew_specs = ew_sk.get("animation_specs", {})
+				if ew_specs.size() > 0:
+					var ew_spec = ew_specs.values()[0]
+					if ew_spec is Dictionary and "glow_intensity" in ew_spec:
+						ew_glow = float(ew_spec["glow_intensity"])
+			
+			# Multiple expanding arcs for layered effect
+			for layer in range(1, 3):
+				var layer_wr = wr - float(layer) * 6.0
+				if layer_wr > 10.0:
+					var layer_alpha = lf * (0.90 - float(layer) * 0.3) * ew_glow
+					var layer_width = (5.0 + float(ewlv) * 0.6) * lf * (1.0 - float(layer) * 0.2)
+					draw_arc(wp, layer_wr, 0.0, TAU, 72, Color(elec_color.r, elec_color.g, elec_color.b, layer_alpha), layer_width)
+			
 			var n_arcs: int = 6 + ewlv * 2
 			for i in n_arcs:
 				var ea: float    = float(i) / float(n_arcs) * TAU
 				var emid: Vector2 = wp + Vector2(cos(ea + 0.12), sin(ea + 0.12)) * (wr + sin(float(i) * 1.9 + lf * 22.0) * 12.0)
 				var eend: Vector2 = wp + Vector2(cos(ea + 0.22), sin(ea + 0.22)) * (wr + 22.0 * lf)
-				draw_line(wp + Vector2(cos(ea), sin(ea)) * (wr - 6.0), emid, Color(1.0, 1.0, 0.50, lf * 0.65), 1.8)
-				draw_line(emid, eend, Color(0.85, 0.95, 0.20, lf * 0.40), 1.2)
+				var e_glow_mul = 1.0 + ew_glow * 0.2
+				draw_line(wp + Vector2(cos(ea), sin(ea)) * (wr - 6.0), emid, Color(1.0 * e_glow_mul, 1.0 * e_glow_mul, 0.50, lf * 0.65), 1.8)
+				draw_line(emid, eend, Color(0.85 * e_glow_mul, 0.95 * e_glow_mul, 0.20, lf * 0.40), 1.2)
 		else:
+			var wave_color = SkillMgr.get_skill_color("wave") if SkillMgr else Color(0.72, 0.46, 1.0, 1.0)
 			var wlv: int = 1
-			if _has_skill("wave"): wlv = _get_skill("wave")["level"] as int
-			draw_arc(wp, wr, 0.0, TAU, 72, Color(0.72, 0.46, 1.0, lf * 0.88), (4.5 + float(wlv) * 0.8) * lf)
+			var w_glow = 1.0
+			var w_wobble = 0.5
+			if _has_skill("wave"):
+				var w_sk = _get_skill("wave")
+				wlv = w_sk["level"] as int
+				var w_specs = w_sk.get("animation_specs", {})
+				if w_specs.size() > 0:
+					var w_spec = w_specs.values()[0]
+					if w_spec is Dictionary:
+						w_glow = float(w_spec.get("glow_intensity", 1.0))
+						w_wobble = float(w_spec.get("wobble_amplitude", 0.5))
+			
+			# Core main wave arc with glow-based intensity
+			draw_arc(wp, wr, 0.0, TAU, 72, Color(wave_color.r, wave_color.g, wave_color.b, lf * 0.88 * w_glow), (4.5 + float(wlv) * 0.8) * lf)
+			
+			# Layered rings with wobble for depth
 			var n_rings: int = min(wlv + 1, 5)
 			for ri in n_rings:
 				var ring_offset: float = float(ri + 1) * 15.0
 				if wr > ring_offset:
-					var ring_alpha: float = lf * (0.50 - float(ri) * 0.08)
+					var ring_alpha: float = lf * (0.50 - float(ri) * 0.08) * w_glow
+					var wobble_var = sin(_elapsed * (1.0 + w_wobble) + float(ri) * 0.5) * w_wobble * 3.0
+					var wobble_wr = wr - ring_offset + wobble_var
+					
 					var ring_c: Color
-					if ri == 0:   ring_c = Color(0.50, 0.72, 1.0, ring_alpha)
+					if ri == 0:   ring_c = Color(wave_color.r * 0.7, wave_color.g * 0.8, wave_color.b, ring_alpha)
 					elif ri == 1: ring_c = Color(0.88, 0.94, 1.0, ring_alpha * 0.6)
-					else:         ring_c = Color(0.80, 0.55, 1.0, ring_alpha * 0.4)
-					draw_arc(wp, wr - ring_offset, 0.0, TAU, 48 - ri * 6, ring_c, (3.0 - float(ri) * 0.4) * lf)
+					else:         ring_c = Color(wave_color.r * 0.9, wave_color.g * 0.6, wave_color.b, ring_alpha * 0.4)
+					draw_arc(wp, wobble_wr, 0.0, TAU, 48 - ri * 6, ring_c, (3.0 - float(ri) * 0.4) * lf)
+			
+			# Particle foam with varied sizes
 			var n_foam: int = 16 + wlv * 5
 			for i in n_foam:
 				var fa: float      = float(i) / float(n_foam) * TAU
-				var foffset: float = sin(float(i) * 2.1 + lf * TAU) * (4.0 + float(wlv) * 1.5)
+				var foffset: float = sin(float(i) * 2.1 + lf * TAU + w_wobble) * (4.0 + float(wlv) * 1.5)
 				var fpos: Vector2  = wp + Vector2(cos(fa), sin(fa)) * (wr + foffset)
-				draw_circle(fpos, (2.0 + float(wlv) * 0.4) * lf, Color(0.92, 0.96, 1.0, lf * 0.75))
+				var foam_size = (2.0 + float(wlv) * 0.4) * lf * (0.7 + w_glow * 0.3)
+				draw_circle(fpos, foam_size, Color(wave_color.r, wave_color.g, wave_color.b, lf * 0.75 * w_glow))
+			
+			# Enhanced lightning/energy traces at high level
 			if wlv >= 4 and wr > 30.0:
 				for i in 10:
 					var spa: float   = float(i) / 10.0 * TAU + lf * 0.5
 					var sp1: Vector2 = wp + Vector2(cos(spa), sin(spa)) * (wr - 8.0)
-					var sp2: Vector2 = sp1 + Vector2(cos(spa), sin(spa)) * (18.0 + float(wlv) * 4.0) * lf
-					draw_line(sp1, sp2, Color(0.78, 0.92, 1.0, lf * 0.55), 1.8)
+					var sp2: Vector2 = sp1 + Vector2(cos(spa), sin(spa)) * (18.0 + float(wlv) * 4.0) * lf * (1.0 + w_wobble * 0.5)
+					draw_line(sp1, sp2, Color(wave_color.r, wave_color.g, wave_color.b, lf * 0.55 * w_glow), 1.8)
 
 	# Enemies
 	for e in _enemies:
@@ -2863,13 +3027,13 @@ func _pick_skill(sid: String, lvl: int) -> void:
 
 func _handle_player_death() -> void:
 	_player_hp = 0.0
-	if not _revive_used and _ring_bonus("revive_once") > 0.0:
+	if not _ring_revive_used and _ring_bonus("revive_once") > 0.0:
 		_do_ring_revive()
 		return
 	_on_death()
 
 func _do_ring_revive() -> void:
-	_revive_used = true
+	_ring_revive_used = true
 	_game_over = false
 	_paused = false
 	_player_hp = _player_max_hp * 0.55
@@ -2943,8 +3107,8 @@ func _on_death() -> void:
 		stats.position = Vector2(0, view.y * 0.28)
 		_add_death_ring_rewards(layer, view, view.y * 0.42)
 
-	# ── Revive button (only available once per gameplay, ad-gated) ───────────
-	if not _revive_used:
+	# ── Revive button (watch ad to revive, available if not already used) ───────────
+	if not _ad_revive_used:
 		var revive_btn := Button.new()
 		revive_btn.text = "📺  Watch Ad to Revive"
 		revive_btn.add_theme_font_size_override("font_size", 34)
@@ -2972,14 +3136,14 @@ func _on_death() -> void:
 		layer.add_child(revive_btn)
 
 		var once_lbl := Label.new()
-		once_lbl.text = "(one revive per run)"
+		once_lbl.text = "(one ad revive per run)"
 		once_lbl.add_theme_font_size_override("font_size", 18)
 		once_lbl.add_theme_color_override("font_color", Color(0.50, 0.50, 0.50))
 		once_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		once_lbl.position = Vector2(0, view.y * (0.66 if has_ring_rewards else 0.56) + 92); once_lbl.size = Vector2(view.x, 28)
 		layer.add_child(once_lbl)
 
-	var back_y: float = view.y * 0.82 if has_ring_rewards and not _revive_used else view.y * 0.70 if has_ring_rewards else view.y * 0.74 if not _revive_used else view.y * 0.62
+	var back_y: float = view.y * 0.82 if has_ring_rewards and not _ad_revive_used else view.y * 0.70 if has_ring_rewards else view.y * 0.74 if not _ad_revive_used else view.y * 0.62
 	var back := Button.new()
 	back.text = "Back to Lobby"
 	back.add_theme_font_size_override("font_size", 36)
@@ -3100,7 +3264,7 @@ func _start_revive_ad(death_layer: Node) -> void:
 	_ad_manager.show_rewarded_ad()
 
 func _do_revive(death_layer: Node) -> void:
-	_revive_used = true
+	_ad_revive_used = true
 	_game_over   = false
 	_paused      = false
 	# Restore player to 40% HP

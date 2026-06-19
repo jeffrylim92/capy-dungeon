@@ -1,0 +1,3750 @@
+{
+  "skill_name": "Capy Orb",
+  "skill_type": "Orbiting Projectile",
+  "theme": {
+	"primary_color": "#FFD54A",
+	"secondary_color": "#FFF3A0",
+	"accent_color": "#FFB300",
+	"glow_color": "#FFE082"
+  },
+  "description": "Three to five magical golden capy-energy orbs continuously orbit the player, dealing contact damage to enemies. Orbs feel warm, playful, and powerful with bright golden trails and sparkling particles.",
+  "godot_notes": {
+	"recommended_fps": 12,
+	"rotation_method": "Continuous orbital movement via rotating parent node",
+	"blend_mode": "Additive",
+	"sprite_size": "48x48 or 64x64",
+	"particle_system": "GPUParticles2D"
+  },
+  "animation_states": {
+	"spawn": {
+	  "duration_seconds": 0.5,
+	  "frame_count": 6,
+	  "loop": false,
+	  "description": "Orbs materialize from golden light around the player before expanding into orbit.",
+	  "frames": [
+		{
+		  "frame": 1,
+		  "time": 0.0,
+		  "visual": "Tiny golden spark appears near player center."
+		},
+		{
+		  "frame": 2,
+		  "time": 0.08,
+		  "visual": "Spark rapidly expands into glowing golden sphere core."
+		},
+		{
+		  "frame": 3,
+		  "time": 0.16,
+		  "visual": "Thin circular magic ring flashes around orb."
+		},
+		{
+		  "frame": 4,
+		  "time": 0.24,
+		  "visual": "Golden sparkles burst outward."
+		},
+		{
+		  "frame": 5,
+		  "time": 0.34,
+		  "visual": "Orb reaches full size, glow intensifies."
+		},
+		{
+		  "frame": 6,
+		  "time": 0.5,
+		  "visual": "Orb smoothly accelerates into orbit path."
+		}
+	  ],
+	  "particles": {
+		"burst_count": 18,
+		"lifetime": 0.4,
+		"velocity": 40,
+		"spread": 360,
+		"size": "2-5 px",
+		"color": "#FFE082"
+	  }
+	},
+	"idle_orbit": {
+	  "duration_seconds": 2.0,
+	  "frame_count": 24,
+	  "loop": true,
+	  "description": "Orbs continuously circle around the player while gently bobbing and pulsing.",
+	  "movement": {
+		"orbit_radius": 90,
+		"orbit_speed_degrees_per_second": 120,
+		"orb_count": "3-5",
+		"rotation_direction": "clockwise",
+		"vertical_bob_amplitude": 3,
+		"vertical_bob_frequency": 2
+	  },
+	  "visual_behavior": {
+		"scale_pulse": {
+		  "min": 0.95,
+		  "max": 1.08,
+		  "cycle_seconds": 0.8
+		},
+		"glow_pulse": {
+		  "min_alpha": 0.6,
+		  "max_alpha": 1.0,
+		  "cycle_seconds": 1.0
+		},
+		"inner_core_rotation": {
+		  "speed_degrees_per_second": 180
+		}
+	  },
+	  "trail": {
+		"enabled": true,
+		"length_seconds": 0.15,
+		"width": 10,
+		"color_start": "#FFF3A0",
+		"color_end": "#FFD54A00"
+	  }
+	},
+	"impact": {
+	  "duration_seconds": 0.25,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "Quick golden burst when orb damages an enemy. Orb remains alive and continues orbiting afterward.",
+	  "frames": [
+		{
+		  "frame": 1,
+		  "time": 0.0,
+		  "visual": "Sharp golden flash at collision point."
+		},
+		{
+		  "frame": 2,
+		  "time": 0.08,
+		  "visual": "Circular burst of golden shards and sparkles."
+		},
+		{
+		  "frame": 3,
+		  "time": 0.25,
+		  "visual": "Particles fade while orb resumes normal orbit."
+		}
+	  ],
+	  "screen_effect": {
+		"micro_hitstop_seconds": 0.03,
+		"optional_camera_shake": 1.5
+	  },
+	  "particles": {
+		"count": 10,
+		"lifetime": 0.2,
+		"velocity": 80,
+		"spread": 120,
+		"color": "#FFD54A"
+	  }
+	}
+  },
+  "visual_effects": {
+	"orb_core": {
+	  "shape": "Perfect glowing sphere",
+	  "core_color": "#FFF3A0",
+	  "outer_glow": "#FFD54A",
+	  "rim_light": "#FFFFFF"
+	},
+	"aura": {
+	  "enabled": true,
+	  "radius_multiplier": 1.4,
+	  "opacity": 0.5,
+	  "pulse_speed": 1.0
+	},
+	"sparkles": {
+	  "spawn_rate": 8,
+	  "lifetime": 0.6,
+	  "size_range": "1-4 px",
+	  "movement": "Slow outward drift"
+	},
+	"energy_trail": {
+	  "style": "Smooth ribbon",
+	  "opacity_fade": true,
+	  "additive_blending": true
+	}
+  },
+  "particle_effects": {
+	"orbit_particles": {
+	  "emission_rate": 12,
+	  "lifetime": 0.5,
+	  "initial_velocity": 10,
+	  "gravity": 0,
+	  "color_gradient": [
+		"#FFF3A0",
+		"#FFD54A",
+        "#FFD54A00"
+	  ]
+	},
+	"impact_particles": {
+	  "emission_rate": 25,
+	  "burst": true,
+	  "lifetime": 0.25,
+	  "velocity": 60,
+	  "spread": 180,
+	  "scale": "2-6 px"
+	}
+  },
+  "sound_design": {
+	"spawn": {
+	  "sound": "Warm magical chime",
+	  "pitch": 1.1,
+	  "duration": 0.4
+	},
+	"orbit_loop": {
+	  "sound": "Subtle shimmering magical hum",
+	  "volume": 0.15,
+	  "loop": true
+	},
+	"impact": {
+	  "sound": "Bright coin-like magical ping",
+	  "pitch_variation": 0.1,
+	  "duration": 0.12
+	}
+  },
+  "upgrade_visual_progression": {
+	"level_1": {
+	  "orb_count": 3,
+	  "orbit_radius": 85
+	},
+	"level_2": {
+	  "orb_count": 4,
+	  "orbit_radius": 95
+	},
+	"level_3": {
+	  "orb_count": 5,
+	  "orbit_radius": 105,
+	  "extra_sparkles": true,
+	  "stronger_glow": true
+	}
+  }
+}
+
+{
+  "skill_name": "Capy Bolt",
+  "skill_type": "Auto-targeting Projectile",
+  "theme": "Bright Yellow Lightning",
+  "animation_states": {
+	"charge_aim": {
+	  "duration_seconds": 0.18,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "A small yellow electric orb charges near the player, briefly aiming toward the nearest enemy.",
+	  "visuals": [
+		"Tiny yellow sparks gather at casting point",
+		"Thin electric line flickers toward target direction",
+        "Charge orb flashes white-yellow before release"
+	  ],
+	  "particles": {
+		"spark_count": 8,
+		"spark_lifetime": 0.15,
+		"spark_color": "#FFF176",
+		"spread_degrees": 45
+	  }
+	},
+	"fire": {
+	  "duration_seconds": 0.1,
+	  "frame_count": 2,
+	  "loop": false,
+	  "description": "Bolt snaps forward instantly with a sharp electric flash.",
+	  "visuals": [
+		"White-yellow muzzle flash",
+        "Bolt core appears as jagged lightning spear"
+	  ],
+	  "particles": {
+		"burst_count": 10,
+		"velocity": 90,
+		"lifetime": 0.2
+	  }
+	},
+	"travel": {
+	  "duration_seconds": 0.25,
+	  "frame_count": 4,
+	  "loop": true,
+	  "description": "Jagged lightning bolt travels quickly toward the target with crackling side arcs.",
+	  "movement": {
+		"speed_pixels_per_second": 850,
+		"homing_strength": 0.18,
+		"max_turn_degrees_per_second": 240,
+		"bolt_count": "1-3"
+	  },
+	  "visuals": {
+		"core": "Thin white-hot jagged center",
+		"outer_glow": "Bright yellow aura",
+		"side_arcs": "Small branching lightning forks every 0.05s",
+		"trail": "Short fading electric streak"
+	  },
+	  "particles": {
+		"emission_rate": 35,
+		"particle_lifetime": 0.18,
+		"particle_size": "2-5 px",
+		"colors": ["#FFFFFF", "#FFF176", "#FFD600"]
+	  }
+	},
+	"impact": {
+	  "duration_seconds": 0.28,
+	  "frame_count": 4,
+	  "loop": false,
+	  "description": "Bolt bursts into a small electrical explosion on enemy contact.",
+	  "visuals": [
+		"Instant white-yellow flash",
+		"Circular electric shock ring expands",
+		"Jagged arcs crawl outward",
+        "Sparks fade into tiny golden particles"
+	  ],
+	  "effects": {
+		"hitstop_seconds": 0.035,
+		"camera_shake_strength": 1.8,
+		"shock_ring_radius": 38
+	  },
+	  "particles": {
+		"burst_count": 18,
+		"velocity": 120,
+		"spread_degrees": 360,
+		"lifetime": 0.25,
+		"color": "#FFD600"
+	  }
+	}
+  },
+  "sound_design": {
+	"charge": {
+	  "sound": "Rising electric buzz",
+	  "duration_seconds": 0.18,
+	  "pitch": 1.2
+	},
+	"fire": {
+	  "sound": "Sharp lightning snap",
+	  "duration_seconds": 0.1,
+	  "pitch_variation": 0.08
+	},
+	"travel": {
+	  "sound": "Short crackling zap",
+	  "volume": 0.35
+	},
+	"impact": {
+	  "sound": "Bright electric pop with small thunder crack",
+	  "duration_seconds": 0.25
+	}
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D",
+	  "AnimatedSprite2D",
+	  "GPUParticles2D",
+	  "Line2D for jagged lightning trail",
+      "Area2D for hit detection"
+	],
+	"blend_mode": "Additive for glow and sparks",
+	"recommended_fps": 16,
+	"damage_timing": "Apply damage on impact frame 1",
+	"targeting": "Select nearest enemy at cast start; allow slight homing during travel"
+  }
+}
+
+{
+  "skill_name": "Ice Orb",
+  "skill_type": "Straight-line Projectile",
+  "theme": "Cyan Blue Crystal Ice",
+  "animation_states": {
+	"spawn_launch": {
+	  "duration_seconds": 0.22,
+	  "frame_count": 4,
+	  "loop": false,
+	  "description": "A cyan crystal orb forms from cold mist, then launches forward.",
+	  "visuals": [
+		"Small frost mist gathers",
+		"Crystal core forms with sharp icy facets",
+		"Orb flashes pale blue-white",
+        "Orb launches with short frost burst"
+	  ]
+	},
+	"travel": {
+	  "duration_seconds": 0.35,
+	  "frame_count": 6,
+	  "loop": true,
+	  "movement": {
+		"speed_pixels_per_second": 620,
+		"path": "straight_line",
+		"orb_count": "1-3",
+		"spread_angle_degrees": 10
+	  },
+	  "visuals": {
+		"orb": "Cyan crystalline sphere with rotating ice facets",
+		"trail": "Soft frost trail fading behind projectile",
+		"extra_effects": ["tiny snowflakes", "small icicle shards", "cold mist"]
+	  }
+	},
+	"freeze_zone": {
+	  "duration_seconds": 3.0,
+	  "frame_count": 12,
+	  "loop": true,
+	  "description": "Creates a circular icy area on impact that slows enemies.",
+	  "visuals": {
+		"radius_pixels": 80,
+		"ground_effect": "Circular frozen patch with cracked ice texture",
+		"edge": "Pulsing cyan ring",
+		"center": "Soft icy shimmer with mist rising"
+	  }
+	},
+	"slow_effect_on_enemy": {
+	  "duration_seconds": 0.6,
+	  "frame_count": 6,
+	  "loop": true,
+	  "description": "Enemies inside the freeze zone show a frosty slow visual.",
+	  "visuals": [
+		"Thin ice outline appears around enemy",
+		"Small snowflakes orbit enemy",
+		"Enemy feet show frost buildup",
+        "Movement leaves pale blue afterimage"
+	  ]
+	},
+	"impact": {
+	  "duration_seconds": 0.28,
+	  "frame_count": 4,
+	  "loop": false,
+	  "description": "Orb shatters into icy fragments and expands into freeze zone.",
+	  "visuals": [
+		"Sharp blue-white flash",
+		"Crystal shards burst outward",
+		"Cold mist expands in a circle",
+        "Freeze zone appears under enemy"
+	  ]
+	}
+  },
+  "particle_effects": {
+	"travel_snowflakes": {
+	  "emission_rate": 18,
+	  "lifetime_seconds": 0.45,
+	  "velocity": 35,
+	  "spread_degrees": 25,
+	  "size": "2-5 px",
+	  "colors": ["#E0F7FA", "#80DEEA", "#4DD0E1"]
+	},
+	"frost_trail": {
+	  "emission_rate": 30,
+	  "lifetime_seconds": 0.3,
+	  "fade_out": true,
+	  "gravity": 0,
+	  "color": "#B2EBF2"
+	},
+	"impact_shards": {
+	  "burst_count": 20,
+	  "lifetime_seconds": 0.35,
+	  "velocity": 110,
+	  "spread_degrees": 360,
+	  "shape": "small crystal triangles"
+	},
+	"freeze_zone_mist": {
+	  "emission_rate": 12,
+	  "lifetime_seconds": 1.2,
+	  "velocity": 12,
+	  "direction": "upward_drift",
+	  "alpha_fade": true
+	}
+  },
+  "sound_design": {
+	"spawn": {
+	  "sound": "Soft ice forming chime",
+	  "duration_seconds": 0.2,
+	  "pitch": 1.25
+	},
+	"launch": {
+	  "sound": "Quick frost whoosh",
+	  "duration_seconds": 0.15
+	},
+	"travel": {
+	  "sound": "Light crystalline shimmer",
+	  "volume": 0.25,
+	  "loop": false
+	},
+	"impact": {
+	  "sound": "Ice crack and glassy shatter",
+	  "duration_seconds": 0.3
+	},
+	"freeze_zone": {
+	  "sound": "Low cold mist ambience",
+	  "volume": 0.18,
+	  "loop": true
+	}
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D",
+	  "AnimatedSprite2D",
+	  "Area2D",
+	  "CollisionShape2D",
+	  "GPUParticles2D",
+      "Line2D for frost trail"
+	],
+	"blend_mode": "Additive for glow, Alpha blend for mist",
+	"damage_timing": "Apply projectile damage on impact frame 1",
+	"status_effect": {
+	  "effect": "slow",
+	  "slow_percentage": 35,
+	  "duration_seconds": 3.0,
+	  "refresh_while_inside_zone": true
+	}
+  }
+}
+
+{
+  "skill_name": "Mud Aura",
+  "skill_type": "Continuous Damage Aura",
+  "theme": "Deep Brown Earth",
+  "animation_states": {
+	"activation": {
+	  "duration_seconds": 0.45,
+	  "frame_count": 6,
+	  "loop": false,
+	  "description": "Mud bursts outward from the player and forms a circular damaging aura.",
+	  "visuals": [
+		"Small brown ripple appears under player",
+		"Mud ring expands rapidly outward",
+		"Soil chunks lift briefly",
+		"Dark brown swirl pattern forms",
+		"Outer edge becomes thick and readable",
+        "Aura enters idle loop"
+	  ]
+	},
+	"idle": {
+	  "duration_seconds": 1.2,
+	  "frame_count": 12,
+	  "loop": true,
+	  "description": "Persistent mud circle rotates slowly around the player with organic bubbling motion.",
+	  "movement": {
+		"rotation_speed_degrees_per_second": 35,
+		"pulse_cycle_seconds": 1.2,
+		"scale_min": 0.96,
+		"scale_max": 1.04,
+		"radius_pixels": 95
+	  },
+	  "visuals": {
+		"center": "Thin muddy haze around player feet",
+		"middle": "Slow spiral mud swirls",
+		"outer_edge": "Uneven dark-brown circular rim",
+		"motion": "Organic wobble, like thick wet mud moving slowly"
+	  }
+	},
+	"damage_pulse": {
+	  "duration_seconds": 0.28,
+	  "frame_count": 4,
+	  "loop": false,
+	  "description": "Aura flashes and splashes upward whenever damage ticks.",
+	  "timing": {
+		"damage_tick_interval_seconds": 0.75,
+		"pulse_sync": "Play once per damage tick"
+	  },
+	  "visuals": [
+		"Outer ring darkens briefly",
+		"Brown splash spikes rise outward",
+		"Small rocks pop up",
+        "Ripple fades back into idle aura"
+	  ]
+	},
+	"deactivation": {
+	  "duration_seconds": 0.35,
+	  "frame_count": 5,
+	  "loop": false,
+	  "description": "Mud aura collapses inward and sinks back into the ground.",
+	  "visuals": [
+		"Outer mud ring slows",
+		"Aura shrinks toward player",
+		"Remaining mud bubbles pop",
+		"Dust particles fade",
+        "Ground returns to normal"
+	  ]
+	}
+  },
+  "visual_effects": {
+	"mud_swirls": {
+	  "style": "Thick spiral strokes",
+	  "color_range": ["#3A2418", "#5A3824", "#7A4A2A"],
+	  "opacity": 0.75
+	},
+	"dirt_particles": {
+	  "style": "Small brown specks and clumps",
+	  "movement": "Short upward bounce then fall",
+	  "fade": true
+	},
+	"rock_particles": {
+	  "style": "Tiny dark stone chunks",
+	  "spawn_on": "damage_pulse",
+	  "gravity": "slight downward"
+	}
+  },
+  "particle_effects": {
+	"idle_soil_dust": {
+	  "emission_rate": 12,
+	  "lifetime_seconds": 0.7,
+	  "velocity": 18,
+	  "spread_degrees": 360,
+	  "size": "2-5 px",
+	  "color": "#6B4428"
+	},
+	"damage_splash": {
+	  "burst_count": 18,
+	  "lifetime_seconds": 0.35,
+	  "velocity": 75,
+	  "spread_degrees": 360,
+	  "size": "4-10 px",
+	  "color": "#4A2B1A"
+	},
+	"rock_burst": {
+	  "burst_count": 8,
+	  "lifetime_seconds": 0.45,
+	  "velocity": 55,
+	  "spread_degrees": 180,
+	  "size": "3-7 px",
+	  "color": "#2B211C"
+	}
+  },
+  "sound_design": {
+	"activation": {
+	  "sound": "Soft earthy rumble with wet mud swell",
+	  "duration_seconds": 0.45
+	},
+	"idle_loop": {
+	  "sound": "Low bubbling mud ambience",
+	  "volume": 0.18,
+	  "loop": true
+	},
+	"damage_pulse": {
+	  "sound": "Thick mud splash impact",
+	  "duration_seconds": 0.18,
+	  "pitch_variation": 0.12
+	},
+	"deactivation": {
+	  "sound": "Mud sinking and dust fade",
+	  "duration_seconds": 0.35
+	}
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D",
+	  "Sprite2D or AnimatedSprite2D for aura ring",
+	  "Area2D for damage radius",
+	  "CollisionShape2D CircleShape2D",
+      "GPUParticles2D for dust and mud splash"
+	],
+	"blend_mode": "Alpha blend",
+	"damage_timing": "Apply damage every 0.75 seconds while enemy is inside Area2D",
+	"z_index": "Below player sprite",
+	"recommended_fps": 12
+  }
+}
+
+{
+  "skill_name": "Squeal Wave",
+  "skill_type": "Expanding Shockwave Projectile",
+  "theme": "Arcane Purple Sonic Energy",
+  "description": "The capybara unleashes a magical squeal that generates a large expanding purple shockwave. The wave travels outward from the player, damaging and slightly knocking back all enemies it touches.",
+  "animation_states": {
+	"charge": {
+	  "duration_seconds": 0.35,
+	  "frame_count": 6,
+	  "loop": false,
+	  "description": "Magical sonic energy gathers around the player before release.",
+	  "visuals": [
+		"Small purple energy ring forms beneath player",
+		"Tiny violet sparkles orbit rapidly",
+		"Air distortion shimmer appears",
+		"Concentric transparent rings pulse inward",
+		"Player briefly glows purple-white",
+        "Bright flash signals release"
+	  ],
+	  "effects": {
+		"scale_pulse": {
+		  "min": 0.9,
+		  "max": 1.15,
+		  "frequency": 2.5
+		},
+		"glow_intensity": {
+		  "start": 0.2,
+		  "end": 1.0
+		}
+	  }
+	},
+	"release": {
+	  "duration_seconds": 0.12,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "Shockwave spawns instantly at player center.",
+	  "visuals": [
+		"White-purple flash at origin",
+		"Dense circular energy ring appears",
+        "Spark burst shoots outward in all directions"
+	  ],
+	  "effects": {
+		"camera_shake": 2.0,
+		"flash_radius": 40
+	  }
+	},
+	"expansion": {
+	  "duration_seconds": 1.2,
+	  "frame_count": 16,
+	  "loop": false,
+	  "description": "Wave expands outward at a constant speed, maintaining readability while slowly thinning.",
+	  "movement": {
+		"expansion_speed_pixels_per_second": 420,
+		"starting_radius_pixels": 24,
+		"maximum_radius_pixels": 520,
+		"thickness_pixels": 18,
+		"maintain_circular_shape": true
+	  },
+	  "visuals": {
+		"core_ring": "Bright violet-white energy ring",
+		"secondary_ring": "Faint translucent purple ripple behind main ring",
+		"wave_front": "Magical sparkles riding along edge",
+		"distortion": "Subtle refractive shimmer around expanding perimeter"
+	  }
+	},
+	"enemy_hit": {
+	  "duration_seconds": 0.22,
+	  "frame_count": 4,
+	  "loop": false,
+	  "description": "Enemy reacts when struck by the wave.",
+	  "visuals": [
+		"Purple hit flash on enemy",
+		"Circular ripple spreads across body",
+		"Small burst of violet particles",
+        "Enemy slides backward slightly"
+	  ],
+	  "effects": {
+		"knockback_distance_pixels": 24,
+		"hitstop_seconds": 0.04,
+		"screen_shake_strength": 0.5
+	  }
+	},
+	"dissipation": {
+	  "duration_seconds": 0.35,
+	  "frame_count": 5,
+	  "loop": false,
+	  "description": "Outer ring loses energy and dissolves into sparkles.",
+	  "visuals": [
+		"Ring becomes semi-transparent",
+		"Outer edge breaks into particles",
+		"Sparkles drift outward",
+		"Energy shimmer fades",
+        "Wave disappears completely"
+	  ]
+	}
+  },
+  "visual_effects": {
+	"concentric_rings": {
+	  "count": 3,
+	  "spacing_pixels": 18,
+	  "opacity_falloff": 0.35,
+	  "rotation_speed_degrees_per_second": 15
+	},
+	"sparkles": {
+	  "spawn_along_wave_front": true,
+	  "colors": [
+		"#F5D0FF",
+		"#C77DFF",
+        "#9D4EDD"
+	  ],
+	  "size_range": "2-6 px",
+	  "lifetime_seconds": 0.4
+	},
+	"magical_shimmer": {
+	  "enabled": true,
+	  "frequency_seconds": 0.15,
+	  "opacity": 0.25
+	},
+	"energy_distortion": {
+	  "enabled": true,
+	  "strength": 0.12,
+	  "radius_multiplier": 1.05
+	}
+  },
+  "particle_effects": {
+	"charge_particles": {
+	  "emission_rate": 24,
+	  "lifetime_seconds": 0.5,
+	  "velocity": 35,
+	  "orbital_motion": true,
+	  "color": "#C77DFF"
+	},
+	"release_burst": {
+	  "burst_count": 30,
+	  "velocity": 140,
+	  "spread_degrees": 360,
+	  "lifetime_seconds": 0.4,
+	  "colors": [
+		"#FFFFFF",
+		"#E0AAFF",
+        "#C77DFF"
+	  ]
+	},
+	"wave_front_particles": {
+	  "emission_rate": 40,
+	  "follow_ring": true,
+	  "lifetime_seconds": 0.35,
+	  "velocity": 20,
+	  "size": "2-5 px"
+	},
+	"impact_particles": {
+	  "burst_count": 12,
+	  "velocity": 70,
+	  "spread_degrees": 180,
+	  "lifetime_seconds": 0.25,
+	  "color": "#B5179E"
+	},
+	"dissipation_particles": {
+	  "burst_count": 20,
+	  "velocity": 50,
+	  "lifetime_seconds": 0.5,
+	  "fade_out": true
+	}
+  },
+  "sound_design": {
+	"charge": {
+	  "sound": "Soft magical hum rising in pitch",
+	  "duration_seconds": 0.35,
+	  "pitch_curve": "ascending"
+	},
+	"release": {
+	  "sound": "Powerful squeal-infused magical whoosh",
+	  "duration_seconds": 0.18,
+	  "volume": 1.0
+	},
+	"expansion": {
+	  "sound": "Wide airy resonance",
+	  "duration_seconds": 1.0,
+	  "volume": 0.35
+	},
+	"enemy_hit": {
+	  "sound": "Arcane impact pop",
+	  "duration_seconds": 0.12,
+	  "pitch_variation": 0.15
+	},
+	"dissipation": {
+	  "sound": "Fading magical chime",
+	  "duration_seconds": 0.3
+	}
+  },
+  "gameplay_values": {
+	"activation_interval_seconds": 3.5,
+	"maximum_radius_pixels": 520,
+	"expansion_speed_pixels_per_second": 420,
+	"wave_duration_seconds": 1.2,
+	"knockback_distance_pixels": 24
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D",
+	  "AnimatedSprite2D",
+	  "Area2D",
+	  "CollisionShape2D",
+	  "GPUParticles2D",
+	  "Line2D",
+      "ShaderMaterial for ring distortion"
+	],
+	"recommended_fps": 16,
+	"blend_mode": "Additive",
+	"damage_application": "Apply damage once when enemy intersects expanding ring",
+	"wave_scaling_method": "Scale circular sprite from radius 24px to 520px over 1.2 seconds",
+	"z_index": "Above ground effects, below damage numbers"
+  }
+}
+
+{
+  "skill_name": "Capy Calm",
+  "skill_type": "Passive Continuous HP Regeneration",
+  "theme": "Rose Red / Healing Pink",
+  "animation_states": {
+	"heal_tick": {
+	  "trigger_interval_seconds": 0.5,
+	  "duration_seconds": 0.35,
+	  "frame_count": 5,
+	  "loop": false,
+	  "description": "A soft pink healing pulse appears around the player whenever HP regeneration triggers.",
+	  "visuals": [
+		"Small rose-pink glow appears at player center",
+		"Tiny heart particles spawn around body",
+		"Circular healing ripple expands outward",
+		"HP number briefly pops upward",
+        "Glow fades back to idle"
+	  ]
+	},
+	"particle_spawn": {
+	  "duration_seconds": 0.08,
+	  "particle_count_per_tick": 4,
+	  "description": "Small heart and sparkle particles appear near the player.",
+	  "spawn_area": {
+		"shape": "circle",
+		"radius_pixels": 28,
+		"offset_y_pixels": -8
+	  },
+	  "particle_types": [
+		"tiny heart",
+		"soft sparkle",
+        "round healing mote"
+	  ]
+	},
+	"particle_travel": {
+	  "duration_seconds": 0.8,
+	  "loop": false,
+	  "description": "Healing particles float gently upward and fade out.",
+	  "movement": {
+		"travel_distance_pixels": 42,
+		"horizontal_drift_pixels": 8,
+		"motion_curve": "ease_out",
+		"gravity": -12
+	  },
+	  "scale": {
+		"start": 0.75,
+		"peak": 1.0,
+		"end": 0.35
+	  },
+	  "alpha": {
+		"start": 1.0,
+		"end": 0.0
+	  }
+	},
+	"hp_gain_feedback": {
+	  "duration_seconds": 0.6,
+	  "frame_count": 6,
+	  "loop": false,
+	  "description": "Small healing number or HP bar pulse confirms regeneration.",
+	  "number_popup": {
+		"enabled": true,
+		"text_format": "+{heal_amount}",
+		"color": "#FF7AAE",
+		"outline_color": "#5A1E35",
+		"rise_distance_pixels": 26,
+		"fade_duration_seconds": 0.45
+	  },
+	  "hp_bar_feedback": {
+		"enabled": true,
+		"bar_flash_color": "#FFB6D5",
+		"pulse_scale": 1.08,
+		"pulse_duration_seconds": 0.18
+	  }
+	},
+	"idle_healing_aura": {
+	  "duration_seconds": 1.5,
+	  "frame_count": 12,
+	  "loop": true,
+	  "description": "Very subtle rose glow around the player while the passive is active.",
+	  "visuals": {
+		"aura_radius_pixels": 36,
+		"opacity_min": 0.15,
+		"opacity_max": 0.35,
+		"pulse_cycle_seconds": 1.5,
+		"soft_edge": true
+	  }
+	}
+  },
+  "visual_effects": {
+	"healing_aura": {
+	  "color": "#FF8FB8",
+	  "glow_color": "#FFC1D9",
+	  "blend_mode": "additive",
+	  "radius_pixels": 36
+	},
+	"heart_shapes": {
+	  "colors": ["#FF5C93", "#FF8FB8", "#FFD1E3"],
+	  "size_range": "4-9 px",
+	  "rotation_range_degrees": [-12, 12]
+	},
+	"warm_glow": {
+	  "flash_color": "#FFE3EE",
+	  "flash_duration_seconds": 0.12,
+	  "opacity": 0.45
+	}
+  },
+  "particle_effects": {
+	"healing_particles": {
+	  "spawn_frequency_seconds": 0.5,
+	  "count_per_tick": 4,
+	  "lifetime_seconds": 0.8,
+	  "travel_distance_pixels": 42,
+	  "velocity_pixels_per_second": 55,
+	  "spread_degrees": 35,
+	  "fade_out": true,
+	  "color_gradient": [
+		{
+		  "time": 0.0,
+		  "color": "#FF4F8B"
+		},
+		{
+		  "time": 0.45,
+		  "color": "#FFB6D5"
+		},
+		{
+		  "time": 1.0,
+		  "color": "#FFEAF2"
+		}
+	  ]
+	},
+	"heal_tick_ripple": {
+	  "burst_count": 1,
+	  "duration_seconds": 0.35,
+	  "start_radius_pixels": 12,
+	  "end_radius_pixels": 48,
+	  "start_alpha": 0.55,
+	  "end_alpha": 0.0,
+	  "color": "#FF9FC5"
+	},
+	"sparkle_motes": {
+	  "count_per_tick": 3,
+	  "lifetime_seconds": 0.55,
+	  "size": "2-4 px",
+	  "twinkle": true,
+	  "color": "#FFD6E8"
+	}
+  },
+  "sound_design": {
+	"heal_tick": {
+	  "sound": "Soft rose healing chime",
+	  "duration_seconds": 0.25,
+	  "volume": 0.45,
+	  "pitch": 1.15,
+	  "pitch_variation": 0.08
+	},
+	"passive_loop": {
+	  "sound": "Very gentle soothing hum",
+	  "loop": true,
+	  "volume": 0.08
+	},
+	"hp_bar_feedback": {
+	  "sound": "Tiny warm sparkle ping",
+	  "duration_seconds": 0.12,
+	  "volume": 0.25
+	}
+  },
+  "gameplay_timing": {
+	"heal_interval_seconds": 0.5,
+	"heal_visual_duration_seconds": 0.35,
+	"particle_lifetime_seconds": 0.8,
+	"particle_spawn_count_per_tick": 4
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D",
+	  "GPUParticles2D",
+	  "AnimatedSprite2D for healing ripple",
+	  "Label or Control node for heal number popup",
+      "Tween for HP bar pulse"
+	],
+	"recommended_fps": 12,
+	"blend_mode": "Additive for glow, Alpha blend for hearts",
+	"z_index": "Above player for hearts, below player for aura",
+	"trigger_logic": "Play heal_tick animation every 0.5 seconds when regeneration applies"
+  }
+}
+
+{
+  "skill_name": "XP Magnet",
+  "skill_type": "Passive Attraction Aura",
+  "theme": "Teal Green Magnetic Energy",
+  "animation_states": {
+	"idle_field": {
+	  "duration_seconds": 1.6,
+	  "frame_count": 16,
+	  "loop": true,
+	  "description": "A subtle teal attraction field breathes around the player.",
+	  "field_radius_pixels": {
+		"min": 110,
+		"max": 125
+	  },
+	  "pulse_timing": {
+		"cycle_seconds": 1.6,
+		"scale_curve": "sine_in_out",
+		"opacity_min": 0.18,
+		"opacity_max": 0.38
+	  },
+	  "visuals": [
+		"Soft teal circular aura around player",
+		"Two faint concentric rings pulse outward",
+		"Thin magnetic lines gently rotate clockwise",
+        "Tiny green particles drift slowly inward"
+	  ]
+	},
+	"activation_expand": {
+	  "duration_seconds": 0.35,
+	  "frame_count": 6,
+	  "loop": false,
+	  "trigger": "When XP orb enters magnet detection radius",
+	  "description": "Field expands and brightens when XP orbs are detected.",
+	  "field_radius_pixels": {
+		"start": 125,
+		"end": 180
+	  },
+	  "visuals": [
+		"Outer teal ring expands quickly",
+		"Aura intensity increases",
+		"Magnetic lines sharpen toward XP orb direction",
+        "Small teal sparkle burst appears around player"
+	  ]
+	},
+	"attraction": {
+	  "duration_seconds": 0.6,
+	  "frame_count": 10,
+	  "loop": true,
+	  "description": "XP orbs curve smoothly toward the player along magnetic paths.",
+	  "movement": {
+		"path_type": "curved_bezier",
+		"pull_acceleration_pixels_per_second": 900,
+		"max_orb_speed_pixels_per_second": 720,
+		"curve_strength": 0.35,
+		"arrival_radius_pixels": 16
+	  },
+	  "visuals": {
+		"orb_trail": "Short teal-green trailing streak",
+		"pull_lines": "Thin curved magnetic lines from orb to player",
+		"center_glow": "Player center glows brighter as orbs approach"
+	  }
+	},
+	"orb_collect": {
+	  "duration_seconds": 0.18,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "Small teal pop when XP orb reaches player.",
+	  "visuals": [
+		"XP orb flashes white-teal",
+		"Tiny ring collapses inward",
+        "Small sparkle burst at player center"
+	  ]
+	}
+  },
+  "visual_effects": {
+	"concentric_circles": {
+	  "count": 3,
+	  "spacing_pixels": 32,
+	  "line_width_pixels": 3,
+	  "color": "#26D9A8",
+	  "opacity_range": [0.15, 0.45]
+	},
+	"magnetic_lines": {
+	  "count": 8,
+	  "rotation_speed_degrees_per_second": 18,
+	  "curve_style": "soft arc",
+	  "color": "#6FFFE9",
+	  "opacity": 0.3
+	},
+	"inward_particles": {
+	  "shape": "small glowing motes",
+	  "movement": "spiral inward",
+	  "color_gradient": ["#B8FFF1", "#26D9A8", "#0E8F7A"]
+	},
+	"color_intensity": {
+	  "idle": "#1BAE8A",
+	  "active_pull": "#26D9A8",
+	  "orb_collect": "#B8FFF1"
+	}
+  },
+  "particle_effects": {
+	"idle_motes": {
+	  "emission_rate": 10,
+	  "lifetime_seconds": 1.2,
+	  "spawn_radius_pixels": 120,
+	  "end_radius_pixels": 40,
+	  "velocity_pixels_per_second": 35,
+	  "spiral_strength": 0.25,
+	  "size": "2-4 px"
+	},
+	"activation_sparkles": {
+	  "burst_count": 16,
+	  "lifetime_seconds": 0.35,
+	  "velocity_pixels_per_second": 60,
+	  "spread_degrees": 360,
+	  "color": "#6FFFE9"
+	},
+	"orb_trail_particles": {
+	  "emission_rate": 24,
+	  "lifetime_seconds": 0.25,
+	  "fade_out": true,
+	  "size": "3-6 px",
+	  "color": "#26D9A8"
+	},
+	"collect_burst": {
+	  "burst_count": 10,
+	  "lifetime_seconds": 0.2,
+	  "velocity_pixels_per_second": 70,
+	  "spread_degrees": 360,
+	  "color": "#B8FFF1"
+	}
+  },
+  "sound_design": {
+	"idle_loop": {
+	  "sound": "Soft magnetic teal hum",
+	  "loop": true,
+	  "volume": 0.08
+	},
+	"activation": {
+	  "sound": "Gentle magical pull swell",
+	  "duration_seconds": 0.35,
+	  "volume": 0.35
+	},
+	"attraction": {
+	  "sound": "Light rising suction shimmer",
+	  "duration_seconds": 0.4,
+	  "volume": 0.25
+	},
+	"orb_collect": {
+	  "sound": "Tiny bright XP chime",
+	  "duration_seconds": 0.12,
+	  "pitch_variation": 0.1
+	}
+  },
+  "gameplay_timing": {
+	"idle_pulse_cycle_seconds": 1.6,
+	"activation_expand_seconds": 0.35,
+	"field_radius_idle_pixels": 125,
+	"field_radius_active_pixels": 180,
+	"orb_pull_update": "Every physics frame",
+	"collect_pop_seconds": 0.18
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D",
+	  "Area2D with CircleShape2D for detection radius",
+	  "Sprite2D or Line2D for aura rings",
+	  "GPUParticles2D for inward motes",
+	  "Curve2D or Tween for orb pull path",
+      "AudioStreamPlayer2D"
+	],
+	"recommended_fps": 16,
+	"blend_mode": "Additive for teal glow, Alpha blend for rings",
+	"z_index": "Below player but above ground effects",
+	"logic": "When XP orb enters Area2D, tween or accelerate it toward player center using curved steering behavior."
+  }
+}
+
+{
+  "skill_name": "Fireball",
+  "skill_owner": "Wizard",
+  "skill_type": "Orbiting Projectile",
+  "theme": "Orange Fire / Red Flames",
+  "animation_states": {
+	"spawn_ignition": {
+	  "duration_seconds": 0.35,
+	  "frame_count": 6,
+	  "loop": false,
+	  "description": "Fireballs ignite near the player before entering orbit.",
+	  "visuals": [
+		"Tiny orange spark appears",
+		"Spark expands into hot glowing core",
+		"Red flame wraps around core",
+		"Small ember burst outward",
+		"Fireball reaches full size",
+        "Fireball accelerates into orbit"
+	  ]
+	},
+	"orbit": {
+	  "duration_seconds": 1.4,
+	  "frame_count": 16,
+	  "loop": true,
+	  "movement": {
+		"fireball_count": "2-4",
+		"orbit_radius_pixels": 95,
+		"orbit_speed_degrees_per_second": 150,
+		"direction": "clockwise",
+		"spacing": "evenly distributed around player"
+	  },
+	  "visuals": {
+		"core": "Bright yellow-orange center",
+		"outer_flame": "Red-orange flame shell",
+		"trail": "Short curved flame streak following orbit path",
+		"heat_shimmer": "Subtle distortion behind each fireball"
+	  }
+	},
+	"flame_flicker": {
+	  "duration_seconds": 0.5,
+	  "frame_count": 8,
+	  "loop": true,
+	  "description": "Flames dance and change shape while orbiting.",
+	  "visuals": [
+		"Flame leans backward from movement",
+		"Outer red flame stretches slightly",
+		"Core glow pulses brighter",
+		"Small flame tongue splits upward",
+		"Flame contracts",
+		"Embers shed from tail",
+		"Glow softens",
+        "Returns to base shape"
+	  ]
+	},
+	"impact_explosion": {
+	  "duration_seconds": 0.32,
+	  "frame_count": 5,
+	  "loop": false,
+	  "description": "Fireball detonates on enemy contact, then respawns into orbit after cooldown.",
+	  "visuals": [
+		"White-orange impact flash",
+		"Round orange fire burst expands",
+		"Red flame spikes push outward",
+		"Embers scatter in all directions",
+        "Smoke and heat shimmer fade"
+	  ],
+	  "effects": {
+		"explosion_radius_pixels": 48,
+		"hitstop_seconds": 0.04,
+		"camera_shake_strength": 2.0
+	  }
+	},
+	"orbit_to_impact_transition": {
+	  "duration_seconds": 0.08,
+	  "frame_count": 2,
+	  "loop": false,
+	  "description": "Fireball briefly brightens and stretches toward the enemy before exploding.",
+	  "visuals": [
+		"Fireball scales to 1.15 and turns brighter",
+        "Trail snaps forward into impact flash"
+	  ]
+	}
+  },
+  "visual_effects": {
+	"flame_trail": {
+	  "enabled": true,
+	  "length_seconds": 0.18,
+	  "width_pixels": 12,
+	  "color_gradient": ["#FFD166", "#FF7A1A", "#D62828", "#00000000"]
+	},
+	"ember_particles": {
+	  "enabled": true,
+	  "idle_emission_rate": 10,
+	  "impact_burst_count": 28,
+	  "colors": ["#FFD166", "#FF8C00", "#E63900"]
+	},
+	"heat_shimmer": {
+	  "enabled": true,
+	  "strength": 0.08,
+	  "radius_pixels": 28
+	}
+  },
+  "particle_effects": {
+	"spawn_embers": {
+	  "burst_count": 14,
+	  "lifetime_seconds": 0.35,
+	  "velocity_pixels_per_second": 70,
+	  "spread_degrees": 360
+	},
+	"orbit_embers": {
+	  "emission_rate": 10,
+	  "lifetime_seconds": 0.45,
+	  "velocity_pixels_per_second": 35,
+	  "fade_out": true
+	},
+	"impact_embers": {
+	  "burst_count": 28,
+	  "lifetime_seconds": 0.55,
+	  "velocity_pixels_per_second": 150,
+	  "spread_degrees": 360,
+	  "gravity_pixels_per_second": 40
+	},
+	"impact_smoke": {
+	  "burst_count": 8,
+	  "lifetime_seconds": 0.7,
+	  "velocity_pixels_per_second": 35,
+	  "color": "#4A2A1A",
+	  "alpha_fade": true
+	}
+  },
+  "sound_design": {
+	"spawn": {
+	  "sound": "Small ignition flare",
+	  "duration_seconds": 0.25,
+	  "volume": 0.55
+	},
+	"orbit_loop": {
+	  "sound": "Soft looping fire whoosh",
+	  "loop": true,
+	  "volume": 0.16
+	},
+	"impact": {
+	  "sound": "Chunky cartoon fire explosion",
+	  "duration_seconds": 0.35,
+	  "volume": 0.85,
+	  "pitch_variation": 0.12
+	}
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D orbit pivot",
+	  "AnimatedSprite2D for fireball",
+	  "Area2D for collision",
+	  "GPUParticles2D for embers",
+	  "Line2D or Trail2D for flame trail",
+      "AudioStreamPlayer2D"
+	],
+	"recommended_fps": 16,
+	"blend_mode": "Additive for fire glow, Alpha blend for smoke",
+	"damage_timing": "Apply damage on first impact_explosion frame",
+	"respawn_logic": "After impact, hide projectile for 0.25s, then replay spawn_ignition and return to orbit"
+  }
+}
+
+{
+  "skill_name": "Elec Shockwave",
+  "skill_owner": "Wizard",
+  "skill_type": "Expanding Electrical Pulse",
+  "theme": "Electric Yellow with Blue Arcs",
+  "animation_states": {
+	"charge": {
+	  "duration_seconds": 0.4,
+	  "frame_count": 6,
+	  "loop": false,
+	  "description": "Electric energy builds around the player before discharge.",
+	  "visuals": [
+		"Small yellow sparks gather at player center",
+		"Blue arcs flicker around the player",
+		"Glow intensifies from dim yellow to white-yellow",
+		"Ground ring forms with jagged electric edges",
+		"Electric particles pull inward",
+        "Final bright flash before release"
+	  ]
+	},
+	"release": {
+	  "duration_seconds": 0.12,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "A sudden electrical burst erupts from the player.",
+	  "visuals": [
+		"White-yellow flash at center",
+		"Small circular shock ring appears instantly",
+        "Blue lightning branches snap outward"
+	  ],
+	  "effects": {
+		"camera_shake_strength": 2.2,
+		"hitstop_seconds": 0.03
+	  }
+	},
+	"expansion": {
+	  "duration_seconds": 1.0,
+	  "frame_count": 16,
+	  "loop": false,
+	  "description": "Jagged electric ring expands outward, damaging enemies it touches.",
+	  "movement": {
+		"start_radius_pixels": 28,
+		"max_radius_pixels": 500,
+		"expansion_speed_pixels_per_second": 472,
+		"ring_thickness_pixels": 18
+	  },
+	  "visuals": {
+		"main_ring": "Bright jagged yellow-white electric circle",
+		"secondary_ring": "Thin blue arc ring trailing behind",
+		"edge_behavior": "Uneven lightning spikes flicker outward",
+		"glow": "Strong yellow aura fading behind wave"
+	  }
+	},
+	"crackling": {
+	  "duration_seconds": 1.0,
+	  "frame_count": 12,
+	  "loop": true,
+	  "description": "Branching blue arcs jump along the expanding ring.",
+	  "lightning_strike_frequency": {
+		"minor_arcs_per_second": 18,
+		"major_arcs_per_second": 4,
+		"arc_lifetime_seconds": 0.08
+	  },
+	  "visuals": [
+		"Short blue branches jump between points on the ring",
+		"Small yellow sparks pop off the wave front",
+		"Occasional white-hot lightning fork flashes",
+        "Heat shimmer trails behind the pulse"
+	  ]
+	},
+	"enemy_hit": {
+	  "duration_seconds": 0.22,
+	  "frame_count": 4,
+	  "loop": false,
+	  "description": "Enemy briefly flashes with electrical stun feedback.",
+	  "visuals": [
+		"Enemy silhouette flashes white-yellow",
+		"Tiny blue arcs crawl over enemy body",
+		"Small spark burst at contact point",
+        "Enemy returns to normal with fading afterglow"
+	  ],
+	  "effects": {
+		"micro_stun_visual_seconds": 0.15,
+		"knockback_distance_pixels": 8
+	  }
+	},
+	"dissipation": {
+	  "duration_seconds": 0.35,
+	  "frame_count": 5,
+	  "loop": false,
+	  "description": "Shockwave loses energy and breaks into lingering sparks.",
+	  "visuals": [
+		"Jagged ring becomes thinner",
+		"Blue arcs stop branching",
+		"Yellow glow fades",
+		"Loose sparks drift outward",
+        "Wave disappears completely"
+	  ]
+	}
+  },
+  "visual_effects": {
+	"jagged_edges": {
+	  "enabled": true,
+	  "spike_length_pixels": "6-18",
+	  "randomize_every_seconds": 0.05
+	},
+	"branching_lightning": {
+	  "colors": ["#FFFFFF", "#FFE94A", "#46D9FF"],
+	  "branch_count_range": "3-7",
+	  "branch_length_pixels": "20-55"
+	},
+	"electric_glow": {
+	  "core_color": "#FFFFFF",
+	  "outer_color": "#FFD600",
+	  "blue_arc_color": "#46D9FF",
+	  "blend_mode": "additive"
+	},
+	"heat_distortion": {
+	  "enabled": true,
+	  "strength": 0.06,
+	  "duration_seconds": 0.4
+	}
+  },
+  "particle_effects": {
+	"charge_sparks": {
+	  "emission_rate": 28,
+	  "lifetime_seconds": 0.35,
+	  "movement": "spiral inward toward player",
+	  "velocity_pixels_per_second": 60,
+	  "colors": ["#FFE94A", "#46D9FF"]
+	},
+	"release_burst": {
+	  "burst_count": 36,
+	  "lifetime_seconds": 0.25,
+	  "velocity_pixels_per_second": 160,
+	  "spread_degrees": 360,
+	  "color": "#FFFFFF"
+	},
+	"wave_front_sparks": {
+	  "emission_rate": 50,
+	  "lifetime_seconds": 0.28,
+	  "follow_expanding_ring": true,
+	  "velocity_pixels_per_second": 45,
+	  "colors": ["#FFD600", "#FFF176", "#46D9FF"]
+	},
+	"enemy_hit_sparks": {
+	  "burst_count": 14,
+	  "lifetime_seconds": 0.22,
+	  "velocity_pixels_per_second": 90,
+	  "spread_degrees": 180,
+	  "color": "#46D9FF"
+	},
+	"dissipation_sparks": {
+	  "burst_count": 24,
+	  "lifetime_seconds": 0.55,
+	  "velocity_pixels_per_second": 40,
+	  "fade_out": true,
+	  "colors": ["#FFE94A", "#46D9FF"]
+	}
+  },
+  "sound_design": {
+	"charge": {
+	  "sound": "Rising electrical hum",
+	  "duration_seconds": 0.4,
+	  "pitch_curve": "ascending",
+	  "volume": 0.45
+	},
+	"release": {
+	  "sound": "Sharp electric discharge snap",
+	  "duration_seconds": 0.12,
+	  "volume": 0.9
+	},
+	"expansion": {
+	  "sound": "Wide crackling shockwave whoosh",
+	  "duration_seconds": 0.8,
+	  "volume": 0.55
+	},
+	"enemy_hit": {
+	  "sound": "Small zap impact",
+	  "duration_seconds": 0.12,
+	  "pitch_variation": 0.15
+	},
+	"dissipation": {
+	  "sound": "Fading static sparks",
+	  "duration_seconds": 0.35,
+	  "volume": 0.25
+	}
+  },
+  "gameplay_timing": {
+	"activation_interval_seconds": 4.0,
+	"charge_duration_seconds": 0.4,
+	"wave_duration_seconds": 1.0,
+	"max_radius_pixels": 500,
+	"expansion_speed_pixels_per_second": 472,
+	"damage_application": "Apply damage once per enemy when expanding ring intersects enemy collision area"
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D",
+	  "Area2D",
+	  "CollisionShape2D CircleShape2D",
+	  "Line2D for jagged shockwave ring",
+	  "GPUParticles2D for sparks",
+	  "AnimatedSprite2D for center flash",
+      "AudioStreamPlayer2D"
+	],
+	"recommended_fps": 16,
+	"blend_mode": "Additive for electric glow and sparks",
+	"z_index": "Above ground effects, below UI and damage numbers",
+	"implementation_note": "Animate CircleShape2D radius from 28px to 500px over 1.0s. Use a second smaller radius or hit cache to ensure enemies are hit only when the wave front reaches them, not simply anywhere inside the final circle."
+  }
+}
+
+{
+  "skill_name": "Hurricane",
+  "skill_owner": "Wizard",
+  "skill_type": "Continuous Spinning Aura",
+  "theme": "Light Blue Wind / Tornado",
+  "animation_states": {
+	"activation": {
+	  "duration_seconds": 0.45,
+	  "frame_count": 7,
+	  "loop": false,
+	  "description": "Wind begins forming around the player and quickly builds into a circular cyclone.",
+	  "visuals": [
+		"Small pale-blue wind curl appears under player",
+		"Thin spiral lines begin rotating",
+		"Dust and leaf debris lift upward",
+		"Outer wind ring expands to full radius",
+		"Cyclone glow brightens",
+		"Wind streaks stretch into a circular aura",
+        "Aura enters idle rotation"
+	  ]
+	},
+	"idle_rotation": {
+	  "duration_seconds": 1.0,
+	  "frame_count": 16,
+	  "loop": true,
+	  "movement": {
+		"radius_pixels": 105,
+		"rotation_speed_degrees_per_second": 260,
+		"direction": "clockwise",
+		"inner_ring_speed_degrees_per_second": 320,
+		"outer_ring_speed_degrees_per_second": 210
+	  },
+	  "visuals": {
+		"inner_spiral": "Fast pale-blue spiral wind around player feet",
+		"outer_ring": "Soft circular gust boundary",
+		"wind_lines": "Curved streaks rotating around player",
+		"debris": "Tiny leaves, dust, and light stones caught in airflow"
+	  }
+	},
+	"speed_variation": {
+	  "duration_seconds": 2.4,
+	  "frame_count": 24,
+	  "loop": true,
+	  "description": "Hurricane intensity breathes over time, alternating between calm spin and stronger cyclone burst.",
+	  "timing": {
+		"calm_phase_seconds": 1.2,
+		"intense_phase_seconds": 0.8,
+		"settle_phase_seconds": 0.4
+	  },
+	  "rotation_speed": {
+		"calm_degrees_per_second": 220,
+		"intense_degrees_per_second": 360,
+		"transition_curve": "sine_in_out"
+	  },
+	  "color_intensity": {
+		"calm": "#8EDBFF",
+		"intense": "#D7F7FF"
+	  }
+	},
+	"particle_swirl": {
+	  "duration_seconds": 1.1,
+	  "frame_count": 12,
+	  "loop": true,
+	  "description": "Wind particles spiral outward from the player, then curve back into the hurricane ring.",
+	  "movement": {
+		"path_type": "spiral_out_then_in",
+		"start_radius_pixels": 25,
+		"peak_radius_pixels": 115,
+		"return_radius_pixels": 75,
+		"cycle_seconds": 1.1,
+		"vertical_bob_pixels": 6
+	  },
+	  "particles": {
+		"types": ["wind mote", "dust speck", "leaf shard", "small pebble"],
+		"emission_rate": 32,
+		"lifetime_seconds": 0.9,
+		"size_range_pixels": [2, 7]
+	  }
+	},
+	"enemy_knockback": {
+	  "duration_seconds": 0.25,
+	  "frame_count": 4,
+	  "loop": false,
+	  "description": "Enemies hit by the hurricane are pushed outward with wind streaks.",
+	  "visuals": [
+		"Enemy flashes pale blue",
+		"Curved wind slash appears at contact point",
+		"Enemy slides away from player",
+        "Small dust burst appears behind enemy"
+	  ],
+	  "effects": {
+		"knockback_distance_pixels": 28,
+		"hitstop_seconds": 0.025,
+		"damage_tick_interval_seconds": 0.5
+	  }
+	},
+	"dissipation": {
+	  "duration_seconds": 0.5,
+	  "frame_count": 8,
+	  "loop": false,
+	  "description": "Cyclone slows down, breaks apart, and fades into soft wind particles.",
+	  "visuals": [
+		"Rotation speed drops",
+		"Outer wind ring becomes thinner",
+		"Spiral lines break into loose particles",
+		"Debris falls downward",
+        "Final pale-blue shimmer fades"
+	  ]
+	}
+  },
+  "visual_effects": {
+	"spiral_patterns": {
+	  "count": 3,
+	  "line_width_pixels": 5,
+	  "opacity_range": [0.25, 0.65],
+	  "colors": ["#D7F7FF", "#8EDBFF", "#4BB7E8"]
+	},
+	"wind_lines": {
+	  "count": 14,
+	  "length_pixels": "28-70",
+	  "curve_strength": 0.45,
+	  "fade_tail": true
+	},
+	"debris_particles": {
+	  "types": ["dust", "leaf", "tiny stone"],
+	  "color_palette": ["#C8D8D8", "#8DBA9A", "#8A7A65"],
+	  "motion": "caught in circular airflow"
+	},
+	"aura_glow": {
+	  "blend_mode": "additive",
+	  "opacity": 0.35,
+	  "pulse_cycle_seconds": 1.2
+	}
+  },
+  "particle_effects": {
+	"wind_motes": {
+	  "emission_rate": 32,
+	  "lifetime_seconds": 0.9,
+	  "velocity_pixels_per_second": 95,
+	  "radial_acceleration": -35,
+	  "tangential_acceleration": 180,
+	  "color_gradient": ["#D7F7FF", "#8EDBFF", "#4BB7E800"]
+	},
+	"debris": {
+	  "emission_rate": 10,
+	  "lifetime_seconds": 1.1,
+	  "velocity_pixels_per_second": 70,
+	  "spin_degrees_per_second": 240,
+	  "fade_out": true
+	},
+	"damage_gust_burst": {
+	  "burst_count": 12,
+	  "lifetime_seconds": 0.25,
+	  "velocity_pixels_per_second": 130,
+	  "spread_degrees": 90,
+	  "color": "#D7F7FF"
+	}
+  },
+  "sound_design": {
+	"activation": {
+	  "sound": "Rising wind swirl",
+	  "duration_seconds": 0.45,
+	  "volume": 0.55
+	},
+	"idle_loop": {
+	  "sound": "Looping soft cyclone whistle",
+	  "loop": true,
+	  "volume": 0.22
+	},
+	"intensity_peak": {
+	  "sound": "Stronger rushing wind swell",
+	  "duration_seconds": 0.8,
+	  "volume": 0.38
+	},
+	"enemy_hit": {
+	  "sound": "Soft gust impact thump",
+	  "duration_seconds": 0.12,
+	  "pitch_variation": 0.12
+	},
+	"dissipation": {
+	  "sound": "Wind calming down",
+	  "duration_seconds": 0.5,
+	  "volume": 0.35
+	}
+  },
+  "gameplay_timing": {
+	"damage_tick_interval_seconds": 0.5,
+	"aura_radius_pixels": 105,
+	"base_rotation_speed_degrees_per_second": 260,
+	"intense_rotation_speed_degrees_per_second": 360,
+	"speed_variation_cycle_seconds": 2.4,
+	"knockback_distance_pixels": 28
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D",
+	  "Area2D with CircleShape2D",
+	  "AnimatedSprite2D for rotating aura",
+	  "Line2D for spiral wind streaks",
+	  "GPUParticles2D for wind motes",
+	  "GPUParticles2D for debris",
+      "AudioStreamPlayer2D"
+	],
+	"recommended_fps": 16,
+	"blend_mode": "Additive for wind glow, Alpha blend for debris",
+	"z_index": "Below player body but above ground effects",
+	"damage_logic": "Apply damage every 0.5 seconds to enemies inside Area2D and apply outward knockback vector from player center."
+  }
+}
+
+{
+  "skill_name": "Blizzard",
+  "skill_owner": "Wizard",
+  "skill_type": "Screen-wide Ice Storm Ultimate",
+  "theme": "Pale Cyan / Icy White",
+  "animation_states": {
+	"charge": {
+	  "duration_seconds": 0.5,
+	  "frame_count": 8,
+	  "loop": false,
+	  "description": "Ominous icy magic gathers before the screen-wide storm erupts.",
+	  "visuals": [
+		"Pale cyan glow forms around player",
+		"Small snowflakes spiral inward",
+		"Screen edges frost slightly",
+		"Cold mist thickens",
+		"Crystalline magic circle flashes under player",
+        "Brightness rises to icy white"
+	  ]
+	},
+	"release": {
+	  "duration_seconds": 0.25,
+	  "frame_count": 4,
+	  "loop": false,
+	  "description": "A sudden icy burst fills the entire screen.",
+	  "visuals": [
+		"White-cyan flash covers screen",
+		"Heavy snow rushes outward from player",
+		"Frosted glass overlay appears",
+        "First icicle shards snap into view"
+	  ],
+	  "screen_effect": {
+		"freeze_flash_seconds": 0.08,
+		"camera_shake_strength": 2.5,
+		"screen_tint": "#DFFBFF"
+	  }
+	},
+	"peak_blizzard": {
+	  "duration_seconds": 2.0,
+	  "frame_count": 32,
+	  "loop": true,
+	  "description": "Maximum storm intensity. Snow, mist, and ice shards dominate the screen.",
+	  "visuals": {
+		"snow_density": "very_high",
+		"visibility": "reduced by frosty mist",
+		"screen_overlay": "frosted glass edges",
+		"ice_shards": "periodic crystal spikes forming near enemies",
+		"color_palette": ["#FFFFFF", "#DFFBFF", "#9EEBFF", "#B8F4FF"]
+	  }
+	},
+	"snowflake_motion": {
+	  "duration_seconds": 2.0,
+	  "frame_count": 24,
+	  "loop": true,
+	  "description": "Large and small snowflakes fall diagonally at different speeds.",
+	  "layers": {
+		"foreground_large_flakes": {
+		  "speed_pixels_per_second": 180,
+		  "size_pixels": "8-16",
+		  "opacity": 0.85
+		},
+		"mid_small_flakes": {
+		  "speed_pixels_per_second": 120,
+		  "size_pixels": "4-8",
+		  "opacity": 0.65
+		},
+		"background_tiny_flakes": {
+		  "speed_pixels_per_second": 70,
+		  "size_pixels": "2-4",
+		  "opacity": 0.35
+		}
+	  },
+	  "wind_direction": "diagonal top-left to bottom-right",
+	  "sway_amplitude_pixels": 12
+	},
+	"icicle_formation": {
+	  "duration_seconds": 0.45,
+	  "frame_count": 6,
+	  "loop": false,
+	  "repeat_interval_seconds": 0.35,
+	  "description": "Sharp ice shards form periodically during peak blizzard.",
+	  "visuals": [
+		"Small frost circle appears on ground",
+		"Ice crack lines spread outward",
+		"Icicle shard grows upward quickly",
+		"Shard flashes cyan-white",
+		"Shard cracks and bursts into frost",
+        "Fragments fade"
+	  ]
+	},
+	"freezing_effect_on_enemies": {
+	  "duration_seconds": 0.6,
+	  "frame_count": 8,
+	  "loop": true,
+	  "description": "Enemies show clear slow and freezing feedback.",
+	  "visuals": [
+		"Enemy silhouette tints pale blue",
+		"Thin ice outline forms around body",
+		"Snow gathers near feet",
+		"Movement leaves faint icy afterimage",
+        "Small frost cracks appear briefly"
+	  ],
+	  "status_effect": {
+		"slow_percentage": 55,
+		"refresh_while_blizzard_active": true
+	  }
+	},
+	"dissipation": {
+	  "duration_seconds": 1.0,
+	  "frame_count": 16,
+	  "loop": false,
+	  "description": "Storm fades as snow settles and frost melts away.",
+	  "visuals": [
+		"Snow density decreases",
+		"Frosted screen edges fade",
+		"Icicle shards stop spawning",
+		"Remaining flakes fall slowly",
+		"Cold mist dissolves",
+        "Screen returns to normal color"
+	  ]
+	}
+  },
+  "visual_effects": {
+	"frosted_glass_overlay": {
+	  "enabled": true,
+	  "opacity_peak": 0.45,
+	  "edge_frost_strength": 0.8,
+	  "fade_in_seconds": 0.25,
+	  "fade_out_seconds": 1.0
+	},
+	"crystalline_formations": {
+	  "spawn_interval_seconds": 0.35,
+	  "max_active_shards": 8,
+	  "color": "#B8F4FF",
+	  "glow": true
+	},
+	"heavy_snowfall": {
+	  "layer_count": 3,
+	  "parallax": true,
+	  "wind_sway": true
+	},
+	"screen_freeze_effect": {
+	  "start_time_seconds": 0.5,
+	  "duration_seconds": 0.12,
+	  "effect": "brief white-cyan freeze flash before peak storm"
+	}
+  },
+  "particle_density_over_time": {
+	"charge": {
+	  "snowflakes_per_second": 25,
+	  "mist_opacity": 0.2
+	},
+	"release": {
+	  "snowflakes_per_second": 180,
+	  "mist_opacity": 0.65
+	},
+	"peak": {
+	  "snowflakes_per_second": 260,
+	  "mist_opacity": 0.75
+	},
+	"dissipation": {
+	  "snowflakes_per_second_start": 140,
+	  "snowflakes_per_second_end": 15,
+	  "mist_opacity_start": 0.5,
+	  "mist_opacity_end": 0.0
+	}
+  },
+  "particle_effects": {
+	"snowflakes": {
+	  "lifetime_seconds": 2.2,
+	  "gravity_pixels_per_second": 80,
+	  "wind_pixels_per_second": 140,
+	  "rotation_speed_degrees_per_second": "40-160",
+	  "size_range_pixels": [2, 16],
+	  "color_gradient": ["#FFFFFF", "#DFFBFF", "#9EEBFF00"]
+	},
+	"ice_shards": {
+	  "burst_count": 12,
+	  "lifetime_seconds": 0.45,
+	  "velocity_pixels_per_second": 95,
+	  "spread_degrees": 360,
+	  "shape": "sharp crystal triangles"
+	},
+	"cold_mist": {
+	  "emission_rate": 40,
+	  "lifetime_seconds": 1.4,
+	  "velocity_pixels_per_second": 25,
+	  "alpha_fade": true,
+	  "blend_mode": "alpha"
+	}
+  },
+  "sound_design": {
+	"charge": {
+	  "sound": "Low magical ice hum rising",
+	  "duration_seconds": 0.5,
+	  "volume": 0.55
+	},
+	"release": {
+	  "sound": "Sudden icy burst with deep whoosh",
+	  "duration_seconds": 0.25,
+	  "volume": 1.0
+	},
+	"peak_loop": {
+	  "sound": "Howling blizzard wind with ice crackles",
+	  "loop": true,
+	  "duration_seconds": 2.0,
+	  "volume": 0.75
+	},
+	"icicle_spawn": {
+	  "sound": "Sharp crystal crack",
+	  "duration_seconds": 0.18,
+	  "pitch_variation": 0.15
+	},
+	"enemy_freeze": {
+	  "sound": "Small frost snap",
+	  "duration_seconds": 0.12,
+	  "volume": 0.35
+	},
+	"dissipation": {
+	  "sound": "Wind fading with soft falling snow",
+	  "duration_seconds": 1.0,
+	  "volume": 0.45
+	}
+  },
+  "gameplay_timing": {
+	"total_duration_seconds": 3.75,
+	"charge_seconds": 0.5,
+	"release_seconds": 0.25,
+	"peak_seconds": 2.0,
+	"dissipation_seconds": 1.0,
+	"damage_tick_interval_seconds": 0.25,
+	"slow_percentage": 55,
+	"screen_coverage": "full_screen"
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "CanvasLayer for screen-wide storm overlay",
+	  "GPUParticles2D for snow layers",
+	  "GPUParticles2D for mist",
+	  "AnimatedSprite2D for icicle formations",
+	  "ColorRect for screen flash and tint",
+	  "Area2D or global enemy query for damage ticks",
+      "AudioStreamPlayer"
+	],
+	"recommended_fps": 16,
+	"blend_mode": "Additive for ice glow, Alpha blend for snow and mist",
+	"damage_logic": "During peak_blizzard, apply damage every 0.25 seconds to all enemies on screen and refresh slow effect.",
+	"performance_note": "Use 3 pooled particle emitters for snow layers instead of spawning individual snowflake nodes."
+  }
+}
+
+{
+  "skill_name": "Arrow Shot",
+  "skill_owner": "Archer",
+  "skill_type": "Fast Piercing Projectile",
+  "theme": "Forest Green",
+  "animation_states": {
+	"draw": {
+	  "duration_seconds": 0.18,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "Archer briefly nocks and draws an arrow before auto-firing.",
+	  "visuals": [
+		"Small green aim spark appears",
+		"Bowstring pulls back with arrow glow",
+        "Arrow tip flashes forest green"
+	  ]
+	},
+	"fire": {
+	  "duration_seconds": 0.08,
+	  "frame_count": 2,
+	  "loop": false,
+	  "description": "Arrow launches sharply toward nearest enemy.",
+	  "visuals": [
+		"Quick bow snap",
+        "Short green muzzle-like streak from bow"
+	  ]
+	},
+	"travel": {
+	  "duration_seconds": 0.4,
+	  "frame_count": 6,
+	  "loop": true,
+	  "movement": {
+		"projectile_count": "1-3",
+		"speed_pixels_per_second": 900,
+		"path": "straight_line",
+		"pierce_enabled": true,
+		"max_pierce_targets": 3
+	  },
+	  "arrow_rotation": {
+		"align_to_velocity": true,
+		"spin_degrees_per_second": 720
+	  },
+	  "visuals": {
+		"arrow": "Slim wooden arrow with forest-green glowing tip",
+		"trail": "Thin fading green line behind arrow",
+		"wind_streaks": "Small pale-green speed lines beside arrow"
+	  }
+	},
+	"trail": {
+	  "duration_seconds": 0.22,
+	  "frame_count": 4,
+	  "loop": false,
+	  "description": "Arrow leaves a clean fading path line.",
+	  "fade_timing": {
+		"start_alpha": 0.75,
+		"end_alpha": 0.0,
+		"fade_duration_seconds": 0.22
+	  }
+	},
+	"impact_pierce": {
+	  "duration_seconds": 0.16,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "Arrow pierces through enemy with a sharp green slash flash.",
+	  "visuals": [
+		"Small green hit spark at entry point",
+		"Thin leaf-shaped slash appears",
+        "Arrow exits with brief speed streak"
+	  ],
+	  "effects": {
+		"hitstop_seconds": 0.02,
+		"enemy_flash_color": "#A7F36B"
+	  }
+	},
+	"penetration": {
+	  "duration_seconds": 0.12,
+	  "frame_count": 2,
+	  "loop": false,
+	  "description": "Arrow continues through multiple enemies without stopping.",
+	  "visuals": [
+		"Arrow briefly brightens after each pierce",
+        "Trail thickens slightly for 0.08s"
+	  ],
+	  "damage_logic": {
+		"damage_each_enemy_once": true,
+		"pierce_damage_multiplier_after_each_hit": 0.85
+	  }
+	}
+  },
+  "visual_effects": {
+	"green_trail": {
+	  "color_gradient": ["#D8FF9A", "#4CAF50", "#4CAF5000"],
+	  "length_seconds": 0.18,
+	  "width_pixels": 5
+	},
+	"wind_streaks": {
+	  "count": 3,
+	  "length_pixels": "18-36",
+	  "opacity": 0.45,
+	  "color": "#B7F5A1"
+	},
+	"arrow_glow": {
+	  "tip_color": "#76FF03",
+	  "glow_radius_pixels": 12,
+	  "blend_mode": "additive"
+	}
+  },
+  "sound_design": {
+	"draw": {
+	  "sound": "Short bowstring pull",
+	  "duration_seconds": 0.18,
+	  "volume": 0.45
+	},
+	"fire": {
+	  "sound": "Sharp arrow release twang",
+	  "duration_seconds": 0.1,
+	  "volume": 0.75
+	},
+	"travel": {
+	  "sound": "Soft arrow whistle",
+	  "duration_seconds": 0.25,
+	  "volume": 0.25
+	},
+	"impact": {
+	  "sound": "Light wooden pierce hit",
+	  "duration_seconds": 0.12,
+	  "pitch_variation": 0.12
+	}
+  },
+  "particle_effects": {
+	"fire_leaf_sparks": {
+	  "burst_count": 8,
+	  "lifetime_seconds": 0.25,
+	  "velocity_pixels_per_second": 70,
+	  "spread_degrees": 45,
+	  "color": "#8BC34A"
+	},
+	"travel_motes": {
+	  "emission_rate": 12,
+	  "lifetime_seconds": 0.2,
+	  "size_pixels": "2-4",
+	  "fade_out": true,
+	  "color": "#A5D66A"
+	},
+	"impact_sparks": {
+	  "burst_count": 10,
+	  "lifetime_seconds": 0.18,
+	  "velocity_pixels_per_second": 85,
+	  "spread_degrees": 120,
+	  "color": "#A7F36B"
+	}
+  },
+  "gameplay_timing": {
+	"shot_interval_seconds": 0.75,
+	"draw_seconds": 0.18,
+	"fire_seconds": 0.08,
+	"trail_fade_seconds": 0.22,
+	"projectile_speed_pixels_per_second": 900,
+	"arrow_spin_degrees_per_second": 720,
+	"max_pierce_targets": 3
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D",
+	  "AnimatedSprite2D for arrow",
+	  "Area2D for hit detection",
+	  "CollisionShape2D",
+	  "Line2D for trail",
+	  "GPUParticles2D for sparks",
+      "AudioStreamPlayer2D"
+	],
+	"recommended_fps": 16,
+	"blend_mode": "Additive for glow, Alpha blend for trail",
+	"damage_logic": "Arrow travels in a straight line toward target direction selected at fire time. Keep a hit_cache array so each enemy is damaged once per arrow while piercing."
+  }
+}
+
+{
+  "skill_name": "Split Arrow",
+  "skill_owner": "Archer",
+  "skill_type": "Fan Spread Projectile",
+  "theme": "Lime Green",
+  "animation_states": {
+	"fire": {
+	  "duration_seconds": 0.1,
+	  "frame_count": 2,
+	  "loop": false,
+	  "description": "Multiple arrows launch from the player center with a bright lime-green flash.",
+	  "visuals": [
+		"Small lime aim flash appears",
+        "3-7 arrows burst forward together"
+	  ]
+	},
+	"fan_spread": {
+	  "duration_seconds": 0.15,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "Arrows quickly separate into a clean fan pattern.",
+	  "spread_angle_degrees": {
+		"3_arrows": 30,
+		"5_arrows": 50,
+		"7_arrows": 70
+	  },
+	  "visuals": [
+		"Center arrow travels straight",
+		"Side arrows curve outward slightly",
+        "Lime light rays briefly show the spread direction"
+	  ]
+	},
+	"travel": {
+	  "duration_seconds": 0.45,
+	  "frame_count": 6,
+	  "loop": true,
+	  "movement": {
+		"arrow_count": "3-7",
+		"speed_pixels_per_second": 820,
+		"path": "straight_line_after_spread",
+		"same_speed_per_arrow": true
+	  },
+	  "description": "Each arrow moves independently at the same speed after fan separation."
+	},
+	"rotation": {
+	  "duration_seconds": 0.35,
+	  "frame_count": 6,
+	  "loop": true,
+	  "arrow_rotation": {
+		"align_to_velocity": true,
+		"spin_degrees_per_second": 540
+	  },
+	  "description": "Arrows subtly spin while staying visually aligned to their travel direction."
+	},
+	"trail": {
+	  "duration_seconds": 0.24,
+	  "frame_count": 4,
+	  "loop": false,
+	  "description": "Each arrow leaves its own fading lime-green trail.",
+	  "per_arrow_trail": {
+		"length_seconds": 0.2,
+		"fade_duration_seconds": 0.24,
+		"width_pixels": 5,
+		"start_alpha": 0.8,
+		"end_alpha": 0.0,
+		"color_gradient": ["#DFFF70", "#8AFF2A", "#8AFF2A00"]
+	  }
+	},
+	"impact": {
+	  "duration_seconds": 0.16,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "Each arrow creates a small individual lime impact burst on enemy hit.",
+	  "visuals": [
+		"Small lime flash at contact point",
+		"Tiny leaf-like slash spark",
+        "Trail fades immediately after hit"
+	  ],
+	  "effects": {
+		"hitstop_seconds": 0.02,
+		"enemy_flash_color": "#B6FF4D"
+	  }
+	}
+  },
+  "visual_effects": {
+	"spread_pattern_visualization": {
+	  "enabled": true,
+	  "duration_seconds": 0.12,
+	  "line_count_matches_arrow_count": true,
+	  "line_color": "#A6FF3D",
+	  "opacity": 0.35
+	},
+	"light_rays": {
+	  "enabled": true,
+	  "count": "3-7",
+	  "length_pixels": 55,
+	  "fade_seconds": 0.18
+	},
+	"sparkles": {
+	  "emission_rate_per_arrow": 6,
+	  "lifetime_seconds": 0.22,
+	  "size_pixels": "2-4",
+	  "color": "#CFFF6A"
+	}
+  },
+  "sound_design": {
+	"fire": {
+	  "sound": "Layered multi-arrow bow release",
+	  "duration_seconds": 0.12,
+	  "volume": 0.8
+	},
+	"fan_spread": {
+	  "sound": "Fast airy split whoosh",
+	  "duration_seconds": 0.15,
+	  "volume": 0.45
+	},
+	"travel": {
+	  "sound": "Soft multiple arrow whistles",
+	  "duration_seconds": 0.3,
+	  "volume": 0.25
+	},
+	"impact": {
+	  "sound": "Light piercing hit",
+	  "duration_seconds": 0.1,
+	  "pitch_variation": 0.15
+	}
+  },
+  "particle_effects": {
+	"fire_sparks": {
+	  "burst_count": 14,
+	  "lifetime_seconds": 0.22,
+	  "velocity_pixels_per_second": 90,
+	  "spread_degrees": 60,
+	  "color": "#A6FF3D"
+	},
+	"per_arrow_trail_particles": {
+	  "emission_rate": 10,
+	  "lifetime_seconds": 0.22,
+	  "fade_out": true,
+	  "size_pixels": "2-4",
+	  "color": "#B6FF4D"
+	},
+	"impact_sparks": {
+	  "burst_count": 8,
+	  "lifetime_seconds": 0.16,
+	  "velocity_pixels_per_second": 75,
+	  "spread_degrees": 110,
+	  "color": "#DFFF70"
+	}
+  },
+  "gameplay_timing": {
+	"shot_interval_seconds": 1.0,
+	"fire_seconds": 0.1,
+	"fan_spread_seconds": 0.15,
+	"projectile_speed_pixels_per_second": 820,
+	"arrow_spin_degrees_per_second": 540,
+	"trail_fade_seconds": 0.24
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D",
+	  "AnimatedSprite2D for each arrow",
+	  "Area2D per arrow",
+	  "CollisionShape2D",
+	  "Line2D per arrow trail",
+	  "GPUParticles2D per arrow or pooled particles",
+      "AudioStreamPlayer2D"
+	],
+	"recommended_fps": 16,
+	"blend_mode": "Additive for lime glow, Alpha blend for trails",
+	"spawn_logic": "Spawn arrows at player center, distribute directions evenly across spread_angle_degrees, then move each arrow independently using its normalized direction vector.",
+	"damage_logic": "Each arrow damages the first enemy it hits unless upgraded with pierce."
+  }
+}
+
+{
+  "skill_name": "Pierce Arrow",
+  "skill_owner": "Archer",
+  "skill_type": "Heavy Piercing Projectile",
+  "theme": "Teal with Cyan Glow",
+  "animation_states": {
+	"charge": {
+	  "duration_seconds": 0.1,
+	  "frame_count": 2,
+	  "loop": false,
+	  "description": "Arrow briefly gathers teal energy before firing.",
+	  "visuals": [
+		"Arrow tip glows teal",
+        "Cyan aura wraps around arrow shaft"
+	  ]
+	},
+	"fire": {
+	  "duration_seconds": 0.08,
+	  "frame_count": 2,
+	  "loop": false,
+	  "description": "Arrow launches with a sharp cyan energy burst.",
+	  "visuals": [
+		"Bright cyan flash at release point",
+        "Compressed teal energy ring snaps forward"
+	  ],
+	  "particles": {
+		"burst_count": 12,
+		"lifetime_seconds": 0.22,
+		"velocity_pixels_per_second": 110,
+		"color": "#36F7E2"
+	  }
+	},
+	"travel": {
+	  "duration_seconds": 0.5,
+	  "frame_count": 8,
+	  "loop": true,
+	  "movement": {
+		"projectile_count": "1-3",
+		"speed_pixels_per_second": 980,
+		"path": "straight_line",
+		"pierce_all_enemies": true,
+		"despawn_on_range_end": true
+	  },
+	  "visuals": {
+		"arrow": "Heavy arrow with teal glowing head and cyan-lit edges",
+		"aura": "Constant cyan energy shell around arrow",
+		"trail": "Thick teal beam-like trail fading behind arrow"
+	  }
+	},
+	"glow_intensity": {
+	  "duration_seconds": 0.6,
+	  "frame_count": 6,
+	  "loop": true,
+	  "description": "Arrow maintains strong energy glow throughout flight.",
+	  "glow": {
+		"core_color": "#E6FFFF",
+		"mid_color": "#36F7E2",
+		"outer_color": "#0CA6A6",
+		"opacity_min": 0.75,
+		"opacity_max": 1.0,
+		"pulse_cycle_seconds": 0.3
+	  }
+	},
+	"pierce": {
+	  "duration_seconds": 0.14,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "Special effect when arrow passes through an enemy without stopping.",
+	  "visuals": [
+		"Enemy flashes cyan-white",
+		"Thin teal slash line appears through enemy body",
+        "Small energy ring opens at exit point"
+	  ],
+	  "effects": {
+		"hitstop_seconds": 0.015,
+		"enemy_flash_color": "#7FFFF2"
+	  }
+	},
+	"sparkle_trail": {
+	  "duration_seconds": 0.3,
+	  "frame_count": 5,
+	  "loop": true,
+	  "description": "Sparkling cyan particles shed from the arrow trail.",
+	  "particles": {
+		"emission_rate": 24,
+		"lifetime_seconds": 0.28,
+		"size_pixels": "2-5",
+		"fade_out": true,
+		"colors": ["#E6FFFF", "#36F7E2", "#0CA6A6"]
+	  }
+	},
+	"penetration_visual": {
+	  "duration_seconds": 0.1,
+	  "frame_count": 2,
+	  "loop": false,
+	  "description": "Arrow continues forward after each hit, slightly brightening to show unstoppable piercing power.",
+	  "visuals": [
+		"Arrow glow spikes briefly",
+        "Trail becomes thicker for 0.06s"
+	  ]
+	}
+  },
+  "visual_effects": {
+	"energy_aura": {
+	  "enabled": true,
+	  "radius_pixels": 14,
+	  "blend_mode": "additive",
+	  "color": "#36F7E2"
+	},
+	"cyan_trail": {
+	  "enabled": true,
+	  "length_seconds": 0.22,
+	  "width_pixels": 8,
+	  "fade_duration_seconds": 0.28,
+	  "color_gradient": ["#E6FFFF", "#36F7E2", "#0CA6A600"]
+	},
+	"pierce_ring": {
+	  "radius_pixels": 24,
+	  "duration_seconds": 0.14,
+	  "color": "#7FFFF2"
+	}
+  },
+  "sound_design": {
+	"charge": {
+	  "sound": "Short charged energy shimmer",
+	  "duration_seconds": 0.1,
+	  "volume": 0.45
+	},
+	"fire": {
+	  "sound": "Heavy bow release with cyan energy snap",
+	  "duration_seconds": 0.12,
+	  "volume": 0.85
+	},
+	"travel": {
+	  "sound": "Fast magical arrow whoosh",
+	  "duration_seconds": 0.35,
+	  "volume": 0.3
+	},
+	"pierce": {
+	  "sound": "Clean energy slice",
+	  "duration_seconds": 0.1,
+	  "pitch_variation": 0.12
+	},
+	"sparkle": {
+	  "sound": "Tiny magical sparkle ticks",
+	  "volume": 0.18
+	}
+  },
+  "energy_trail_behavior": {
+	"trail_type": "Line2D or pooled trail sprites",
+	"follows_projectile": true,
+	"fade_after_seconds": 0.28,
+	"width_start_pixels": 8,
+	"width_end_pixels": 0,
+	"alpha_start": 0.85,
+	"alpha_end": 0.0
+  },
+  "gameplay_timing": {
+	"charge_seconds": 0.1,
+	"fire_seconds": 0.08,
+	"projectile_speed_pixels_per_second": 980,
+	"max_range_pixels": 900,
+	"pierce_limit": "unlimited_until_range_end",
+	"damage_rule": "Damage each enemy once per arrow using hit_cache"
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D",
+	  "AnimatedSprite2D for arrow",
+	  "Area2D",
+	  "CollisionShape2D",
+	  "Line2D for cyan trail",
+	  "GPUParticles2D for sparkle trail",
+      "AudioStreamPlayer2D"
+	],
+	"recommended_fps": 16,
+	"blend_mode": "Additive for glow and trail",
+	"damage_logic": "Do not destroy arrow on hit. Store enemy instance IDs in hit_cache so the same arrow does not damage the same enemy multiple times."
+  }
+}
+
+{
+  "skill_name": "Sky Fall",
+  "skill_owner": "Archer",
+  "skill_type": "Screen-wide Arrow Rain Ultimate",
+  "theme": "Deep Green",
+  "animation_states": {
+	"appear": {
+	  "duration_seconds": 0.3,
+	  "frame_count": 5,
+	  "loop": false,
+	  "description": "Dark green magic clouds form at the top of the screen as arrows begin spawning.",
+	  "visuals": [
+		"Top screen edge darkens with green wind glow",
+		"Arrow silhouettes appear above screen",
+		"Thin aim streaks point downward",
+		"First wave of arrows enters screen",
+        "Rain phase begins"
+	  ]
+	},
+	"rain": {
+	  "duration_seconds": 2.0,
+	  "frame_count": 32,
+	  "loop": true,
+	  "description": "Continuous arrows rain down across the entire screen at varied angles and speeds.",
+	  "arrow_count_total": 120,
+	  "spawn_rate_per_second": 60,
+	  "movement": {
+		"base_velocity_pixels_per_second": 850,
+		"max_velocity_pixels_per_second": 1150,
+		"acceleration_pixels_per_second_squared": 260,
+		"angle_range_degrees": [-18, 18],
+		"spawn_area": "full_screen_width_plus_margin",
+		"spawn_y_pixels": "-80 to -180"
+	  },
+	  "randomization": {
+		"x_position_jitter_pixels": 40,
+		"angle_jitter_degrees": 12,
+		"speed_jitter_percent": 20,
+		"scale_jitter_percent": 15,
+		"spawn_interval_jitter_seconds": 0.025
+	  }
+	},
+	"impact": {
+	  "duration_seconds": 0.2,
+	  "frame_count": 4,
+	  "loop": false,
+	  "description": "Each arrow creates a quick ground hit effect when it lands.",
+	  "visuals": [
+		"Deep green slash flash",
+		"Small dust puff",
+		"Leaf-like spark burst",
+        "Impact fades quickly"
+	  ],
+	  "effects": {
+		"hitstop_seconds": 0.015,
+		"impact_radius_pixels": 28
+	  }
+	},
+	"ground_effect": {
+	  "duration_seconds": 0.35,
+	  "frame_count": 5,
+	  "loop": false,
+	  "description": "Temporary landing markers appear where arrows hit.",
+	  "visuals": {
+		"marker": "Small cracked ground mark with green glow",
+		"dust": "Short brown-gray dust puff",
+		"leaf_sparks": "Tiny deep-green particles spreading outward"
+	  }
+	},
+	"dissipation": {
+	  "duration_seconds": 0.5,
+	  "frame_count": 8,
+	  "loop": false,
+	  "description": "Arrow rain slows, remaining trails fade, and green wind glow disappears.",
+	  "visuals": [
+		"Arrow spawn rate drops to zero",
+		"Remaining arrows finish falling",
+		"Wind streaks fade",
+		"Impact dust settles",
+        "Top green glow disappears"
+	  ]
+	}
+  },
+  "visual_effects": {
+	"wind_streaks": {
+	  "enabled": true,
+	  "count_per_second": 45,
+	  "length_pixels": "60-140",
+	  "opacity": 0.45,
+	  "color": "#2E7D32"
+	},
+	"rain_motion_lines": {
+	  "enabled": true,
+	  "attached_to_arrows": true,
+	  "trail_length_seconds": 0.18,
+	  "width_pixels": 4,
+	  "color_gradient": ["#C8FF8A", "#1B5E20", "#1B5E2000"]
+	},
+	"impact_dust": {
+	  "color": "#5A4A32",
+	  "lifetime_seconds": 0.25,
+	  "fade_out": true
+	}
+  },
+  "particle_effects": {
+	"arrow_trails": {
+	  "emission_rate_per_arrow": 8,
+	  "lifetime_seconds": 0.18,
+	  "size_pixels": "2-5",
+	  "color": "#6FBF3A"
+	},
+	"impact_particles": {
+	  "burst_count_per_arrow": 8,
+	  "lifetime_seconds": 0.22,
+	  "velocity_pixels_per_second": 90,
+	  "spread_degrees": 180,
+	  "colors": ["#C8FF8A", "#4CAF50", "#2E7D32"]
+	},
+	"screen_wind_particles": {
+	  "emission_rate": 50,
+	  "lifetime_seconds": 0.5,
+	  "velocity_pixels_per_second": 220,
+	  "direction": "downward_diagonal"
+	},
+	"particle_density_per_second": {
+	  "appear": 35,
+	  "rain_peak": 180,
+	  "dissipation_start": 90,
+	  "dissipation_end": 10
+	}
+  },
+  "sound_design": {
+	"appear": {
+	  "sound": "Rising forest wind and bowstring tension",
+	  "duration_seconds": 0.3,
+	  "volume": 0.6
+	},
+	"rain_loop": {
+	  "sound": "Dense arrow rain whoosh",
+	  "duration_seconds": 2.0,
+	  "loop": true,
+	  "volume": 0.75
+	},
+	"impact": {
+	  "sound": "Rapid soft arrow impacts on ground",
+	  "duration_seconds": 0.2,
+	  "pitch_variation": 0.2
+	},
+	"dissipation": {
+	  "sound": "Wind fading with final arrow drops",
+	  "duration_seconds": 0.5,
+	  "volume": 0.4
+	}
+  },
+  "gameplay_timing": {
+	"total_duration_seconds": 2.8,
+	"appear_seconds": 0.3,
+	"rain_seconds": 2.0,
+	"dissipation_seconds": 0.5,
+	"spawn_rate_per_second": 60,
+	"total_arrows": 120,
+	"damage_tick_mode": "Per arrow impact area",
+	"screen_coverage": "Full screen"
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "CanvasLayer for screen-wide ultimate effects",
+	  "Node2D arrow_spawner",
+	  "Pooled ArrowRainProjectile nodes",
+	  "Area2D per arrow impact",
+	  "GPUParticles2D for wind streaks",
+	  "GPUParticles2D for impact dust",
+      "AudioStreamPlayer"
+	],
+	"recommended_fps": 16,
+	"blend_mode": "Additive for green trails, Alpha blend for arrows and dust",
+	"spawn_logic": "Spawn arrows above the visible screen using randomized x position, fall angle, speed, scale, and delay.",
+	"performance_note": "Use object pooling for arrows and impact effects to avoid creating 120+ nodes during the ultimate."
+  }
+}
+
+{
+  "skill_name": "Star Knife",
+  "skill_owner": "Assassin",
+  "skill_type": "Spinning Projectile",
+  "theme": "Purple-Gray Metallic",
+  "animation_states": {
+	"launch": {
+	  "duration_seconds": 0.12,
+	  "frame_count": 2,
+	  "loop": false,
+	  "description": "A star-shaped knife flashes into existence and immediately begins spinning.",
+	  "visuals": [
+		"Small purple-gray metallic flash appears",
+        "Star knife snaps forward with first spin blur"
+	  ]
+	},
+	"rotation": {
+	  "duration_seconds": 0.25,
+	  "frame_count": 6,
+	  "loop": true,
+	  "description": "Star knife spins rapidly throughout flight.",
+	  "rotation": {
+		"rpm": 900,
+		"degrees_per_second": 5400,
+		"direction": "clockwise",
+		"motion_blur": true
+	  }
+	},
+	"travel": {
+	  "duration_seconds": 0.45,
+	  "frame_count": 8,
+	  "loop": true,
+	  "movement": {
+		"projectile_count": "1-3",
+		"speed_pixels_per_second": 760,
+		"path": "straight_line",
+		"maintain_rotation": true
+	  },
+	  "visuals": {
+		"blade": "Purple-gray metallic star blade with sharp edges",
+		"shine": "Small white highlight flickers across rotating blade",
+		"aura": "Subtle violet edge glow"
+	  }
+	},
+	"trail": {
+	  "duration_seconds": 0.28,
+	  "frame_count": 5,
+	  "loop": true,
+	  "description": "A purple-gray sparkle trail follows the spinning blade.",
+	  "sparkle_frequency_per_second": 22,
+	  "trail_behavior": {
+		"length_seconds": 0.22,
+		"fade_duration_seconds": 0.28,
+		"width_pixels": 6,
+		"color_gradient": ["#D8C8FF", "#7B6A8F", "#7B6A8F00"]
+	  }
+	},
+	"impact": {
+	  "duration_seconds": 0.18,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "Blade creates a sharp metallic burst and bounces slightly on hit.",
+	  "visuals": [
+		"Tiny white-purple slash flash",
+		"Metallic spark burst at contact point",
+        "Star knife ricochets away briefly"
+	  ],
+	  "bounce": {
+		"enabled": true,
+		"direction": "reflect_against_enemy_normal",
+		"bounce_angle_variance_degrees": 12,
+		"bounce_distance_pixels": 28,
+		"post_bounce_speed_multiplier": 0.75
+	  }
+	}
+  },
+  "visual_effects": {
+	"metallic_shine": {
+	  "enabled": true,
+	  "highlight_color": "#FFFFFF",
+	  "shine_interval_seconds": 0.12,
+	  "shine_duration_seconds": 0.05
+	},
+	"sharp_highlights": {
+	  "edge_color": "#CFC7D8",
+	  "tip_flash_color": "#F2E9FF",
+	  "opacity": 0.75
+	},
+	"violet_edge_glow": {
+	  "color": "#8E5CFF",
+	  "radius_pixels": 10,
+	  "blend_mode": "additive"
+	}
+  },
+  "particle_effects": {
+	"launch_sparks": {
+	  "burst_count": 8,
+	  "lifetime_seconds": 0.18,
+	  "velocity_pixels_per_second": 70,
+	  "spread_degrees": 60,
+	  "color": "#A08BB8"
+	},
+	"trail_sparkles": {
+	  "emission_rate": 22,
+	  "lifetime_seconds": 0.25,
+	  "size_pixels": "2-4",
+	  "fade_out": true,
+	  "colors": ["#E8DDFF", "#9B8BAA", "#6E5B82"]
+	},
+	"impact_sparks": {
+	  "burst_count": 14,
+	  "lifetime_seconds": 0.2,
+	  "velocity_pixels_per_second": 110,
+	  "spread_degrees": 140,
+	  "colors": ["#FFFFFF", "#B8A7CC", "#7B6A8F"]
+	}
+  },
+  "sound_design": {
+	"launch": {
+	  "sound": "Quick blade throw snap",
+	  "duration_seconds": 0.1,
+	  "volume": 0.65
+	},
+	"travel_loop": {
+	  "sound": "Fast spinning blade whoosh",
+	  "duration_seconds": 0.35,
+	  "volume": 0.28
+	},
+	"metallic_shine": {
+	  "sound": "Tiny metallic ring sparkle",
+	  "duration_seconds": 0.08,
+	  "volume": 0.18
+	},
+	"impact": {
+	  "sound": "Sharp metal hit with violet spark",
+	  "duration_seconds": 0.14,
+	  "pitch_variation": 0.12
+	}
+  },
+  "gameplay_timing": {
+	"shot_interval_seconds": 0.8,
+	"launch_seconds": 0.12,
+	"projectile_speed_pixels_per_second": 760,
+	"rotation_rpm": 900,
+	"trail_fade_seconds": 0.28,
+	"sparkle_frequency_per_second": 22
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D",
+	  "Sprite2D or AnimatedSprite2D for star knife",
+	  "Area2D",
+	  "CollisionShape2D",
+	  "Line2D for trail",
+	  "GPUParticles2D for sparkles",
+      "AudioStreamPlayer2D"
+	],
+	"recommended_fps": 24,
+	"blend_mode": "Additive for purple glow, Alpha blend for metallic sprite",
+	"damage_logic": "Apply damage on contact. If bounce is enabled, reflect projectile velocity using collision normal and continue travel with reduced speed."
+  }
+}
+
+{
+  "skill_name": "Knife Storm",
+  "skill_owner": "Assassin",
+  "skill_type": "Spinning Blade Aura",
+  "theme": "Lavender with Purple Accents",
+  "animation_states": {
+	"activation": {
+	  "duration_seconds": 0.4,
+	  "frame_count": 6,
+	  "loop": false,
+	  "description": "Knives appear one by one around the player and accelerate into a circular vortex.",
+	  "visuals": [
+		"Lavender danger ring flashes under player",
+		"First blade silhouette appears at orbit edge",
+		"Additional blades snap into position",
+		"Purple sparks burst outward",
+		"Orbit begins spinning faster",
+        "Full blade storm enters loop"
+	  ]
+	},
+	"rotation": {
+	  "duration_seconds": 1.5,
+	  "frame_count": 24,
+	  "loop": true,
+	  "description": "Fast continuous circular rotation around the player.",
+	  "movement": {
+		"cycle_seconds": 1.5,
+		"rotation_speed_degrees_per_second": 240,
+		"orbit_radius_pixels": 95,
+		"direction": "clockwise",
+		"blade_count": "6-10"
+	  }
+	},
+	"blade_motion": {
+	  "duration_seconds": 1.5,
+	  "frame_count": 24,
+	  "loop": true,
+	  "description": "Individual blades remain readable while rotating in formation.",
+	  "visuals": {
+		"blade_shape": "Curved dagger silhouettes with lavender metal shine",
+		"orientation": "Blade tips face tangent direction of orbit",
+		"scale_pulse": "1.0 to 1.08 during speed peaks",
+		"highlight": "Small purple-white edge glint every 0.2s"
+	  }
+	},
+	"spark_generation": {
+	  "duration_seconds": 1.0,
+	  "frame_count": 12,
+	  "loop": true,
+	  "description": "Sharp sparks constantly fly outward from the spinning blades.",
+	  "particles": {
+		"emission_rate_per_second": 36,
+		"lifetime_seconds": 0.3,
+		"velocity_pixels_per_second": 110,
+		"spread_degrees": 360,
+		"colors": ["#F0D9FF", "#B77CFF", "#7A3FD1"]
+	  }
+	},
+	"velocity_lines": {
+	  "duration_seconds": 0.25,
+	  "frame_count": 4,
+	  "loop": true,
+	  "description": "Thin curved motion lines show the speed of the blade vortex.",
+	  "visuals": {
+		"line_count": 8,
+		"line_length_pixels": "40-80",
+		"line_width_pixels": 4,
+		"fade_duration_seconds": 0.18,
+		"color_gradient": ["#E6C7FF", "#9B5CFF", "#9B5CFF00"]
+	  }
+	},
+	"damage_burst": {
+	  "duration_seconds": 0.22,
+	  "frame_count": 4,
+	  "loop": false,
+	  "trigger": "Play once per damage tick",
+	  "description": "Blade storm spikes in intensity when damaging nearby enemies.",
+	  "visuals": [
+		"Aura flashes brighter lavender",
+		"Blade silhouettes stretch into sharp arcs",
+		"Purple slash marks appear around enemies",
+		"Extra sparks shoot outward",
+        "Storm returns to idle rotation"
+	  ],
+	  "effects": {
+		"damage_tick_interval_seconds": 0.45,
+		"hitstop_seconds": 0.025,
+		"enemy_flash_color": "#D7A7FF"
+	  }
+	},
+	"deactivation": {
+	  "duration_seconds": 0.45,
+	  "frame_count": 7,
+	  "loop": false,
+	  "description": "Blades slow down, fade, and vanish into purple sparks.",
+	  "visuals": [
+		"Rotation speed drops",
+		"Velocity lines disappear",
+		"Individual blades fade one by one",
+		"Danger aura shrinks inward",
+		"Final lavender spark burst",
+        "Effect fully disappears"
+	  ]
+	}
+  },
+  "visual_effects": {
+	"blade_silhouettes": {
+	  "count": "6-10",
+	  "color": "#D8B6FF",
+	  "edge_highlight": "#FFFFFF",
+	  "purple_shadow": "#4B237A"
+	},
+	"danger_aura": {
+	  "radius_pixels": 105,
+	  "opacity_min": 0.25,
+	  "opacity_max": 0.55,
+	  "pulse_cycle_seconds": 0.75,
+	  "color": "#7A3FD1"
+	},
+	"velocity_streaks": {
+	  "curved": true,
+	  "blend_mode": "additive",
+	  "opacity": 0.65
+	},
+	"impact_slashes": {
+	  "shape": "short crescent cuts",
+	  "duration_seconds": 0.15,
+	  "color": "#E6C7FF"
+	}
+  },
+  "particle_effects": {
+	"constant_sparks": {
+	  "emission_rate": 36,
+	  "lifetime_seconds": 0.3,
+	  "velocity_pixels_per_second": 110,
+	  "size_pixels": "2-5",
+	  "fade_out": true
+	},
+	"damage_burst_sparks": {
+	  "burst_count": 24,
+	  "lifetime_seconds": 0.28,
+	  "velocity_pixels_per_second": 160,
+	  "spread_degrees": 360,
+	  "color": "#B77CFF"
+	},
+	"deactivation_sparks": {
+	  "burst_count": 18,
+	  "lifetime_seconds": 0.45,
+	  "velocity_pixels_per_second": 70,
+	  "fade_out": true
+	}
+  },
+  "sound_design": {
+	"activation": {
+	  "sound": "Rapid knife unsheathing with lavender magic swell",
+	  "duration_seconds": 0.4,
+	  "volume": 0.65
+	},
+	"rotation_loop": {
+	  "sound": "Sharp metallic spinning whoosh",
+	  "loop": true,
+	  "volume": 0.28
+	},
+	"sparking": {
+	  "sound": "Tiny metal spark ticks",
+	  "volume": 0.18,
+	  "loop": true
+	},
+	"damage_burst": {
+	  "sound": "Fast multi-slash impact",
+	  "duration_seconds": 0.18,
+	  "pitch_variation": 0.12
+	},
+	"deactivation": {
+	  "sound": "Blades slowing down and fading into sparks",
+	  "duration_seconds": 0.45,
+	  "volume": 0.4
+	}
+  },
+  "gameplay_timing": {
+	"rotation_cycle_seconds": 1.5,
+	"rotation_speed_degrees_per_second": 240,
+	"damage_tick_interval_seconds": 0.45,
+	"aura_radius_pixels": 105,
+	"particle_generation_rate_per_second": 36
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D orbit_pivot",
+	  "Sprite2D or AnimatedSprite2D for each blade",
+	  "Area2D with CircleShape2D",
+	  "Line2D for velocity streaks",
+	  "GPUParticles2D for sparks",
+      "AudioStreamPlayer2D"
+	],
+	"recommended_fps": 16,
+	"blend_mode": "Additive for lavender glow and streaks, Alpha blend for blade sprites",
+	"z_index": "Above player weapon effects, below UI",
+	"damage_logic": "Apply damage every 0.45 seconds to enemies inside Area2D. Play damage_burst animation whenever at least one enemy is hit."
+  }
+}
+
+{
+  "skill_name": "Boomerang Star",
+  "skill_owner": "Assassin",
+  "skill_type": "Returning Projectile",
+  "theme": "Golden Yellow Metallic",
+  "animation_states": {
+	"launch": {
+	  "duration_seconds": 0.16,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "Star boomerang appears beside the player with a sharp golden glow.",
+	  "visuals": [
+		"Small golden spark forms",
+		"Metallic star expands to full size",
+        "Star begins spinning with bright edge highlight"
+	  ]
+	},
+	"outbound": {
+	  "duration_seconds": 0.65,
+	  "frame_count": 10,
+	  "loop": false,
+	  "movement": {
+		"path_type": "curved_arc",
+		"arc_height_pixels": 90,
+		"arc_curvature": 0.45,
+		"distance_from_player_pixels": 360,
+		"speed_pixels_per_second": 560
+	  },
+	  "visuals": {
+		"rotation": "Fast spinning golden star",
+		"trail": "Curved golden light trail",
+		"sparkles": "Small metallic sparks shed from blade tips"
+	  }
+	},
+	"arc_peak": {
+	  "duration_seconds": 0.3,
+	  "frame_count": 5,
+	  "loop": false,
+	  "description": "Star pauses briefly at the furthest point before snapping back.",
+	  "visuals": [
+		"Star hovers and spins in place",
+		"Golden glow intensifies",
+		"Small circular magic pulse appears",
+        "Trail curls inward toward player"
+	  ]
+	},
+	"return": {
+	  "duration_seconds": 0.42,
+	  "frame_count": 7,
+	  "loop": false,
+	  "movement": {
+		"path_type": "curved_arc_back_to_player",
+		"return_speed_multiplier": 1.55,
+		"speed_pixels_per_second": 870,
+		"curve_tightness": 0.6
+	  },
+	  "visuals": {
+		"rotation": "Faster spinning during return",
+		"trail": "Brighter golden sparkle trail",
+		"motion": "Star curves back to player like a magnetized blade"
+	  }
+	},
+	"return_trail": {
+	  "duration_seconds": 0.28,
+	  "frame_count": 5,
+	  "loop": true,
+	  "description": "Golden sparkles follow the returning star and fade quickly.",
+	  "trail_behavior": {
+		"length_seconds": 0.24,
+		"fade_duration_seconds": 0.28,
+		"width_pixels": 7,
+		"color_gradient": ["#FFF2A6", "#FFD34A", "#B8860B00"]
+	  }
+	},
+	"impact": {
+	  "duration_seconds": 0.16,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "Enemy can be hit twice: once on outbound path and once on return path.",
+	  "hit_rules": {
+		"outbound_hit": true,
+		"return_hit": true,
+		"same_enemy_can_be_hit_twice": true,
+		"use_separate_hit_cache_for_outbound_and_return": true
+	  },
+	  "visuals": [
+		"Bright golden slash flash",
+		"Tiny metallic spark burst",
+        "Enemy briefly flashes warm yellow"
+	  ],
+	  "effects": {
+		"hitstop_seconds": 0.02,
+		"enemy_flash_color": "#FFE680"
+	  }
+	},
+	"catch": {
+	  "duration_seconds": 0.18,
+	  "frame_count": 3,
+	  "loop": false,
+	  "description": "When the star returns to the player, it collapses into a small golden glow.",
+	  "visuals": [
+		"Star snaps to player center",
+		"Small golden ring pulse appears",
+        "Star dissolves into sparkles"
+	  ]
+	}
+  },
+  "visual_effects": {
+	"magical_glow": {
+	  "core_color": "#FFF2A6",
+	  "outer_color": "#FFD34A",
+	  "blend_mode": "additive",
+	  "pulse_cycle_seconds": 0.25
+	},
+	"metallic_shine": {
+	  "highlight_color": "#FFFFFF",
+	  "shine_interval_seconds": 0.12,
+	  "shine_duration_seconds": 0.05
+	},
+	"golden_trail": {
+	  "enabled": true,
+	  "trail_width_pixels": 7,
+	  "trail_fade_seconds": 0.28,
+	  "sparkle_frequency_per_second": 24
+	}
+  },
+  "particle_effects": {
+	"launch_sparks": {
+	  "burst_count": 10,
+	  "lifetime_seconds": 0.22,
+	  "velocity_pixels_per_second": 80,
+	  "spread_degrees": 360,
+	  "color": "#FFD34A"
+	},
+	"outbound_sparkles": {
+	  "emission_rate": 18,
+	  "lifetime_seconds": 0.28,
+	  "size_pixels": "2-5",
+	  "fade_out": true,
+	  "colors": ["#FFF2A6", "#FFD34A", "#B8860B"]
+	},
+	"return_sparkles": {
+	  "emission_rate": 28,
+	  "lifetime_seconds": 0.32,
+	  "size_pixels": "2-6",
+	  "fade_out": true,
+	  "colors": ["#FFFFFF", "#FFE680", "#FFD34A"]
+	},
+	"impact_sparks": {
+	  "burst_count": 14,
+	  "lifetime_seconds": 0.18,
+	  "velocity_pixels_per_second": 110,
+	  "spread_degrees": 140,
+	  "color": "#FFE680"
+	},
+	"catch_burst": {
+	  "burst_count": 12,
+	  "lifetime_seconds": 0.3,
+	  "velocity_pixels_per_second": 60,
+	  "spread_degrees": 360,
+	  "color": "#FFF2A6"
+	}
+  },
+  "sound_design": {
+	"launch": {
+	  "sound": "Sharp golden blade throw",
+	  "duration_seconds": 0.12,
+	  "volume": 0.65
+	},
+	"outbound": {
+	  "sound": "Curved metallic whoosh outward",
+	  "duration_seconds": 0.45,
+	  "volume": 0.35
+	},
+	"arc_peak": {
+	  "sound": "Brief magical hover shimmer",
+	  "duration_seconds": 0.3,
+	  "volume": 0.25
+	},
+	"return": {
+	  "sound": "Faster reverse whoosh",
+	  "duration_seconds": 0.35,
+	  "volume": 0.45
+	},
+	"impact": {
+	  "sound": "Bright metal slash impact",
+	  "duration_seconds": 0.12,
+	  "pitch_variation": 0.12
+	},
+	"catch": {
+	  "sound": "Soft golden magical chime",
+	  "duration_seconds": 0.18,
+	  "volume": 0.4
+	}
+  },
+  "gameplay_timing": {
+	"projectile_count": "1-3",
+	"outbound_seconds": 0.65,
+	"arc_peak_pause_seconds": 0.3,
+	"return_seconds": 0.42,
+	"arc_height_pixels": 90,
+	"distance_from_player_pixels": 360,
+	"return_speed_multiplier": 1.55,
+	"total_cycle_seconds": 1.53
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "Node2D",
+	  "Sprite2D or AnimatedSprite2D for boomerang star",
+	  "Area2D",
+	  "CollisionShape2D",
+	  "Line2D for curved trail",
+	  "GPUParticles2D for golden sparkles",
+      "AudioStreamPlayer2D"
+	],
+	"recommended_fps": 16,
+	"blend_mode": "Additive for glow and trail, Alpha blend for metallic sprite",
+	"movement_logic": "Use Curve2D or quadratic Bezier paths for outbound and return arcs. Use separate hit caches for outbound and return so enemies can be damaged twice.",
+	"catch_logic": "When projectile reaches player return radius, play catch animation and despawn or reset for next cast."
+  }
+}
+
+{
+  "skill_name": "7 Slash",
+  "skill_owner": "Assassin",
+  "skill_type": "Screen-wide Slash Combo Ultimate",
+  "theme": "Dark Red / Crimson Energy",
+  "animation_states": {
+	"preparation": {
+	  "duration_seconds": 0.2,
+	  "frame_count": 4,
+	  "loop": false,
+	  "visuals": [
+		"Screen darkens with deep red vignette",
+		"Thin crimson lines briefly preview slash paths",
+		"Player silhouette flashes dark red",
+        "Tension builds before first slash"
+	  ]
+	},
+	"slash_combo": {
+	  "duration_seconds": 0.6,
+	  "slash_count": 7,
+	  "stagger_seconds": 0.085,
+	  "description": "Seven diagonal slashes cut across the screen in rapid sequence.",
+	  "slashes": [
+		{
+		  "slash_index": 1,
+		  "start_time_seconds": 0.0,
+		  "angle_degrees": -35,
+		  "thickness_pixels": 18
+		},
+		{
+		  "slash_index": 2,
+		  "start_time_seconds": 0.085,
+		  "angle_degrees": 38,
+		  "thickness_pixels": 14
+		},
+		{
+		  "slash_index": 3,
+		  "start_time_seconds": 0.17,
+		  "angle_degrees": -22,
+		  "thickness_pixels": 20
+		},
+		{
+		  "slash_index": 4,
+		  "start_time_seconds": 0.255,
+		  "angle_degrees": 48,
+		  "thickness_pixels": 16
+		},
+		{
+		  "slash_index": 5,
+		  "start_time_seconds": 0.34,
+		  "angle_degrees": -50,
+		  "thickness_pixels": 22
+		},
+		{
+		  "slash_index": 6,
+		  "start_time_seconds": 0.425,
+		  "angle_degrees": 28,
+		  "thickness_pixels": 15
+		},
+		{
+		  "slash_index": 7,
+		  "start_time_seconds": 0.51,
+		  "angle_degrees": -40,
+		  "thickness_pixels": 28
+		}
+	  ],
+	  "per_slash_animation": {
+		"duration_seconds": 0.15,
+		"frame_count": 3,
+		"expand_seconds": 0.05,
+		"hold_seconds": 0.035,
+		"fade_seconds": 0.065,
+		"visual": "Dark red blade line expands instantly across screen, glows crimson, then fades into trailing energy."
+	  }
+	},
+	"shockwave": {
+	  "duration_seconds": 0.4,
+	  "frame_count": 6,
+	  "loop": false,
+	  "description": "Crimson rings burst from slash intersection points after the combo lands.",
+	  "visuals": {
+		"ring_count": 3,
+		"start_radius_pixels": 20,
+		"end_radius_pixels": 120,
+		"ring_color": "#B00020",
+		"fade_out": true
+	  }
+	},
+	"screen_impact": {
+	  "duration_seconds": 0.12,
+	  "frame_count": 2,
+	  "loop": false,
+	  "impact_flash_timing_seconds": [0.0, 0.17, 0.34, 0.51, 0.68],
+	  "visuals": [
+		"Brief black-red screen blink",
+		"Crimson flash on slash intersections",
+        "Camera shake on final slash"
+	  ],
+	  "effects": {
+		"camera_shake_strength": 4.0,
+		"final_hitstop_seconds": 0.08
+	  }
+	},
+	"trailing_energy": {
+	  "duration_seconds": 0.35,
+	  "frame_count": 6,
+	  "loop": false,
+	  "visuals": {
+		"trail_color_gradient": ["#FF3B3B", "#8B0000", "#1A000000"],
+		"trail_fade_seconds": 0.35,
+		"edge_sparks": true
+	  }
+	}
+  },
+  "visual_effects": {
+	"crimson_energy_bursts": {
+	  "burst_count_per_slash": 18,
+	  "lifetime_seconds": 0.25,
+	  "velocity_pixels_per_second": 160,
+	  "color": "#FF1744"
+	},
+	"impact_rings": {
+	  "enabled": true,
+	  "color": "#C1121F",
+	  "opacity_start": 0.75,
+	  "opacity_end": 0.0
+	},
+	"dramatic_overlay": {
+	  "darkness_opacity": 0.55,
+	  "red_vignette_opacity": 0.4
+	}
+  },
+  "particle_effects": {
+	"slash_sparks": {
+	  "emission_mode": "burst",
+	  "count_per_slash": 20,
+	  "lifetime_seconds": 0.22,
+	  "spread_degrees": 120,
+	  "colors": ["#FF4D4D", "#B00020", "#4A0000"]
+	},
+	"finale_particles": {
+	  "burst_count": 50,
+	  "lifetime_seconds": 0.45,
+	  "velocity_pixels_per_second": 220,
+	  "spread_degrees": 360,
+	  "color": "#FF1744"
+	}
+  },
+  "sound_design": {
+	"preparation": {
+	  "sound": "Low ominous blade tension swell",
+	  "duration_seconds": 0.2
+	},
+	"slash_sequence": {
+	  "sound": "Seven sharp blade cuts, staggered rapidly",
+	  "interval_seconds": 0.085,
+	  "pitch_variation": 0.12
+	},
+	"impact": {
+	  "sound": "Heavy crimson impact thump",
+	  "duration_seconds": 0.18
+	},
+	"finale": {
+	  "sound": "Deep final slash sting with echo",
+	  "duration_seconds": 0.45
+	}
+  },
+  "gameplay_timing": {
+	"total_duration_seconds": 1.2,
+	"preparation_seconds": 0.2,
+	"slash_combo_seconds": 0.6,
+	"shockwave_seconds": 0.4,
+	"damage_application": "Apply massive damage once per slash to enemies intersecting each slash line. Final slash may apply bonus damage."
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "CanvasLayer for screen-wide slash visuals",
+	  "Line2D or Polygon2D for slash shapes",
+	  "GPUParticles2D for crimson sparks",
+	  "ColorRect for darkness and flash overlay",
+	  "AudioStreamPlayer",
+      "Camera2D shake script"
+	],
+	"recommended_fps": 24,
+	"blend_mode": "Additive for crimson energy, Alpha blend for darkness overlay",
+	"damage_logic": "Use slash line segment collision or screen-wide rectangular hitboxes rotated to slash angles. Trigger each slash hitbox at its start_time_seconds for 0.15s."
+  }
+}
+
+{
+  "skill_name": "Swirl Tangerine",
+  "skill_owner": "Brown Capy",
+  "skill_type": "Screen-wide Energy Cyclone Ultimate",
+  "theme": "Tangerine Orange",
+  "animation_states": {
+	"charge": {
+	  "duration_seconds": 0.5,
+	  "frame_count": 8,
+	  "loop": false,
+	  "description": "Tangerine energy gathers around the player and begins spinning faster.",
+	  "visuals": [
+		"Small orange glow forms under player",
+		"Energy sparkles spiral inward",
+		"Concentric rings appear and rotate",
+		"Glow intensifies to bright tangerine",
+		"Screen edges tint warm orange",
+        "Final compressed energy pulse before release"
+	  ]
+	},
+	"release": {
+	  "duration_seconds": 0.25,
+	  "frame_count": 4,
+	  "loop": false,
+	  "description": "A massive tangerine vortex suddenly opens across the screen.",
+	  "visuals": [
+		"Bright orange-white flash",
+		"Large spiral instantly expands from player",
+		"Full-screen cyclone shape appears",
+        "Enemies are visually pulled then pushed outward"
+	  ],
+	  "effects": {
+		"camera_shake_strength": 3.5,
+		"screen_flash_seconds": 0.08,
+		"hitstop_seconds": 0.05
+	  }
+	},
+	"vortex": {
+	  "duration_seconds": 3.0,
+	  "frame_count": 48,
+	  "loop": true,
+	  "description": "Full-screen swirling energy cyclone deals continuous devastating damage.",
+	  "movement": {
+		"rotation_speed_degrees_per_second": 300,
+		"inner_ring_speed_degrees_per_second": 420,
+		"outer_ring_speed_degrees_per_second": 220,
+		"screen_coverage": "full_screen"
+	  },
+	  "visuals": {
+		"main_spiral": "Thick tangerine-orange magical spiral covering the battlefield",
+		"secondary_rings": "Golden-orange concentric circles rotating inward and outward",
+		"center_glow": "Bright core around player",
+		"edge_effect": "Warm orange energy haze at screen edges"
+	  }
+	},
+	"peak_damage": {
+	  "duration_seconds": 1.5,
+	  "frame_count": 24,
+	  "loop": false,
+	  "description": "Maximum intensity phase with brightest glow and highest damage readability.",
+	  "visuals": [
+		"Vortex becomes brighter and thicker",
+		"Energy rings pulse rapidly",
+		"Tangerine sparkles increase heavily",
+		"Enemies flash orange when damaged",
+        "Screen briefly trembles during damage ticks"
+	  ],
+	  "effects": {
+		"damage_tick_interval_seconds": 0.2,
+		"glow_multiplier": 1.45,
+		"camera_shake_strength": 1.5
+	  }
+	},
+	"spiral_motion": {
+	  "duration_seconds": 1.2,
+	  "frame_count": 18,
+	  "loop": true,
+	  "description": "Concentric circles rotate inward, collapse toward center, then burst outward.",
+	  "motion": {
+		"inward_phase_seconds": 0.6,
+		"outward_phase_seconds": 0.6,
+		"radius_min_pixels": 40,
+		"radius_max_pixels": 620,
+		"rotation_direction": "clockwise",
+		"pulse_curve": "sine_in_out"
+	  }
+	},
+	"enemy_knockback": {
+	  "duration_seconds": 0.28,
+	  "frame_count": 4,
+	  "loop": false,
+	  "description": "Enemies are pushed away from the vortex center.",
+	  "visuals": [
+		"Enemy flashes tangerine",
+		"Curved orange gust line appears behind enemy",
+		"Enemy slides outward from player",
+        "Small energy burst fades at enemy feet"
+	  ],
+	  "effects": {
+		"knockback_distance_pixels": 40,
+		"knockback_direction": "away_from_player_center",
+		"hitstop_seconds": 0.025
+	  }
+	},
+	"dissipation": {
+	  "duration_seconds": 1.0,
+	  "frame_count": 16,
+	  "loop": false,
+	  "description": "Vortex loses power and spirals away into fading orange sparkles.",
+	  "visuals": [
+		"Rotation speed slows",
+		"Outer rings break into particles",
+		"Center glow softens",
+		"Screen tint fades",
+		"Final tangerine sparkles drift outward",
+        "Battlefield returns to normal"
+	  ]
+	}
+  },
+  "particle_effects": {
+	"charge_particles": {
+	  "emission_rate": 45,
+	  "lifetime_seconds": 0.5,
+	  "movement": "spiral_inward",
+	  "velocity_pixels_per_second": 90,
+	  "colors": ["#FFF1B8", "#FFB347", "#FF7A1A"]
+	},
+	"vortex_sparkles": {
+	  "emission_rate": 180,
+	  "lifetime_seconds": 0.9,
+	  "movement": "caught_in_circular_vortex",
+	  "tangential_velocity_pixels_per_second": 260,
+	  "radial_pulse": true,
+	  "size_pixels": "2-7",
+	  "colors": ["#FFF1B8", "#FFA726", "#F57C00"]
+	},
+	"peak_energy_bursts": {
+	  "burst_count": 60,
+	  "repeat_interval_seconds": 0.3,
+	  "lifetime_seconds": 0.45,
+	  "velocity_pixels_per_second": 180,
+	  "spread_degrees": 360,
+	  "color": "#FF9800"
+	},
+	"dissipation_particles": {
+	  "emission_rate_start": 120,
+	  "emission_rate_end": 10,
+	  "lifetime_seconds": 0.8,
+	  "velocity_pixels_per_second": 60,
+	  "fade_out": true
+	}
+  },
+  "sound_design": {
+	"charge": {
+	  "sound": "Magical orange energy charge-up with rising spin",
+	  "duration_seconds": 0.5,
+	  "pitch_curve": "ascending",
+	  "volume": 0.65
+	},
+	"release": {
+	  "sound": "Explosive vortex burst",
+	  "duration_seconds": 0.25,
+	  "volume": 1.0
+	},
+	"vortex_loop": {
+	  "sound": "Deep magical cyclone roar with shimmering energy",
+	  "loop": true,
+	  "duration_seconds": 3.0,
+	  "volume": 0.75
+	},
+	"peak": {
+	  "sound": "High-energy tangerine shimmer layered over vortex roar",
+	  "duration_seconds": 1.5,
+	  "volume": 0.85
+	},
+	"enemy_hit": {
+	  "sound": "Heavy magical impact gust",
+	  "duration_seconds": 0.14,
+	  "pitch_variation": 0.12
+	},
+	"dissipation": {
+	  "sound": "Cyclone fading into soft magical sparkles",
+	  "duration_seconds": 1.0,
+	  "volume": 0.45
+	}
+  },
+  "gameplay_timing": {
+	"total_duration_seconds": 4.75,
+	"charge_seconds": 0.5,
+	"release_seconds": 0.25,
+	"vortex_seconds": 3.0,
+	"peak_damage_seconds": 1.5,
+	"dissipation_seconds": 1.0,
+	"damage_tick_interval_seconds": 0.2,
+	"screen_coverage": "full_screen",
+	"knockback_distance_pixels": 40
+  },
+  "godot_implementation": {
+	"recommended_nodes": [
+	  "CanvasLayer for full-screen ultimate overlay",
+	  "Node2D vortex_center",
+	  "Sprite2D or ShaderMaterial for spiral texture",
+	  "GPUParticles2D for vortex sparkles",
+	  "ColorRect for orange screen tint and flash",
+	  "AudioStreamPlayer",
+      "Camera2D shake script"
+	],
+	"recommended_fps": 16,
+	"blend_mode": "Additive for tangerine glow, Alpha blend for haze",
+	"damage_logic": "Apply damage to all enemies on screen every 0.2 seconds during vortex and peak phases. Apply outward knockback from player center.",
+	"performance_note": "Use shader-driven spiral rotation for the main vortex instead of spawning many large sprites."
+  }
+}

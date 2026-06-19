@@ -218,6 +218,11 @@ func _grant(product_id: String) -> void:
 func _sync_purchased_rings_to_stash() -> void:
 	if _current_username.is_empty():
 		return
+	if _is_dev_account():
+		for product_id in RING_PRODUCTS.keys():
+			var ring: Dictionary = ring_product_to_ring(product_id as String)
+			RingStore.ensure_ring_in_stash(_current_username, ring)
+		return
 	var purchased: Array = _load()
 	for product in purchased:
 		var product_id: String = product as String

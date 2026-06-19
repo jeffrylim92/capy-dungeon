@@ -1,0 +1,3966 @@
+[
+  {
+  "skill_name": "Capy Orb",
+  "type": "orbiting_protective_shield",
+  "visual_theme": "mystical_golden_orbs_with_stardust_geometry",
+  "orbs": {
+	"count": 3,
+	"formation": "perfect_triangle",
+	"orbit_radius_px": 85,
+	"rotation_speed_deg_per_sec": 180,
+	"base_color_rgba": [1.0, 0.84, 0.29, 1.0],
+	"glow_intensity": 1.2,
+	"brightness_variance": 0.18,
+	"z_parallax": true,
+	"wobble": {
+	  "type": "sine_wave",
+	  "amplitude_px": 8,
+	  "frequency": "1 cycle per orbit loop",
+	  "z_axis_rotation": "subtle 3D tilt"
+	}
+  },
+  "states": {
+	"spawn": {
+	  "duration_sec": 0.6,
+	  "animation": "spiral_zoom_in_materialization",
+	  "scale_curve": "0.1 -> 1.25 -> 1.0",
+	  "opacity_curve": "0 -> 1",
+	  "motion": "each orb spirals inward from 160px radius to final 85px orbit",
+	  "particles": {
+		"golden_sparks": 36,
+		"spiral_trail_particles": 18,
+		"fade_duration_sec": 0.6
+	  },
+	  "vfx": {
+		"flash": "soft golden ignition flash",
+		"trail": "thin spiral stardust ribbon",
+		"geometry": "brief triangle rune appears then dissolves"
+	  },
+	  "audio": {
+		"sfx": "sparkle_trail.wav",
+		"volume": 0.35,
+		"pitch": 1.15
+	  }
+	},
+	"idle_orbit": {
+	  "duration_sec": 2.5,
+	  "loop": true,
+	  "rotation": {
+		"speed_deg_per_sec": 180,
+		"direction": "clockwise",
+		"formation_offset_deg": [0, 120, 240]
+	  },
+	  "height_variation": {
+		"enabled": true,
+		"method": "orb scale and brightness change by depth",
+		"front_scale": 1.08,
+		"back_scale": 0.88,
+		"front_brightness": 1.15,
+		"back_brightness": 0.75
+	  },
+	  "trails": {
+		"trail_type": "ephemeral_star_trail",
+		"particles_per_orbit_cycle": 12,
+		"fade_duration_sec": 0.8,
+		"shape": "small stars and dust motes",
+		"pattern": "stardust connects briefly into triangle and hexagram fragments"
+	  },
+	  "idle_particles": {
+		"rate": "1 particle/sec/orb",
+		"total_rate": "3 particles/sec",
+		"particle_lifetime_sec": 0.8,
+		"motion": "drift outward then curve back into orbit path",
+		"alpha_curve": "1.0 -> 0.0"
+	  },
+	  "audio": {
+		"loop": "sparkle_trail.wav",
+		"volume": 0.22,
+		"spatial_follow_orbs": true
+	  }
+	},
+	"on_enemy_hit": {
+	  "duration_sec": 0.35,
+	  "trigger": "orb_collision_with_enemy",
+	  "animation": {
+		"orb_scale": "1.0 -> 1.45 -> 1.0",
+		"flare": "sharp golden-white pulse",
+		"brief_slowdown": {
+		  "duration_sec": 0.08,
+		  "orbit_speed_multiplier": 0.35
+		}
+	  },
+	  "shockwave": {
+		"type": "circular_ripple",
+		"start_radius_px": 8,
+		"end_radius_px": 72,
+		"fade_duration_sec": 0.3,
+		"distortion": "subtle refractive ring"
+	  },
+	  "particles": {
+		"impact_burst_count": 40,
+		"shape": "star_shaped_bursts",
+		"color_sequence": "cyan -> white -> gold",
+		"speed_px_per_sec": [90, 260],
+		"lifetime_sec": [0.35, 0.65],
+		"spread": "360 degrees"
+	  },
+	  "audio": {
+		"sfx": "orb_impact_chime.wav",
+		"volume": 0.75,
+		"pitch_variance": 0.08
+	  }
+	},
+	"impact_shimmer": {
+	  "duration_sec": 0.25,
+	  "color_shift": {
+		"sequence": [
+		  {
+			"time_sec": 0.0,
+			"color": "cyan"
+		  },
+		  {
+			"time_sec": 0.1,
+			"color": "white"
+		  },
+		  {
+			"time_sec": 0.25,
+			"color": "gold"
+		  }
+		]
+	  },
+	  "screen_shake": {
+		"duration_sec": 0.2,
+		"intensity_px": 3,
+		"frequency": "high",
+		"falloff": "ease_out"
+	  },
+	  "extra_vfx": {
+		"nova": "small prismatic nova burst at collision point",
+		"afterimage": "orb leaves 2 ghost copies fading over 0.18s"
+	  }
+	}
+  },
+  "level_scaling": {
+	"orbit_radius_growth_px_per_level": 4,
+	"max_orbit_radius_px": 115,
+	"glow_intensity_growth_per_level": 0.12,
+	"impact_particle_growth_per_level": 5,
+	"max_impact_particles": 70,
+	"trail_density_growth": "adds 2 trail particles per orbit cycle every 2 levels"
+  },
+  "rendering_notes": {
+	"blend_mode": "additive",
+	"orb_core": "solid bright gold center",
+	"orb_edge": "soft feathered glow",
+	"trail_priority": "behind orb but above player shadow",
+	"impact_priority": "above enemies and damage numbers briefly",
+	"performance": "pool all particles; cap total active trail particles at 120"
+  }
+},
+  {
+  "skill_name": "Capy Bolt",
+  "type": "precision_homing_lightning_projectile",
+  "theme": "tesla_coil_energy_and_electrical_storm",
+  "visual_identity": {
+	"primary_color_rgb": [1.0, 0.94, 0.29],
+	"secondary_color_rgb": [0.34, 0.78, 1.0],
+	"glow_intensity": 1.5,
+	"lightning_style": "high_frequency_branching_arcs",
+	"energy_behavior": "constant crackling with ionized air distortion",
+	"screen_brightness_multiplier": 0.8
+  },
+  "projectile": {
+	"speed_px_per_sec": 480,
+	"homing": true,
+	"turn_rate_deg_per_sec": 220,
+	"trail_length_px": 90,
+	"core_width_px": 8,
+	"outer_glow_width_px": 20,
+	"collision_radius_px": 18
+  },
+  "states": {
+	"charge": {
+	  "duration_sec": 0.25,
+	  "description": "Tesla energy gathers around the caster in pulsing electromagnetic rings.",
+	  "animation": {
+		"orbital_rings": {
+		  "count": 3,
+		  "rotation_speed_deg_per_sec": [180, -240, 320],
+		  "radius_px": [18, 32, 48]
+		},
+		"energy_core": {
+		  "scale_curve": "0.6 -> 1.25 -> 1.0",
+		  "brightness_curve": "0.4 -> 1.6",
+		  "pulse_frequency_hz": 8
+		},
+		"electrical_arcs": {
+		  "count": 6,
+		  "branching": true,
+		  "arc_length_px": [10, 40]
+		}
+	  },
+	  "particles": {
+		"count": 25,
+		"spawn_pattern": "spiral_vortex",
+		"particle_type": "electrical_sparks",
+		"lifetime_sec": 0.35,
+		"velocity_px_per_sec": [30, 120]
+	  },
+	  "vfx": {
+		"ground_rune": "electric circuit pattern",
+		"ionization_distortion": true,
+		"localized_light_flash": true
+	  },
+	  "audio": {
+		"sfx": "tesla_coil_charge.wav",
+		"volume": 0.75,
+		"loop": true
+	  }
+	},
+	"release": {
+	  "duration_sec": 0.15,
+	  "description": "Stored energy compresses and detonates forward into a concentrated lightning bolt.",
+	  "animation": {
+		"launch_flash": {
+		  "brightness_multiplier": 2.0,
+		  "duration_sec": 0.06
+		},
+		"compressed_wave": {
+		  "type": "forward_shock_cone",
+		  "length_px": 120,
+		  "expansion_curve": "fast_out"
+		},
+		"bolt_formation": {
+		  "core_compression": "energy collapses into narrow beam",
+		  "electric_flares": 8
+		}
+	  },
+	  "screen_shake": {
+		"duration_sec": 0.15,
+		"intensity": "medium",
+		"amplitude_px": 4
+	  },
+	  "particles": {
+		"launch_sparks": 18,
+		"direction": "forward",
+		"lifetime_sec": 0.2
+	  },
+	  "audio": {
+		"sfx": "bolt_launch.wav",
+		"volume": 0.9
+	  }
+	},
+	"flight": {
+	  "duration_sec": 1.0,
+	  "loop_until_impact": true,
+	  "description": "Bolt travels while constantly generating branching electrical tendrils and ionized air trails.",
+	  "movement": {
+		"speed_px_per_sec": 480,
+		"motion_style": "smooth_homing_curve",
+		"acceleration": "minimal",
+		"path_smoothing": 0.85
+	  },
+	  "lightning_body": {
+		"core": "bright_yellow_white",
+		"outer_arcs": "electric_blue",
+		"jitter_frequency_hz": 30,
+		"random_offset_px": 6
+	  },
+	  "branching_tendrils": {
+		"spawn_rate_per_sec": 18,
+		"branches_per_event": [2, 5],
+		"length_px": [12, 48],
+		"lifetime_sec": 0.08,
+		"target_seeking_visual": true
+	  },
+	  "flight_sparks": {
+		"rate_per_sec": 12,
+		"particle_type": "ionized_air_fragments",
+		"lifetime_sec": 0.4,
+		"fade_curve": "ease_out"
+	  },
+	  "trail": {
+		"type": "ionized_air_ribbon",
+		"length_px": 90,
+		"fade_duration_sec": 0.35,
+		"electric_noise": true
+	  },
+	  "environment_vfx": {
+		"air_distortion": true,
+		"localized_brightness": 0.8,
+		"micro_arc_emissions": true
+	  }
+	},
+	"target_tracking": {
+	  "active_during_flight": true,
+	  "description": "Electric lasso tendrils probe nearby targets before snapping toward the chosen victim.",
+	  "animation": {
+		"electric_lasso": {
+		  "ring_count": 2,
+		  "radius_px": [20, 40],
+		  "rotation_speed_deg_per_sec": [360, -420]
+		},
+		"target_probe_arcs": {
+		  "frequency_per_sec": 10,
+		  "max_distance_px": 120,
+		  "branching": true
+		},
+		"lock_on_flash": {
+		  "duration_sec": 0.08,
+		  "brightness_multiplier": 1.5
+		}
+	  },
+	  "homing_visuals": {
+		"path_prediction_arc": true,
+		"electrical_pull_effect": true
+	  }
+	},
+	"impact": {
+	  "duration_sec": 0.3,
+	  "description": "A devastating electrical detonation erupts on contact.",
+	  "animation": {
+		"core_detonation": {
+		  "scale_curve": "0.4 -> 2.2 -> 1.0",
+		  "brightness_multiplier": 2.5
+		},
+		"star_burst": {
+		  "shape": "multi_directional_star",
+		  "layers": 3,
+		  "rotation_randomized": true
+		},
+		"emp_shockwave": {
+		  "start_radius_px": 12,
+		  "end_radius_px": 110,
+		  "duration_sec": 0.25,
+		  "electric_distortion": true
+		}
+	  },
+	  "particles": {
+		"impact_burst_count": 60,
+		"size_distribution": {
+		  "small": 36,
+		  "medium": 18,
+		  "large": 6
+		},
+		"pattern": "star_explosion",
+		"velocity_px_per_sec": [80, 320],
+		"lifetime_sec": [0.25, 0.8],
+		"colors": [
+		  "electric_blue",
+		  "yellow_white",
+          "white_hot_core"
+		]
+	  },
+	  "camera_effects": {
+		"shake_duration_sec": 0.12,
+		"shake_intensity": "high",
+		"amplitude_px": 6,
+		"chromatic_aberration": {
+		  "enabled": true,
+		  "duration_sec": 0.1,
+		  "strength": 0.45
+		},
+		"screen_glitch": {
+		  "enabled": true,
+		  "duration_sec": 0.08,
+		  "horizontal_scan_shift_px": 3
+		}
+	  },
+	  "audio": {
+		"sfx": "thunder_crack.wav",
+		"volume": 1.0
+	  }
+	}
+  },
+  "multi_bolt_synergy": {
+	"enabled": true,
+	"description": "Nearby Capy Bolts interact through electromagnetic interference.",
+	"interference_range_px": 180,
+	"effects": {
+	  "cross_arcs": {
+		"spawn_between_bolts": true,
+		"arc_frequency_per_sec": 6,
+		"branching": true
+	  },
+	  "electromagnetic_grid": {
+		"temporary_patterns": [
+		  "triangle",
+		  "diamond",
+          "hexagonal_web"
+		],
+		"duration_sec": 0.25
+	  },
+	  "visual_amplification": {
+		"glow_multiplier": 1.2,
+		"extra_sparks_per_sec": 8
+	  }
+	}
+  },
+  "rendering": {
+	"blend_mode": "additive",
+	"light_emission": true,
+	"distortion_shader": true,
+	"electric_noise_shader": true,
+	"motion_blur": {
+	  "enabled": true,
+	  "strength": 0.25
+	}
+  },
+  "performance_budget": {
+	"max_active_flight_particles": 80,
+	"max_active_impact_particles": 120,
+	"particle_pooling_required": true,
+	"lod_reduction": {
+	  "far_distance_particle_multiplier": 0.5
+	}
+  }
+},
+  {
+  "skill_name": "Ice Orb",
+  "type": "crystalline_projectile_freeze_control",
+  "theme": "arcane_frost_crystal",
+  "visual_identity": {
+	"primary_color_rgba": [0.3, 0.8, 1.0, 1.0],
+	"secondary_color_rgba": [1.0, 1.0, 1.0, 0.9],
+	"glow_intensity": 1.1,
+	"material": "translucent_ice_crystal",
+	"refraction_strength": 0.35,
+	"surface_detail": "internal_frost_fractures_and_crystalline_facets",
+	"mood": "calm_cold_magical"
+  },
+  "projectile": {
+	"rotation_speed_deg_per_sec": 200,
+	"radius_px": 22,
+	"travel_duration_sec": 1.5,
+	"collision_radius_px": 20,
+	"pulse_frequency_hz": 1.5,
+	"pulse_scale_variation": 0.06,
+	"light_refraction_enabled": true
+  },
+  "states": {
+	"spawn": {
+	  "duration_sec": 0.3,
+	  "description": "Ice crystal condenses from frozen air and rapidly crystallizes into a complete orb.",
+	  "animation": {
+		"expansion_shimmer": {
+		  "scale_curve": "0.2 -> 1.15 -> 1.0",
+		  "opacity_curve": "0.0 -> 1.0",
+		  "brightness_curve": "0.4 -> 1.4 -> 1.0"
+		},
+		"crystal_growth": {
+		  "facet_layers": 3,
+		  "growth_style": "outward_crystallization"
+		}
+	  },
+	  "particles": {
+		"spawn_shards": 18,
+		"particle_type": "tiny_ice_fragments",
+		"velocity_px_per_sec": [20, 90],
+		"lifetime_sec": 0.4
+	  },
+	  "vfx": {
+		"cold_breath_mist": true,
+		"frost_ring": {
+		  "radius_px": 36,
+		  "duration_sec": 0.25
+		}
+	  },
+	  "audio": {
+		"sfx": "ice_crystal_travel.wav",
+		"volume": 0.35,
+		"start_offset_sec": 0.0
+	  }
+	},
+	"travel": {
+	  "duration_sec": 1.5,
+	  "loop_until_impact": true,
+	  "description": "A rotating crystalline orb glides forward, shedding frost and refracting ambient light.",
+	  "animation": {
+		"rotation_speed_deg_per_sec": 200,
+		"surface_reflections": {
+		  "highlight_rotation": true,
+		  "specular_pulse": true
+		},
+		"glow_pulse": {
+		  "frequency_hz": 1.5,
+		  "intensity_range": [0.95, 1.15]
+		}
+	  },
+	  "frost_trail": {
+		"particle_rate_per_sec": 4,
+		"particle_type": "snowflake_crystals",
+		"fade_duration_sec": 0.5,
+		"lifetime_sec": 0.5,
+		"trail_length_px": 60,
+		"drift_behavior": "gentle_downward_float"
+	  },
+	  "particles": {
+		"micro_frost_dust": {
+		  "rate_per_sec": 8,
+		  "size_px": [2, 5],
+		  "opacity": 0.6
+		}
+	  },
+	  "audio": {
+		"loop": "ice_crystal_travel.wav",
+		"volume": 0.25
+	  }
+	},
+	"impact_shatter": {
+	  "duration_sec": 0.4,
+	  "description": "The orb fractures explosively into razor-sharp icicle shards and blooming crystal formations.",
+	  "animation": {
+		"sphere_fracture": {
+		  "fracture_layers": 4,
+		  "crack_propagation_duration_sec": 0.08
+		},
+		"ice_crystal_bloom": {
+		  "radius_px": 90,
+		  "growth_duration_sec": 0.15,
+		  "fade_duration_sec": 0.25
+		},
+		"inward_spiral": {
+		  "enabled": true,
+		  "spiral_count": 12,
+		  "rotation_speed_deg_per_sec": 360
+		}
+	  },
+	  "particles": {
+		"icicle_shards_total": 50,
+		"distribution": {
+		  "small": 24,
+		  "medium": 18,
+		  "large": 8
+		},
+		"outward_shards": 35,
+		"inward_spiral_shards": 15,
+		"velocity_px_per_sec": [80, 280],
+		"lifetime_sec": [0.35, 0.9],
+		"rotation_enabled": true
+	  },
+	  "freeze_burst": {
+		"snowflake_particles": 24,
+		"cold_mist_particles": 16,
+		"radius_px": 100
+	  },
+	  "audio": {
+		"sfx": "shatter_explosion.wav",
+		"volume": 0.95
+	  }
+	},
+	"freeze_aura": {
+	  "duration_sec": 0.8,
+	  "freeze_duration_sec": 1.5,
+	  "description": "Frozen enemies become encased in cold energy while snowflakes orbit around them.",
+	  "enemy_visuals": {
+		"ice_overlay": {
+		  "opacity": 0.65,
+		  "frost_growth": true
+		},
+		"icy_glow": {
+		  "color": "cyan_blue",
+		  "intensity": 1.1
+		},
+		"frozen_shader": {
+		  "specular_boost": 1.3,
+		  "desaturation": 0.25
+		}
+	  },
+	  "particles": {
+		"snowflake_rate_per_sec": 30,
+		"particle_type": "arcane_snowflakes",
+		"rotation_pattern": "dual_orbit_rings",
+		"ring_count": 2,
+		"orbit_radius_px": [18, 32],
+		"rotation_speed_deg_per_sec": [40, -60],
+		"lifetime_sec": 1.0
+	  },
+	  "freeze_mechanics": {
+		"movement_speed_multiplier": 0.0,
+		"attack_speed_multiplier": 0.0,
+		"status_effect": "frozen",
+		"duration_sec": 1.5
+	  },
+	  "vfx": {
+		"cold_air_distortion": true,
+		"ground_frost_circle": {
+		  "radius_px": 55,
+		  "opacity": 0.4
+		}
+	  },
+	  "audio": {
+		"loop": "freeze_aura.wav",
+		"volume": 0.4
+	  }
+	},
+	"dissipate": {
+	  "duration_sec": 0.6,
+	  "description": "Remaining frost crystals melt into sparkling magical particles.",
+	  "animation": {
+		"particle_fade": {
+		  "opacity_curve": "1.0 -> 0.0",
+		  "scale_curve": "1.0 -> 0.6"
+		},
+		"sparkle_flashes": {
+		  "count": 12,
+		  "duration_sec": 0.08
+		}
+	  },
+	  "particles": {
+		"remaining_ice_fragments": 20,
+		"sparkle_particles": 15,
+		"lifetime_sec": [0.2, 0.6],
+		"velocity_px_per_sec": [10, 60]
+	  },
+	  "vfx": {
+		"mist_evaporation": true,
+		"light_refraction_fade": true
+	  }
+	}
+  },
+  "freeze_mechanics": {
+	"freeze_duration_sec": 1.5,
+	"freeze_radius_px": 100,
+	"status_priority": "hard_crowd_control",
+	"visual_feedback": {
+	  "snowflake_orbits": true,
+	  "ice_shell": true,
+	  "frozen_breath_effect": true
+	}
+  },
+  "particle_systems": {
+	"frost_trail": {
+	  "rate_per_sec": 4,
+	  "fade_sec": 0.5,
+	  "max_active_particles": 20
+	},
+	"impact_shards": {
+	  "count": 50,
+	  "max_active_particles": 80
+	},
+	"freeze_aura": {
+	  "rate_per_sec": 30,
+	  "max_active_particles": 50
+	}
+  },
+  "rendering": {
+	"blend_mode": "additive_plus_alpha",
+	"refraction_shader": true,
+	"frost_overlay_shader": true,
+	"particle_soft_edges": true,
+	"light_scattering": {
+	  "enabled": true,
+	  "strength": 0.3
+	}
+  },
+  "performance_budget": {
+	"max_total_active_particles": 150,
+	"particle_pooling_required": true,
+	"lod_scaling": {
+	  "distant_effect_multiplier": 0.6
+	}
+  }
+},
+  {
+  "skill_name": "Mud Aura",
+  "type": "poison_aura_damage_over_time",
+  "theme": "ancient_earthen_miasma",
+  "visual_identity": {
+	"primary_color_rgba": [0.4, 0.25, 0.1, 1.0],
+	"toxic_color_rgba": [0.3, 0.8, 0.2, 0.85],
+	"corruption_color_rgba": [0.55, 0.15, 0.85, 0.9],
+	"glow_intensity": 0.9,
+	"mood": "sickly_primal_corruption",
+	"blend_mode": "alpha_additive_mixed"
+  },
+  "aura_mechanics": {
+	"base_radius_px": 70,
+	"radius_growth_per_level_px": 15,
+	"damage_type": "poison",
+	"damage_tick_interval_sec": 1.0,
+	"applies_status": "corrupted_poison",
+	"enemy_detection": "continuous_radius_check",
+	"stacking_rule": "refresh_duration_not_stack",
+	"poison_duration_sec": 2.5
+  },
+  "states": {
+	"idle_swirl": {
+	  "duration_sec": 1.5,
+	  "loop": true,
+	  "description": "A muddy vortex circles the player while noxious fumes rise and drift outward.",
+	  "motion": {
+		"orbit_speed_deg_per_sec": 70,
+		"base_orbit_direction": "clockwise",
+		"wobble": {
+		  "type": "smooth_sine",
+		  "amplitude_px": 10,
+		  "frequency_hz": 1.2
+		},
+		"vertical_bobbing": {
+		  "enabled": true,
+		  "amplitude_px": 6,
+		  "phase_offset_per_particle": true
+		}
+	  },
+	  "particles": {
+		"idle_rate_per_sec": 6,
+		"particle_types": {
+		  "mud_chunks": {
+			"ratio": 0.45,
+			"size_px": [4, 10],
+			"lifetime_sec": [0.8, 1.4],
+			"motion": "low_orbit_with_heavy_drag"
+		  },
+		  "toxic_fumes": {
+			"ratio": 0.4,
+			"size_px": [8, 20],
+			"lifetime_sec": [1.2, 2.0],
+			"motion": "float_upward_then_drift_away"
+		  },
+		  "small_bubbles": {
+			"ratio": 0.15,
+			"size_px": [3, 7],
+			"lifetime_sec": [0.5, 0.9],
+			"motion": "rise_then_pop"
+		  }
+		}
+	  },
+	  "vfx": {
+		"mud_ring": {
+		  "radius_px": 70,
+		  "edge_noise": "soft_irregular",
+		  "opacity": 0.55
+		},
+		"sickly_green_pulse": {
+		  "intensity_range": [0.55, 0.9],
+		  "frequency_hz": 0.8
+		}
+	  },
+	  "audio": {
+		"loop": "swamp_loop.wav",
+		"volume": 0.35
+	  }
+	},
+	"pulse_burst": {
+	  "duration_sec": 0.8,
+	  "trigger_interval_sec": 1.2,
+	  "description": "Aura suddenly expands with a toxic glow flash and erupts into poisonous bubbles.",
+	  "animation": {
+		"radius_scale_curve": "1.0 -> 1.22 -> 1.0",
+		"glow_curve": "0.6 -> 0.9 -> 0.55",
+		"mud_surface": "brief_ripple_outward"
+	  },
+	  "particles": {
+		"pulse_count": 20,
+		"particle_type": "toxic_green_poison_motes",
+		"spawn_pattern": "ring_expansion",
+		"velocity_px_per_sec": [35, 120],
+		"lifetime_sec": [0.5, 1.1],
+		"special_particles": {
+		  "toxic_bubbles": 5,
+		  "bubble_pop_sparks": 10
+		}
+	  },
+	  "vfx": {
+		"noxious_cloud_expansion": true,
+		"brief_green_flash": true,
+		"ground_stain_darkening": {
+		  "duration_sec": 0.5,
+		  "opacity": 0.35
+		}
+	  },
+	  "audio": {
+		"sfx": "poison_burst.wav",
+		"volume": 0.65
+	  }
+	},
+	"damage_tick": {
+	  "duration_sec": 0.2,
+	  "trigger": "enemy_takes_poison_damage",
+	  "description": "A small corruption burst detonates on the enemy when poison damage ticks.",
+	  "particles": {
+		"damage_particle_count": 8,
+		"particle_type": "purple_corruption_splinters",
+		"pattern": "small_radial_explosion",
+		"velocity_px_per_sec": [40, 140],
+		"lifetime_sec": [0.18, 0.45],
+		"color": "purple_with_green_edges"
+	  },
+	  "enemy_feedback": {
+		"flash_color": "purple",
+		"flash_duration_sec": 0.08,
+		"sprite_tint_strength": 0.65,
+		"small_hit_jolt_px": 2
+	  },
+	  "vfx": {
+		"mini_poison_puff": true,
+		"corruption_ripple": {
+		  "radius_px": 24,
+		  "fade_sec": 0.18
+		}
+	  },
+	  "audio": {
+		"sfx": "corruption_tick.wav",
+		"volume": 0.5
+	  }
+	},
+	"corruption_spread": {
+	  "duration_sec": "matches_poison_duration",
+	  "description": "Purple corruption crawls over enemies inside the aura like living poison veins.",
+	  "shader_effect": {
+		"enabled": true,
+		"type": "procedural_corruption_mask",
+		"spread_curve": "0.0 -> 0.75 over 0.6s",
+		"vein_noise_scale": 18,
+		"edge_glow_color_rgba": [0.3, 0.8, 0.2, 0.7],
+		"main_corruption_color_rgba": [0.55, 0.15, 0.85, 0.9],
+		"pulse_frequency_hz": 2.0
+	  },
+	  "enemy_aura": {
+		"toxic_outline": true,
+		"outline_width_px": 2,
+		"fume_particles_per_sec": 4,
+		"fume_lifetime_sec": [0.6, 1.2]
+	  },
+	  "mechanics": {
+		"status": "corrupted_poison",
+		"damage_over_time": true,
+		"refreshes_while_inside_aura": true,
+		"ends_after_poison_duration_if_outside": true
+	  }
+	},
+	"deactivate": {
+	  "duration_sec": 0.4,
+	  "description": "The mud vortex loses momentum, collapses into the ground, and releases the last fumes upward.",
+	  "animation": {
+		"orbit_speed_curve": "70deg/sec -> 0deg/sec",
+		"radius_curve": "1.0 -> 0.65 -> 0.0",
+		"opacity_curve": "1.0 -> 0.0"
+	  },
+	  "particles": {
+		"disperse_count": 24,
+		"particle_type": "mud_dust_and_toxic_fumes",
+		"motion": "float_upward_then_fade",
+		"lifetime_sec": [0.4, 1.0],
+		"fade_curve": "ease_out"
+	  },
+	  "vfx": {
+		"mud_settle_splash": true,
+		"final_green_glow_fade": true
+	  },
+	  "audio": {
+		"swamp_loop_fadeout_sec": 0.4
+	  }
+	}
+  },
+  "level_scaling": {
+	"radius_px": "70 + 15 * level",
+	"swirl_speed_deg_per_sec": "70 + 5 * level",
+	"glow_intensity": "0.9 + 0.05 * level",
+	"pulse_particle_bonus_per_level": 3,
+	"damage_particle_bonus_per_level": 1,
+	"max_radius_px": 160
+  },
+  "performance_budget": {
+	"max_idle_particles": 45,
+	"max_pulse_particles": 40,
+	"max_enemy_corruption_particles_per_enemy": 12,
+	"particle_pooling_required": true,
+	"lod_rules": {
+	  "reduce_fumes_when_many_enemies": true,
+	  "disable_small_bubbles_at_low_quality": true
+	}
+  }
+},
+  {
+  "skill_name": "Squeal Wave",
+  "type": "expanding_sonic_shockwave_knockback",
+  "theme": "chaotic_purple_sonic_distortion",
+  "visual_identity": {
+	"primary_color_rgba": [0.7, 0.3, 0.8, 1.0],
+	"accent_color_rgba": [1.0, 0.15, 0.85, 1.0],
+	"glow_intensity": 1.4,
+	"style": "violent_jagged_energy_rings",
+	"screen_distortion": "radial_warp_refraction"
+  },
+  "mechanics": {
+	"origin": "player_center",
+	"knockback_force_units": 150,
+	"damage_area": "active_ring_contact",
+	"enemy_hit_rule": "each_enemy_can_be_hit_once_per_wave",
+	"impact_camera_wobble": true
+  },
+  "ring_mechanics": {
+	"ring_count": 3,
+	"ring_width_px": 6,
+	"jagged_spike_extension_px": 8,
+	"jagged_spikes_per_ring": 16,
+	"jagged_rotation_speed_deg_per_sec": 45,
+	"rings": [
+	  {
+		"name": "main_ring",
+		"expansion_speed_px_per_sec": 280,
+		"distortion_strength": 1.0,
+		"brightness_multiplier": 1.25
+	  },
+	  {
+		"name": "secondary_ring",
+		"expansion_speed_px_per_sec": 200,
+		"distortion_strength": 0.7,
+		"brightness_multiplier": 1.0
+	  },
+	  {
+		"name": "tertiary_ring",
+		"expansion_speed_px_per_sec": 150,
+		"distortion_strength": 0.45,
+		"brightness_multiplier": 0.8
+	  }
+	]
+  },
+  "states": {
+	"charge": {
+	  "duration_sec": 0.4,
+	  "description": "Sonic pressure condenses at the player, pulling particles inward as unstable rings begin forming.",
+	  "animation": {
+		"center_pressure_core": {
+		  "scale_curve": "0.4 -> 1.2",
+		  "brightness_curve": "0.5 -> 1.4",
+		  "pulse_frequency_hz": 10
+		},
+		"forming_rings": {
+		  "count": 3,
+		  "radius_px": [18, 32, 48],
+		  "jitter_px": 4,
+		  "opacity_curve": "0.2 -> 0.9"
+		},
+		"particle_spiral": {
+		  "motion": "circles_spiraling_inward",
+		  "rotation_speed_deg_per_sec": 420
+		}
+	  },
+	  "particles": {
+		"buildup_count": 42,
+		"type": "purple_pressure_motes",
+		"velocity_px_per_sec": [80, 180],
+		"lifetime_sec": [0.25, 0.45],
+		"trail_enabled": true
+	  },
+	  "distortion_layers": {
+		"center_lens_warp": {
+		  "enabled": true,
+		  "strength_curve": "0.0 -> 0.45"
+		}
+	  },
+	  "audio": {
+		"loop": "sonic_charge_loop.wav",
+		"volume": 0.55
+	  }
+	},
+	"release": {
+	  "duration_sec": 0.2,
+	  "description": "Pressure detonates outward into an explosive sonic ring.",
+	  "animation": {
+		"launch_flash": {
+		  "duration_sec": 0.06,
+		  "brightness_multiplier": 2.2
+		},
+		"initial_ring": {
+		  "start_radius_px": 12,
+		  "end_radius_px": 75,
+		  "edge_style": "jagged_chaotic",
+		  "expansion_curve": "explosive_out"
+		}
+	  },
+	  "particles": {
+		"initial_burst_count": 60,
+		"type": "magenta_sonic_splinters",
+		"pattern": "radial_high_velocity",
+		"velocity_px_per_sec": [220, 520],
+		"lifetime_sec": [0.35, 0.8],
+		"light_trails": true
+	  },
+	  "screen_shake": {
+		"duration_sec": 0.2,
+		"intensity": "high",
+		"amplitude_px": 7,
+		"falloff": "ease_out"
+	  },
+	  "distortion_layers": {
+		"shock_lens": {
+		  "enabled": true,
+		  "strength": 0.8,
+		  "duration_sec": 0.18
+		},
+		"chromatic_split": {
+		  "enabled": true,
+		  "strength": 0.25,
+		  "duration_sec": 0.12
+		}
+	  },
+	  "audio": {
+		"sfx": "sonic_release_burst.wav",
+		"volume": 1.0
+	  }
+	},
+	"expand": {
+	  "duration_sec": 2.0,
+	  "description": "Three concentric jagged rings rip across the screen, warping space and scattering sonic particles.",
+	  "rings": {
+		"active_count": 3,
+		"main_speed_px_per_sec": 280,
+		"secondary_speed_px_per_sec": 200,
+		"tertiary_speed_px_per_sec": 150,
+		"width_px": 6,
+		"jagged_spike_extension_px": 8,
+		"spikes_per_ring": 16,
+		"spike_rotation_speed_deg_per_sec": 45,
+		"edge_noise": "violent_irregular"
+	  },
+	  "particles": {
+		"continuous_rate_per_sec": 30,
+		"type": "spinning_sonic_fragments",
+		"motion": "spin_away_high_velocity",
+		"velocity_px_per_sec": [120, 360],
+		"lifetime_sec": [0.4, 0.9],
+		"trailing_light": true
+	  },
+	  "distortion_layers": {
+		"radial_warp": {
+		  "enabled": true,
+		  "applied_to_each_ring": true,
+		  "strength_by_ring": [0.75, 0.5, 0.3],
+		  "width_px": 28
+		},
+		"screen_refraction": {
+		  "enabled": true,
+		  "noise_frequency": "high",
+		  "fade_behind_ring_sec": 0.25
+		}
+	  },
+	  "secondary_ripples": {
+		"enabled": true,
+		"spawn_after_ring_pass_sec": 0.15,
+		"ripple_count_per_ring": 2,
+		"expansion_speed_px_per_sec": 180,
+		"opacity": 0.45
+	  },
+	  "audio": {
+		"loop": "wave_expand_whoosh.wav",
+		"volume": 0.7
+	  }
+	},
+	"impact_zone": {
+	  "duration_sec": 0.15,
+	  "trigger": "enemy_intersects_active_ring",
+	  "description": "Enemies are blasted backward with visible sonic impact distortion.",
+	  "enemy_feedback": {
+		"knockback_force_units": 150,
+		"direction": "away_from_wave_center",
+		"hit_pause_sec": 0.04,
+		"sprite_warp": {
+		  "enabled": true,
+		  "stretch_direction": "away_from_center",
+		  "duration_sec": 0.08
+		},
+		"purple_flash": {
+		  "duration_sec": 0.08,
+		  "intensity": 0.75
+		}
+	  },
+	  "impact_particles": {
+		"count": 14,
+		"type": "jagged_magenta_shards",
+		"pattern": "backward_spray",
+		"velocity_px_per_sec": [100, 280],
+		"lifetime_sec": [0.25, 0.55]
+	  },
+	  "camera_feedback": {
+		"screen_shake_duration_sec": 0.1,
+		"screen_shake_intensity": "medium",
+		"wobble_duration_sec": 0.15,
+		"wobble_style": "rubber_band_sonic"
+	  }
+	},
+	"dissipate": {
+	  "duration_sec": 0.7,
+	  "description": "Main rings collapse into fading ripples while final particles scatter outward.",
+	  "animation": {
+		"ring_opacity_curve": "1.0 -> 0.0",
+		"glow_curve": "1.4 -> 0.0",
+		"jagged_edges_soften": true
+	  },
+	  "secondary_ripples": {
+		"final_ripple_count": 5,
+		"expansion_speed_px_per_sec": [160, 240],
+		"fade_duration_sec": 0.6,
+		"distortion_strength": 0.25
+	  },
+	  "particles": {
+		"final_scatter_count": 36,
+		"type": "fading_purple_light_sparks",
+		"velocity_px_per_sec": [80, 240],
+		"lifetime_sec": [0.4, 0.9],
+		"fade_curve": "ease_out"
+	  },
+	  "audio": {
+		"expand_loop_fadeout_sec": 0.5
+	  }
+	}
+  },
+  "performance_budget": {
+	"max_active_particles": 140,
+	"max_distortion_rings": 6,
+	"particle_pooling_required": true,
+	"lod_rules": {
+	  "reduce_continuous_particles_at_low_quality": true,
+	  "disable_chromatic_split_on_low_end": true,
+	  "simplify_jagged_spikes_when_many_waves_active": true
+	}
+  }
+},
+  {
+  "skill_name": "Capy Calm",
+  "type": "regeneration_aura_safe_zone",
+  "theme": "warm_restorative_loving_light",
+  "visual_identity": {
+	"primary_color_rgba": [1.0, 0.5, 0.7, 1.0],
+	"core_shimmer_rgba": [1.0, 1.0, 1.0, 0.9],
+	"glow_intensity": 0.8,
+	"mood": "soft_comforting_protective",
+	"blend_mode": "soft_additive"
+  },
+  "aura_mechanics": {
+	"base_radius_px": 65,
+	"healing_enabled": true,
+	"heal_tick_interval_sec": 1.0,
+	"safe_zone_enabled": true,
+	"enemy_aura_damage": true,
+	"enemy_entry_rule": "enemies_inside_radius_take_periodic_aura_damage",
+	"low_hp_threshold": 0.3
+  },
+  "breathing_pulse_cycle": {
+	"cycle_duration_sec": 1.5,
+	"expand_duration_sec": 0.3,
+	"contract_duration_sec": 0.3,
+	"hold_soft_glow_duration_sec": 0.9,
+	"radius_variation_percent": 15,
+	"radius_curve": "ease_in_out_sine",
+	"glow_curve": "0.65 -> 0.8 -> 0.65"
+  },
+  "states": {
+	"idle": {
+	  "duration_sec": 1.0,
+	  "loop": true,
+	  "description": "A gentle healing aura breathes around the player while warm particles float upward.",
+	  "particles": {
+		"idle_rate_per_sec": 2,
+		"particle_shapes": ["heart", "star", "soft_round_mote"],
+		"shape_ratio": {
+		  "heart": 0.45,
+		  "star": 0.35,
+		  "soft_round_mote": 0.2
+		},
+		"rise_speed_px_per_sec": 40,
+		"lifetime_sec": 1.2,
+		"fade_curve": "soft_ease_out",
+		"trail": {
+		  "enabled": true,
+		  "type": "warm_light_ribbon",
+		  "length_px": 18,
+		  "opacity": 0.45
+		}
+	  },
+	  "vfx": {
+		"player_glow": {
+		  "breathing_enabled": true,
+		  "pulse_cycle_sec": 1.5,
+		  "radius_scale_range": [0.85, 1.15]
+		},
+		"white_shimmer_core": {
+		  "sparkle_rate_per_sec": 1,
+		  "sparkle_duration_sec": 0.25
+		}
+	  },
+	  "audio": {
+		"loop": "soft_pulse_loop.wav",
+		"volume": 0.32
+	  }
+	},
+	"tick_heal": {
+	  "duration_sec": 0.08,
+	  "trigger": "heal_tick",
+	  "description": "A tiny burst of loving light blooms from the player as healing is applied.",
+	  "healing_mechanics": {
+		"tick_interval_sec": 1.0,
+		"target": "player",
+		"healing_type": "regeneration",
+		"can_trigger_low_hp_attract": true
+	  },
+	  "particles": {
+		"tick_particle_count": 8,
+		"shape": "heart_or_star",
+		"heart_ratio": 0.65,
+		"star_ratio": 0.35,
+		"spawn_pattern": "small_radial_bloom_then_upward_float",
+		"velocity_px_per_sec": [30, 90],
+		"lifetime_sec": [0.45, 0.9],
+		"trail_enabled": true
+	  },
+	  "vfx": {
+		"glow_flash": {
+		  "duration_sec": 0.08,
+		  "intensity_multiplier": 1.45,
+		  "color": "healing_pink_white"
+		},
+		"soft_ring": {
+		  "start_radius_px": 18,
+		  "end_radius_px": 65,
+		  "fade_duration_sec": 0.18
+		}
+	  },
+	  "audio": {
+		"sfx": "healing_chime.wav",
+		"volume": 0.6,
+		"pitch_variance": 0.05
+	  }
+	},
+	"low_hp_attract": {
+	  "active_when": "player_hp_percent < 30",
+	  "description": "Healing particles become eager and curve inward toward the player like the aura is feeding them warmth.",
+	  "particles": {
+		"speed_multiplier": 2.0,
+		"acceleration": "toward_player",
+		"motion_path": "curved_arc_convergence",
+		"trail_length_multiplier": 1.5,
+		"extra_particles_per_sec": 3
+	  },
+	  "vfx": {
+		"hungry_effect": {
+		  "enabled": true,
+		  "particle_curve_strength": 0.85,
+		  "player_core_glow_multiplier": 1.25
+		},
+		"heartbeat_pulse": {
+		  "enabled": true,
+		  "pulse_frequency_hz": 2.0,
+		  "radius_scale_range": [0.9, 1.2]
+		}
+	  },
+	  "audio": {
+		"ambient_loop_pitch": 1.08,
+		"healing_chime_pitch": 1.12
+	  }
+	},
+	"enemy_proximity": {
+	  "duration_sec": 0.3,
+	  "trigger": "enemy_enters_aura_radius",
+	  "description": "The calm aura briefly becomes protective, flaring outward as a soft but firm barrier.",
+	  "barrier_mechanics": {
+		"safe_zone_radius_px": 65,
+		"enemy_damage_enabled": true,
+		"damage_trigger": "enemy_inside_radius",
+		"damage_tick_interval_sec": 0.5,
+		"knockback_optional": "small_outward_nudge"
+	  },
+	  "animation": {
+		"aura_flare": {
+		  "radius_scale_curve": "1.0 -> 1.2 -> 1.0",
+		  "glow_multiplier": 1.35,
+		  "duration_sec": 0.3
+		},
+		"defensive_particles": {
+		  "motion": "move_outward_as_barrier",
+		  "ring_alignment": true
+		}
+	  },
+	  "particles": {
+		"barrier_particle_count": 14,
+		"shape": "bright_star_and_heart_mix",
+		"pattern": "outward_ring_push",
+		"velocity_px_per_sec": [80, 160],
+		"lifetime_sec": [0.25, 0.55]
+	  },
+	  "vfx": {
+		"soft_wall_ring": {
+		  "width_px": 5,
+		  "opacity": 0.7,
+		  "edge_style": "feathered"
+		},
+		"enemy_contact_flash": {
+		  "color": "pink_white",
+		  "duration_sec": 0.06
+		}
+	  },
+	  "audio": {
+		"sfx": "danger_barrier.wav",
+		"volume": 0.55
+	  }
+	},
+	"fade_out": {
+	  "duration_sec": 0.5,
+	  "description": "The healing light relaxes, particles slow down, and warmth drifts away.",
+	  "animation": {
+		"aura_opacity_curve": "1.0 -> 0.0",
+		"glow_intensity_curve": "0.8 -> 0.0",
+		"radius_curve": "1.0 -> 0.9"
+	  },
+	  "particles": {
+		"remaining_particles": "continue_existing_only",
+		"speed_multiplier": 0.45,
+		"motion": "slow_drift_away",
+		"fade_duration_sec": 0.5
+	  },
+	  "audio": {
+		"soft_pulse_loop_fadeout_sec": 0.5
+	  }
+	}
+  },
+  "performance_budget": {
+	"max_idle_particles": 24,
+	"max_tick_particles": 16,
+	"max_barrier_particles": 28,
+	"particle_pooling_required": true
+  }
+},
+  {
+  "skill_name": "XP Magnet",
+  "type": "resource_attraction_vacuum",
+  "theme": "teal_gravitational_vortex",
+  "visual_identity": {
+	"primary_color_rgba": [0.2, 0.9, 0.6, 1.0],
+	"core_color_rgba": [1.0, 1.0, 1.0, 0.95],
+	"glow_intensity_idle": 0.7,
+	"glow_intensity_active": 1.2,
+	"glow_intensity_max_density": 1.5,
+	"blend_mode": "soft_additive"
+  },
+  "attraction_mechanics": {
+	"base_pull_radius_px": 120,
+	"active_pull_radius_px": 200,
+	"pull_target": "player_center",
+	"affected_objects": ["xp_orbs", "coins", "small_pickups"],
+	"pull_path": "spiral_curve",
+	"base_particle_velocity_px_per_sec": 100,
+	"acceleration_curve": "ease_in_quad_toward_center",
+	"consume_distance_px": 12,
+	"high_density_threshold": 12
+  },
+  "ring_dynamics": {
+	"ring_count": 3,
+	"idle_radii_px": [35, 65, 95],
+	"pulse_amplitude_px": 12,
+	"pulse_style": "contract_inward_then_release",
+	"idle_rotation_speed_deg_per_sec": 30,
+	"active_rotation_speed_deg_per_sec": 60,
+	"max_density_rotation_speed_deg_per_sec": 100,
+	"ring_width_px": 4,
+	"edge_style": "smooth_arc_segments"
+  },
+  "center_vortex": {
+	"enabled": true,
+	"core_radius_px": 14,
+	"full_rotation_duration_sec": 1.5,
+	"spin_direction": "clockwise",
+	"appearance": "small_teal_vortex_with_white_core",
+	"consume_effect": "particles shrink and flash into center"
+  },
+  "states": {
+	"idle": {
+	  "duration_sec": 1.2,
+	  "loop": true,
+	  "description": "Three teal rings breathe inward and outward while a small vortex quietly spins at the player.",
+	  "rings": {
+		"radii_px": [35, 65, 95],
+		"rotation_speed_deg_per_sec": 30,
+		"pulse_amplitude_px": 12,
+		"pulse_curve": "ease_in_out_sine",
+		"opacity_range": [0.35, 0.7]
+	  },
+	  "particles": {
+		"spiral_rate_per_sec": 4,
+		"particle_type": "teal_gravity_motes",
+		"motion": "spiral_inward",
+		"velocity_px_per_sec": 100,
+		"lifetime_sec": [0.6, 1.2],
+		"fade_curve": "toward_center"
+	  },
+	  "vfx": {
+		"center_core_spin": true,
+		"subtle_screen_pull_distortion": {
+		  "enabled": true,
+		  "strength": 0.12
+		}
+	  },
+	  "audio": {
+		"loop": "magnet_idle_hum.wav",
+		"volume": 0.28
+	  }
+	},
+	"activation_pulse": {
+	  "duration_sec": 0.4,
+	  "trigger": "magnet_activated",
+	  "description": "The attraction field snaps open, expanding its pull radius with a bright teal flare.",
+	  "rings": {
+		"expansion_curve": "fast_out_then_contract",
+		"radius_scale_curve": "1.0 -> 1.45 -> 1.15",
+		"glow_curve": "0.7 -> 1.4 -> 1.2",
+		"rotation_speed_deg_per_sec": 80
+	  },
+	  "center_vortex": {
+		"flare": true,
+		"core_scale_curve": "1.0 -> 1.8 -> 1.2",
+		"brightness_multiplier": 1.6
+	  },
+	  "particles": {
+		"burst_count": 15,
+		"particle_type": "teal_energy_sparks",
+		"pattern": "radial_burst_then_inward_snap",
+		"velocity_px_per_sec": [120, 260],
+		"lifetime_sec": [0.25, 0.6]
+	  },
+	  "audio": {
+		"sfx": "magnet_activate_pulse.wav",
+		"volume": 0.75
+	  }
+	},
+	"active_pull": {
+	  "duration_sec": "while_magnet_active",
+	  "description": "XP orbs curve into spiral paths and accelerate toward the glowing center vortex.",
+	  "pull_radius_px": 200,
+	  "rings": {
+		"rotation_speed_deg_per_sec": 60,
+		"pulse_amplitude_px": 12,
+		"glow_intensity": 1.2,
+		"pulse_frequency_multiplier": 1.35
+	  },
+	  "particles": {
+		"spiral_rate_per_sec": 12,
+		"particle_type": "fast_teal_vacuum_lines",
+		"motion": "accelerating_spiral_inward",
+		"velocity_px_per_sec": [100, 240],
+		"lifetime_sec": [0.35, 0.9],
+		"trail_enabled": true
+	  },
+	  "xp_orb_motion": {
+		"path": "curved_spiral_to_player",
+		"initial_curve_strength": 0.65,
+		"acceleration_multiplier": 1.8,
+		"arrival_effect": {
+		  "shrink_to_center": true,
+		  "white_teal_pop": true,
+		  "pop_duration_sec": 0.08
+		}
+	  },
+	  "center_tornado": {
+		"enabled": true,
+		"height_px": 38,
+		"particle_layers": 3,
+		"spin_speed_multiplier": 1.5,
+		"consume_flash_enabled": true
+	  },
+	  "audio": {
+		"loop": "pull_vacuum_loop.wav",
+		"volume": 0.45
+	  }
+	},
+	"high_density": {
+	  "active_when": "nearby_xp_orbs >= 12",
+	  "description": "The field reacts to many nearby resources, brightening into a stronger gravitational tornado.",
+	  "rings": {
+		"rotation_speed_deg_per_sec": 100,
+		"glow_intensity": 1.5,
+		"ring_width_px": 5,
+		"opacity_range": [0.65, 1.0],
+		"pulse_frequency_multiplier": 1.8
+	  },
+	  "particles": {
+		"spiral_rate_per_sec": 20,
+		"particle_type": "dense_teal_gravity_streaks",
+		"motion": "tight_fast_spiral",
+		"velocity_px_per_sec": [180, 360],
+		"trail_length_px": 26
+	  },
+	  "center_tornado": {
+		"intensity_multiplier": 1.8,
+		"height_px": 56,
+		"core_brightness_multiplier": 1.5,
+		"extra_consume_sparks_per_pickup": 3
+	  },
+	  "feedback": {
+		"subtle_screen_vignette_pull": true,
+		"micro_camera_suction": {
+		  "enabled": true,
+		  "amplitude_px": 1.5,
+		  "duration_sec": 0.1
+		}
+	  }
+	},
+	"fade": {
+	  "duration_sec": 0.3,
+	  "trigger": "magnet_deactivated",
+	  "description": "The vortex releases its pull as rings slow, fade, and remaining particles drift away.",
+	  "rings": {
+		"rotation_speed_curve": "60deg/sec -> 0deg/sec",
+		"opacity_curve": "1.0 -> 0.0",
+		"radius_scale_curve": "1.0 -> 0.85"
+	  },
+	  "particles": {
+		"remaining_particles": "continue_existing_only",
+		"motion": "disperse_outward_then_fade",
+		"speed_multiplier": 0.4,
+		"fade_duration_sec": 0.3
+	  },
+	  "center_vortex": {
+		"core_scale_curve": "1.0 -> 0.0",
+		"glow_curve": "1.2 -> 0.0"
+	  },
+	  "audio": {
+		"pull_vacuum_loop_fadeout_sec": 0.3,
+		"magnet_idle_hum_fadeout_sec": 0.3
+	  }
+	}
+  },
+  "performance_budget": {
+	"max_visual_particles": 90,
+	"max_tracked_pickups": 120,
+	"particle_pooling_required": true,
+	"lod_rules": {
+	  "reduce_spiral_particles_when_pickups_high": true,
+	  "disable_subtle_screen_pull_on_low_quality": true
+	}
+  }
+},
+  {
+  "skill_name": "Fireball",
+  "type": "elliptical_orbit_meteor_explosion",
+  "theme": "apocalyptic_hellfire_meteors",
+  "visual_identity": {
+	"primary_color_rgba": [1.0, 0.33, 0.0, 1.0],
+	"flame_color_rgba": [1.0, 0.1, 0.0, 1.0],
+	"core_color_rgba": [1.0, 0.95, 0.65, 1.0],
+	"smoke_color_rgba": [0.12, 0.09, 0.08, 0.65],
+	"glow_intensity": 1.3,
+	"blend_mode": "additive_fire_plus_alpha_smoke",
+	"mood": "devastating_meteoric_hellfire"
+  },
+  "fireball_mechanics": {
+	"fireball_count_by_level": {
+	  "level_1": 2,
+	  "level_2": 3,
+	  "level_3_plus": 4
+	},
+	"orbit_path": {
+	  "shape": "ellipse",
+	  "width_px": 90,
+	  "height_px": 60,
+	  "center": "player_center",
+	  "dynamic_tilt_deg": 18,
+	  "tilt_oscillation_deg": [-8, 8],
+	  "speed_variation": "accelerates_near_front_arc_and_slows_near_back_arc"
+	},
+	"orbit_speed": {
+	  "base_deg_per_sec": 180,
+	  "bonus_deg_per_sec_per_level": 30,
+	  "runtime_state_speed_deg_per_sec": 150,
+	  "max_deg_per_sec": 330
+	},
+	"collision_behavior": {
+	  "trigger": "fireball_contacts_enemy",
+	  "consumes_fireball": true,
+	  "respawn_after_sec": 1.2,
+	  "explosion_damage_radius_px": 90,
+	  "secondary_ember_boomerang": true
+	}
+  },
+  "states": {
+	"spawn": {
+	  "duration_sec": 0.5,
+	  "description": "Fireballs ignite from compressed sparks, bloom into meteors, and lock into elliptical orbit paths.",
+	  "animation": {
+		"expansion_flare": {
+		  "scale_curve": "0.15 -> 1.35 -> 1.0",
+		  "opacity_curve": "0.0 -> 1.0",
+		  "brightness_curve": "0.5 -> 1.8 -> 1.3",
+		  "flare_duration_sec": 0.18
+		},
+		"orbit_path_establish": {
+		  "ghost_ellipse_preview": true,
+		  "ellipse_trace_duration_sec": 0.35,
+		  "trace_opacity": 0.35,
+		  "trace_fade_sec": 0.2
+		},
+		"fireball_core": {
+		  "white_hot_center": true,
+		  "outer_flame_flicker": true,
+		  "flicker_frequency_hz": 18
+		}
+	  },
+	  "particles": {
+		"spawn_sparks": 32,
+		"fire_lash_particles": 12,
+		"smoke_seed_puffs": 4,
+		"pattern": "outward_flare_then_orbit_snap",
+		"lifetime_sec": [0.25, 0.7]
+	  },
+	  "audio": {
+		"sfx": "fireball_orbit_loop.wav",
+		"volume": 0.35,
+		"start_loop_after_sec": 0.15
+	  }
+	},
+	"orbit": {
+	  "duration_sec": 1.8,
+	  "loop": true,
+	  "description": "Fireballs carve aggressive elliptical arcs around the player, speeding and slowing for a meteor-like swing.",
+	  "elliptical_path": {
+		"width_px": 90,
+		"height_px": 60,
+		"rotation_speed_deg_per_sec": 150,
+		"base_speed_spec_deg_per_sec": 180,
+		"level_speed_bonus_deg_per_sec": 30,
+		"formation_offsets_deg": {
+		  "2_fireballs": [0, 180],
+		  "3_fireballs": [0, 120, 240],
+		  "4_fireballs": [0, 90, 180, 270]
+		},
+		"speed_curve": "sinusoidal_arc_velocity",
+		"front_arc_speed_multiplier": 1.2,
+		"back_arc_speed_multiplier": 0.8,
+		"z_parallax": {
+		  "enabled": true,
+		  "front_scale": 1.12,
+		  "back_scale": 0.86,
+		  "front_brightness": 1.2,
+		  "back_brightness": 0.72
+		}
+	  },
+	  "fireball_visuals": {
+		"core_radius_px": 12,
+		"outer_flame_radius_px": 24,
+		"flame_jitter_px": 4,
+		"heat_haze_local": true,
+		"glow_intensity": 1.3
+	  },
+	  "audio": {
+		"loop": "fireball_orbit_loop.wav",
+		"volume": 0.32,
+		"pitch_increases_with_level": true
+	  }
+	},
+	"ember_trail": {
+	  "continuous": true,
+	  "description": "Each fireball sheds curved ember trails that fall slightly before burning out.",
+	  "particles": {
+		"ember_rate_per_sec_per_fireball": 3,
+		"fade_duration_sec": 0.6,
+		"lifetime_sec": 0.6,
+		"particle_type": "glowing_embers",
+		"size_px": [2, 7],
+		"motion": "curved_downward_trail",
+		"velocity_px_per_sec": [30, 120],
+		"gravity_px_per_sec2": 60,
+		"trail_light_enabled": true
+	  },
+	  "trail_shape": {
+		"length_px": 55,
+		"curve_strength": 0.35,
+		"color_gradient": "white_hot_core_to_orange_to_red"
+	  }
+	},
+	"smoke_puffs": {
+	  "continuous": true,
+	  "description": "Dark smoke blooms behind the meteors and drifts upward, lingering after the fire passes.",
+	  "particles": {
+		"spawn_interval_sec": 0.3,
+		"rate_per_fireball": "1 smoke puff every 0.3s",
+		"particle_type": "soft_smoke_cloud",
+		"size_px": [14, 32],
+		"lifetime_sec": [1.0, 1.8],
+		"motion": "slow_upward_drift",
+		"velocity_px_per_sec": [8, 35],
+		"opacity_curve": "0.55 -> 0.25 -> 0.0"
+	  },
+	  "rendering": {
+		"blend_mode": "alpha_blended",
+		"behind_fire": true,
+		"soft_edges": true
+	  }
+	},
+	"impact_explosion": {
+	  "duration_sec": 0.5,
+	  "description": "The meteor detonates into a hellfire blast with mushroom cloud, fire rings, and screen-searing flash.",
+	  "animation": {
+		"fireball_shatter": {
+		  "core_crack_duration_sec": 0.06,
+		  "shatter_style": "white_hot_core_splits_into_fire_chunks"
+		},
+		"mushroom_cloud": {
+		  "enabled": true,
+		  "base_column_height_px": 70,
+		  "cap_radius_px": 52,
+		  "growth_curve": "fast_rise_then_expand",
+		  "duration_sec": 0.45
+		},
+		"explosion_rings": {
+		  "count": 3,
+		  "expansion_speed_px_per_sec": 400,
+		  "ring_width_px": [8, 6, 4],
+		  "start_delays_sec": [0.0, 0.06, 0.12],
+		  "fade_duration_sec": 0.35
+		}
+	  },
+	  "particles": {
+		"impact_particle_count": 80,
+		"distribution": {
+		  "fire_chunks": 30,
+		  "hot_sparks": 34,
+		  "debris_smoke": 16
+		},
+		"pattern": "radial_explosion_with_upward_cloud_bias",
+		"velocity_px_per_sec": [120, 420],
+		"lifetime_sec": [0.25, 1.2],
+		"mixed_debris_and_fire": true
+	  },
+	  "secondary_projectiles": {
+		"enabled": true,
+		"type": "burning_boomerang_embers",
+		"count": 8,
+		"initial_spread_deg": 360,
+		"outward_duration_sec": 0.22,
+		"curve_back_duration_sec": 0.38,
+		"return_target": "nearest_enemy_or_player_orbit_path",
+		"trail": "thin_red_orange_light_arc",
+		"damage_multiplier": 0.35
+	  },
+	  "distortion": {
+		"heat_wave": {
+		  "enabled": true,
+		  "duration_sec": 0.3,
+		  "strength": 0.75,
+		  "style": "wavy_screen_refraction"
+		},
+		"local_air_warp": {
+		  "enabled": true,
+		  "radius_px": 120,
+		  "falloff": "ease_out"
+		}
+	  },
+	  "screen_flash": {
+		"enabled": true,
+		"color_rgba": [1.0, 1.0, 1.0, 0.8],
+		"duration_sec": 0.1,
+		"level_scaling": "opacity +0.04 per level, capped at 1.0"
+	  },
+	  "audio": {
+		"sfx": "fireball_impact_explosion.wav",
+		"volume": 1.0,
+		"layered_sfx": [
+		  {
+			"file": "heat_wave.wav",
+			"volume": 0.65,
+			"delay_sec": 0.04
+		  }
+		]
+	  }
+	}
+  },
+  "explosion_mechanics": {
+	"damage_radius_px": 90,
+	"fire_ring_count": 3,
+	"fire_ring_speed_px_per_sec": 400,
+	"burn_status": {
+	  "applies": true,
+	  "duration_sec": 2.5,
+	  "tick_interval_sec": 0.5,
+	  "visual": "small_flames_attached_to_enemy"
+	},
+	"impact_feedback": {
+	  "hit_stop_sec": 0.04,
+	  "enemy_flash_color": "orange_white",
+	  "enemy_knockback_force_units": 85
+	}
+  },
+  "level_scaling": {
+	"fireball_count": "2 at level 1, 3 at level 2, 4 at level 3+",
+	"orbit_speed_deg_per_sec": "180 + 30 * level",
+	"screen_flash_opacity": "0.8 + 0.04 * level, max 1.0",
+	"explosion_radius_px": "90 + 8 * level",
+	"impact_particles": "80 + 8 * level, max 128",
+	"glow_intensity": "1.3 + 0.08 * level"
+  },
+  "performance_budget": {
+	"max_active_fireballs": 4,
+	"max_ember_particles": 80,
+	"max_smoke_particles": 40,
+	"max_explosion_particles": 128,
+	"particle_pooling_required": true,
+	"lod_rules": {
+	  "reduce_smoke_puffs_on_low_quality": true,
+	  "disable_mushroom_cloud_extra_layers_when_many_explosions": true,
+	  "reduce_heat_distortion_strength_on_mobile": true
+	}
+  }
+},
+  {
+  "skill_name": "Elec Shockwave",
+  "type": "electrical_pulse_chain_lightning",
+  "theme": "devastating_tesla_discharge",
+  "visual_identity": {
+	"primary_color_rgba": [1.0, 1.0, 0.2, 1.0],
+	"arc_color_rgba": [0.25, 0.9, 1.0, 1.0],
+	"core_color_rgba": [1.0, 1.0, 1.0, 1.0],
+	"glow_intensity": 1.6,
+	"blend_mode": "additive_electric",
+	"mood": "violent_crackling_screen_energy"
+  },
+  "shockwave_mechanics": {
+	"origin": "player_center",
+	"ring_count": 4,
+	"primary_damage_area": "expanding_ring_contact",
+	"enemy_hit_rule": "each_enemy_hit_once_by_primary_wave",
+	"paralysis_duration_sec": 0.6,
+	"paralysis_stutter_sec": 0.1,
+	"chain_radius_px": 80,
+	"chain_recursion_depth": 1,
+	"chain_hit_rule": "secondary_tendrils_can_hit_nearby_unhit_enemies"
+  },
+  "branching_mechanics": {
+	"primary_lightning_branches": {
+	  "count_range": [6, 8],
+	  "speed_px_per_sec": 500,
+	  "targeting": "seek_enemies_inside_expanding_ring",
+	  "max_branch_distance_px": 260,
+	  "branch_jitter_px": 10,
+	  "branch_lifetime_sec": 0.4
+	},
+	"secondary_chain_branches": {
+	  "trigger": "enemy_hit",
+	  "radius_px": 80,
+	  "recursion_depth": 1,
+	  "branches_per_hit_enemy": [2, 4],
+	  "speed_px_per_sec": 420,
+	  "lifetime_sec": 0.2
+	}
+  },
+  "screen_distortion_specs": {
+	"screen_flicker": {
+	  "release_flickers": 6,
+	  "release_duration_sec": 0.2,
+	  "flicker_style": "rapid_brightness_cut_white_to_dark",
+	  "brightness_range": [0.65, 1.35]
+	},
+	"chromatic_aberration": {
+	  "enabled": true,
+	  "shift_px": 4,
+	  "channels": "red_cyan",
+	  "duration_sec": 0.2,
+	  "falloff": "ease_out"
+	},
+	"screen_darkening_during_charge": {
+	  "enabled": true,
+	  "darken_amount": 0.18,
+	  "duration_sec": 0.3
+	},
+	"screen_shake": {
+	  "release_duration_sec": 0.2,
+	  "release_amplitude_px": 7,
+	  "chain_hit_flicker_duration_sec": 0.1,
+	  "chain_hit_amplitude_px": 2
+	}
+  },
+  "states": {
+	"charge": {
+	  "duration_sec": 0.3,
+	  "description": "Electrical pressure coils inward toward the player as the screen dims and sparks compress into a white-hot core.",
+	  "animation": {
+		"coil_up": {
+		  "ring_count": 3,
+		  "ring_radius_px": [28, 48, 70],
+		  "rotation_speed_deg_per_sec": [260, -340, 420],
+		  "scale_curve": "1.15 -> 0.45",
+		  "brightness_curve": "0.6 -> 1.6"
+		},
+		"core_charge": {
+		  "scale_curve": "0.5 -> 1.35",
+		  "pulse_frequency_hz": 14,
+		  "electric_jitter_px": 5
+		}
+	  },
+	  "particles": {
+		"charge_particle_count": 30,
+		"pattern": "spiral_inward",
+		"acceleration": "pulsing_acceleration",
+		"velocity_px_per_sec": [90, 260],
+		"particle_type": "yellow_cyan_electric_sparks",
+		"lifetime_sec": [0.18, 0.4],
+		"trail_enabled": true
+	  },
+	  "screen_effects": {
+		"darken_screen": true,
+		"darken_amount": 0.18,
+		"micro_flicker": {
+		  "enabled": true,
+		  "frequency_hz": 18,
+		  "intensity": 0.12
+		}
+	  },
+	  "audio": {
+		"loop": "tesla_coil_charge_loop.wav",
+		"volume": 0.7,
+		"pitch_ramp": "1.0 -> 1.25"
+	  }
+	},
+	"release": {
+	  "duration_sec": 0.15,
+	  "description": "The stored charge detonates outward in a blinding discharge.",
+	  "animation": {
+		"discharge_flash": {
+		  "duration_sec": 0.05,
+		  "color": "white_yellow",
+		  "brightness_multiplier": 2.5
+		},
+		"initial_electric_ring": {
+		  "start_radius_px": 12,
+		  "end_radius_px": 90,
+		  "edge_style": "jagged_branching",
+		  "expansion_curve": "explosive_out"
+		}
+	  },
+	  "particles": {
+		"release_spark_count": 44,
+		"pattern": "radial_electrical_burst",
+		"velocity_px_per_sec": [180, 520],
+		"lifetime_sec": [0.18, 0.55],
+		"trail_enabled": true
+	  },
+	  "screen_effects": {
+		"screen_shake_duration_sec": 0.2,
+		"screen_shake_intensity": "high",
+		"screen_flicker_count": 6,
+		"screen_flicker_duration_sec": 0.2,
+		"chromatic_aberration": {
+		  "enabled": true,
+		  "red_cyan_shift_px": 4,
+		  "duration_sec": 0.2
+		}
+	  },
+	  "audio": {
+		"sfx": "discharge_burst.wav",
+		"volume": 1.0
+	  }
+	},
+	"ring_expand": {
+	  "duration_sec": 1.8,
+	  "description": "Four jagged electrical rings expand with staggered timing, branching outward as they sweep through enemies.",
+	  "rings": [
+		{
+		  "id": "ring_01",
+		  "start_delay_sec": 0.0,
+		  "expansion_speed_px_per_sec": 350,
+		  "width_px": 5,
+		  "jagged_spike_extension_px": 6,
+		  "spikes": 12,
+		  "glow_multiplier": 1.0
+		},
+		{
+		  "id": "ring_02",
+		  "start_delay_sec": 0.08,
+		  "expansion_speed_px_per_sec": 335,
+		  "width_px": 5,
+		  "jagged_spike_extension_px": 6,
+		  "spikes": 12,
+		  "glow_multiplier": 0.9
+		},
+		{
+		  "id": "ring_03",
+		  "start_delay_sec": 0.16,
+		  "expansion_speed_px_per_sec": 365,
+		  "width_px": 5,
+		  "jagged_spike_extension_px": 6,
+		  "spikes": 12,
+		  "glow_multiplier": 1.1
+		},
+		{
+		  "id": "ring_04",
+		  "start_delay_sec": 0.24,
+		  "expansion_speed_px_per_sec": 345,
+		  "width_px": 5,
+		  "jagged_spike_extension_px": 6,
+		  "spikes": 12,
+		  "glow_multiplier": 0.95
+		}
+	  ],
+	  "ring_vfx": {
+		"edge_crackle": true,
+		"branching_outward_arcs_per_ring_per_sec": 10,
+		"jagged_edge_jitter_px": 5,
+		"ring_fade_after_pass_sec": 0.28
+	  },
+	  "particles": {
+		"ring_spark_rate_per_sec": 38,
+		"particle_type": "electric_fragments",
+		"velocity_px_per_sec": [100, 340],
+		"lifetime_sec": [0.25, 0.7],
+		"colors": ["electric_yellow", "bright_cyan", "white_hot"]
+	  },
+	  "distortion": {
+		"radial_electric_refraction": true,
+		"distortion_width_px": 26,
+		"strength": 0.55
+	  }
+	},
+	"lightning_branch": {
+	  "duration_sec": 0.4,
+	  "staggered": true,
+	  "description": "Lightning bolts lance from the player toward enemies caught near the expanding rings.",
+	  "bolts": {
+		"count_range": [6, 8],
+		"speed_px_per_sec": 500,
+		"target_selection": "nearest_enemies_inside_or_near_ring_front",
+		"bolt_width_px": 4,
+		"outer_glow_width_px": 16,
+		"jitter_px": 10,
+		"branch_tendrils_per_bolt": [2, 5],
+		"tendril_lifetime_sec": 0.08
+	  },
+	  "particles": {
+		"trail_particles_per_2_bolts": [20, 30],
+		"particle_type": "branch_spark_trail",
+		"spawn_along_bolt_path": true,
+		"velocity_px_per_sec": [60, 220],
+		"lifetime_sec": [0.18, 0.5]
+	  },
+	  "impact_on_enemy": {
+		"paralysis_stutter_sec": 0.1,
+		"enemy_flash": "cyan_white",
+		"outline_glow_sec": 0.25
+	  },
+	  "audio": {
+		"sfx": "chain_lightning.wav",
+		"volume": 0.8,
+		"pitch_variance": 0.08
+	  }
+	},
+	"chain_hit": {
+	  "duration_sec": 0.2,
+	  "trigger": "enemy_hit_by_primary_or_branch_bolt",
+	  "description": "Hit enemies discharge secondary tendrils and a small shockwave, spreading electricity one level deep.",
+	  "secondary_shockwave": {
+		"radius_px": 80,
+		"duration_sec": 0.18,
+		"ring_width_px": 4,
+		"edge_style": "thin_jagged_electric",
+		"color": "cyan_yellow"
+	  },
+	  "secondary_tendrils": {
+		"branches_per_hit_enemy": [2, 4],
+		"seek_targets": "nearby_unhit_enemies_within_80px",
+		"recursion_depth_remaining": 1,
+		"speed_px_per_sec": 420,
+		"jitter_px": 8
+	  },
+	  "particles": {
+		"chain_burst_count": 18,
+		"particle_type": "cyan_yellow_chain_sparks",
+		"pattern": "enemy_center_radial_then_branch",
+		"velocity_px_per_sec": [90, 300],
+		"lifetime_sec": [0.15, 0.45]
+	  },
+	  "enemy_paralysis_visual": {
+		"stutter_freeze_sec": 0.1,
+		"animation_skip_frames": true,
+		"electric_outline": true,
+		"micro_jitter_px": 3,
+		"duration_sec": 0.6
+	  },
+	  "screen_effects": {
+		"flicker_duration_sec": 0.1,
+		"flicker_count": 3,
+		"chromatic_aberration_shift_px": 2
+	  }
+	}
+  },
+  "performance_budget": {
+	"max_primary_bolts": 8,
+	"max_chain_targets": 24,
+	"max_active_particles": 180,
+	"max_distortion_layers": 5,
+	"particle_pooling_required": true,
+	"lod_rules": {
+	  "reduce_ring_spark_rate_on_mobile": true,
+	  "cap_chain_hits_when_enemy_density_high": true,
+	  "disable_chromatic_aberration_on_low_quality": true
+	}
+  }
+},
+  {
+  "skill_name": "Hurricane",
+  "type": "massive_spinning_vortex_crowd_control",
+  "theme": "chaotic_wind_magic_spinning_fury",
+  "visual_identity": {
+	"primary_color_rgba": [0.6, 0.9, 1.0, 1.0],
+	"core_color_rgba": [1.0, 1.0, 1.0, 0.95],
+	"mist_color_rgba": [0.75, 0.95, 1.0, 0.55],
+	"glow_intensity": 1.4,
+	"blend_mode": "additive_wind_mist",
+	"mood": "violent_fast_rotating_air_pressure"
+  },
+  "vortex_mechanics": {
+	"origin": "player_center",
+	"main_vortex_radius_px": 95,
+	"damage_radius_px": 110,
+	"main_rotation_speed_deg_per_sec": 540,
+	"knockback_force_units": 180,
+	"enemy_caught_rule": "enemies_inside_radius_are_lifted_spun_then_thrown_outward",
+	"levitation_duration_sec": 0.4,
+	"hit_interval_sec": 0.35
+  },
+  "breathing_cycle": {
+	"enabled": true,
+	"cycle_duration_sec": 1.6,
+	"expand_duration_sec": 0.8,
+	"contract_duration_sec": 0.8,
+	"amplitude_px": 8,
+	"curve": "ease_in_out_sine",
+	"behavior": "concentric_spiral_rings_compress_inward_then_explode_outward"
+  },
+  "ring_system": {
+	"ring_count": 5,
+	"ring_spacing_px": 25,
+	"base_radii_px": [25, 50, 75, 100, 125],
+	"ring_width_px": 5,
+	"ring_style": "spiral_broken_arc_segments",
+	"rotation_speeds_deg_per_sec": [540, -460, 620, -520, 700],
+	"opacity_range": [0.35, 0.9],
+	"breathing_offset_per_ring_sec": 0.08
+  },
+  "mini_tornado_system": {
+	"count_range": [3, 4],
+	"orbit_radius_px": 60,
+	"orbit_speed_deg_per_sec": 180,
+	"mini_rotation_speed_deg_per_sec": 720,
+	"mini_radius_px": 18,
+	"height_px": 42,
+	"formation_offsets_deg": {
+	  "3_tornados": [0, 120, 240],
+	  "4_tornados": [0, 90, 180, 270]
+	}
+  },
+  "states": {
+	"activate": {
+	  "duration_sec": 0.5,
+	  "description": "Air pressure collapses into the player, then erupts outward into a towering vortex.",
+	  "animation": {
+		"vortex_materialization": {
+		  "scale_curve": "0.1 -> 1.25 -> 1.0",
+		  "opacity_curve": "0.0 -> 1.0",
+		  "spin_ramp_deg_per_sec": "120 -> 540"
+		},
+		"expansion_shockwave": {
+		  "start_radius_px": 10,
+		  "end_radius_px": 130,
+		  "duration_sec": 0.22,
+		  "distortion_strength": 0.55,
+		  "edge_style": "wind_ripple"
+		},
+		"initial_ring_setup": {
+		  "ring_count": 5,
+		  "ring_snap_delay_sec": 0.06,
+		  "spiral_alignment": "rings twist into stacked cyclone layers"
+		}
+	  },
+	  "particles": {
+		"activation_burst_count": 48,
+		"particle_type": "white_blue_wind_slashes",
+		"pattern": "radial_burst_then_upward_spiral",
+		"velocity_px_per_sec": [120, 360],
+		"lifetime_sec": [0.3, 0.9],
+		"trail_enabled": true
+	  },
+	  "screen_effects": {
+		"short_pressure_distortion": {
+		  "enabled": true,
+		  "duration_sec": 0.25,
+		  "strength": 0.45
+		}
+	  },
+	  "audio": {
+		"sfx": "tornado_spin_intense.wav",
+		"volume": 0.75,
+		"start_loop_after_sec": 0.2
+	  }
+	},
+	"spin_intense": {
+	  "duration_sec": 2.0,
+	  "loop": true,
+	  "description": "Multiple vortex layers spin at extreme speeds while rings breathe inward and explode outward.",
+	  "main_vortex": {
+		"rotation_speed_deg_per_sec": 540,
+		"layer_count": 5,
+		"layer_rotation_speeds_deg_per_sec": [540, -460, 620, -520, 700],
+		"layer_scale_offsets": [0.75, 0.9, 1.05, 1.18, 1.32],
+		"height_illusion": {
+		  "enabled": true,
+		  "top_scale": 0.65,
+		  "bottom_scale": 1.2,
+		  "vertical_stretch": 1.35
+		}
+	  },
+	  "breathing_rings": {
+		"compress_expand_cycle_sec": 1.6,
+		"expand_sec": 0.8,
+		"contract_sec": 0.8,
+		"amplitude_px": 8,
+		"ring_count": 5,
+		"phase_offset_per_ring_sec": 0.08,
+		"glow_pulse_multiplier": 1.25
+	  },
+	  "distortion": {
+		"spiral_warp": true,
+		"refraction_strength": 0.5,
+		"motion_blur_strength": 0.35
+	  },
+	  "screen_shake": {
+		"enabled": true,
+		"duration_sec": "continuous_during_active",
+		"pulse_interval_sec": 0.15,
+		"intensity": "medium",
+		"amplitude_px": 3,
+		"falloff": "soft_loop"
+	  },
+	  "audio": {
+		"loop": "tornado_spin_intense.wav",
+		"volume": 0.85
+	  }
+	},
+	"mini_tornado_orbit": {
+	  "continuous": true,
+	  "description": "Smaller satellite tornados orbit the main vortex, carving extra wind trails around the storm.",
+	  "mini_tornados": {
+		"count_range": [3, 4],
+		"orbit_radius_px": 60,
+		"orbit_speed_deg_per_sec": 180,
+		"self_spin_deg_per_sec": 720,
+		"scale_variation": [0.85, 1.15],
+		"height_px": 42
+	  },
+	  "particles": {
+		"mini_tornado_trail_rate_per_sec_each": 3,
+		"particle_type": "thin_white_wind_ribbons",
+		"motion": "tight_spiral_orbit",
+		"lifetime_sec": [0.25, 0.6],
+		"trail_length_px": 28
+	  },
+	  "damage_behavior": {
+		"minor_contact_damage": true,
+		"adds_extra_spin_force_to_caught_enemies": true
+	  }
+	},
+	"wind_particles": {
+	  "continuous": true,
+	  "description": "Wind particles spiral upward chaotically instead of traveling straight, creating a living cyclone texture.",
+	  "particles": {
+		"rate_per_sec": 8,
+		"particle_type": "curved_wind_streaks_and_air_motes",
+		"motion": "chaotic_upward_spiral",
+		"upward_drift_px_per_sec": 60,
+		"tangential_velocity_px_per_sec": [100, 260],
+		"radial_jitter_px": 14,
+		"lifetime_sec": [0.45, 1.2],
+		"size_px": [3, 14],
+		"trail_enabled": true
+	  },
+	  "audio": {
+		"loop": "wind_whoosh.wav",
+		"volume": 0.45
+	  }
+	},
+	"enemy_caught": {
+	  "duration_sec": 0.4,
+	  "trigger": "enemy_enters_vortex_radius",
+	  "description": "Enemies lift off the ground, spin helplessly, then get thrown outward by the storm wall.",
+	  "enemy_feedback": {
+		"levitation": {
+		  "duration_sec": 0.4,
+		  "vertical_lift_px": 22,
+		  "lift_curve": "ease_out"
+		},
+		"spin_animation": {
+		  "rotation_deg_per_sec": 720,
+		  "sprite_tilt_deg": 18,
+		  "motion_blur": true
+		},
+		"throw_outward": {
+		  "knockback_force_units": 180,
+		  "direction": "away_from_vortex_center",
+		  "release_curve": "snap_out"
+		},
+		"hit_flash": {
+		  "color": "white_blue",
+		  "duration_sec": 0.06,
+		  "intensity": 0.75
+		}
+	  },
+	  "particles": {
+		"enemy_caught_burst_count": 12,
+		"particle_type": "wind_slash_marks",
+		"pattern": "spiral_wrap_around_enemy",
+		"lifetime_sec": [0.2, 0.5]
+	  },
+	  "audio": {
+		"sfx": "levitation_effect.wav",
+		"volume": 0.6
+	  }
+	},
+	"dissipate": {
+	  "duration_sec": 0.7,
+	  "description": "The hurricane loses pressure, the rings unwind, and wind particles scatter into mist.",
+	  "animation": {
+		"rotation_speed_curve": "540deg/sec -> 60deg/sec -> 0deg/sec",
+		"vortex_scale_curve": "1.0 -> 1.15 -> 0.0",
+		"opacity_curve": "1.0 -> 0.0",
+		"ring_fade": true
+	  },
+	  "particles": {
+		"final_disperse_count": 44,
+		"particle_type": "fading_wind_mist_and_slashes",
+		"motion": "spiral_breaks_into_outward_drift",
+		"velocity_px_per_sec": [80, 240],
+		"lifetime_sec": [0.35, 0.9],
+		"fade_curve": "ease_out"
+	  },
+	  "screen_effects": {
+		"shake_fadeout_sec": 0.25,
+		"distortion_fadeout_sec": 0.45
+	  },
+	  "audio": {
+		"tornado_spin_intense_fadeout_sec": 0.6,
+		"wind_whoosh_fadeout_sec": 0.5
+	  }
+	}
+  },
+  "level_scaling": {
+	"main_radius_px": "95 + 10 * level",
+	"damage_radius_px": "110 + 12 * level",
+	"mini_tornado_count": "3 at low levels, 4 at higher levels",
+	"main_rotation_speed_deg_per_sec": "540 + 30 * level",
+	"knockback_force_units": "180 + 15 * level",
+	"wind_particle_rate_per_sec": "8 + 2 * level",
+	"glow_intensity": "1.4 + 0.06 * level"
+  },
+  "performance_budget": {
+	"max_vortex_layers": 5,
+	"max_mini_tornados": 4,
+	"max_active_particles": 160,
+	"max_caught_enemy_effects": 20,
+	"particle_pooling_required": true,
+	"lod_rules": {
+	  "reduce_wind_particles_on_mobile": true,
+	  "disable_continuous_screen_shake_on_low_quality": true,
+	  "simplify_mini_tornado_layers_when_many_effects_active": true
+	}
+  }
+},
+  {
+  "skill_name": "Blizzard",
+  "type": "screen_covering_ice_storm_world_freeze",
+  "theme": "apocalyptic_frozen_landscape",
+  "visual_identity": {
+	"primary_color_rgba": [0.5, 0.9, 1.0, 1.0],
+	"ice_accent_rgba": [1.0, 1.0, 1.0, 0.95],
+	"deep_cold_shadow_rgba": [0.05, 0.12, 0.22, 0.55],
+	"glow_intensity": 1.2,
+	"mood": "world-ending_cold_and_total_freeze",
+	"blend_mode": "additive_ice_plus_blue_overlay"
+  },
+  "environmental_effects": {
+	"screen_coverage": "full_screen",
+	"blue_tint_overlay": {
+	  "enabled": true,
+	  "peak_opacity": 0.4,
+	  "fade_in_sec": 0.4,
+	  "fade_out_sec": 0.8
+	},
+	"background_darkening": {
+	  "enabled": true,
+	  "darken_amount": 0.35,
+	  "cooling_tint": "blue_cyan"
+	},
+	"temperature_plummet_visual": {
+	  "enabled": true,
+	  "screen_edge_frost": true,
+	  "breath_mist_on_enemies": true,
+	  "subtle_refraction": true
+	}
+  },
+  "mechanics": {
+	"duration_sec": 4.2,
+	"enemy_slow_multiplier": 0.5,
+	"slow_applies_during": "peak_storm",
+	"freeze_status": {
+	  "applies": true,
+	  "freeze_duration_sec": 1.5,
+	  "refresh_while_inside_storm": true
+	},
+	"damage_sources": [
+	  "continuous_blizzard_tick",
+	  "icicle_rain",
+      "large_icicle_impact"
+	]
+  },
+  "snowfall_layers": {
+	"large_snowflakes": {
+	  "visible_count": [25, 30],
+	  "size_px": 40,
+	  "fall_speed_px_per_sec": 120,
+	  "side_to_side_amplitude_px": 18,
+	  "side_to_side_frequency_hz": 0.7,
+	  "rotation_speed_deg_per_sec": [20, 80],
+	  "lifetime_sec": [1.8, 3.2],
+	  "parallax_layer": "foreground"
+	},
+	"small_snowflakes": {
+	  "visible_count": 100,
+	  "size_px": 10,
+	  "fall_speed_px_per_sec": 200,
+	  "side_to_side_amplitude_px": 8,
+	  "rotation_speed_deg_per_sec": [60, 160],
+	  "lifetime_sec": [1.0, 2.2],
+	  "parallax_layer": "mid_background"
+	},
+	"frost_dust": {
+	  "visible_count": 160,
+	  "size_px": [2, 5],
+	  "fall_speed_px_per_sec": [160, 260],
+	  "motion": "diagonal_wind_shear",
+	  "opacity": 0.45
+	}
+  },
+  "icicle_mechanics": {
+	"icicle_rain": {
+	  "rate_per_sec_peak": 15,
+	  "size_px": [30, 80],
+	  "fall_speed_px_per_sec": [300, 520],
+	  "spawn_area": "top_of_screen",
+	  "impact_effect": "small_ice_splash",
+	  "ground_accumulation_visual": true
+	},
+	"large_icicles": {
+	  "spawn_interval_sec": 0.6,
+	  "size_px": [100, 150],
+	  "fall_speed_px_per_sec": [480, 720],
+	  "telegraph_sec": 0.18,
+	  "impact_screen_shake_sec": 0.2,
+	  "impact_damage_radius_px": 85
+	},
+	"impact_shockwaves": {
+	  "rings_per_large_icicle": 3,
+	  "expansion_speed_px_per_sec": 300,
+	  "ring_width_px": [6, 4, 3],
+	  "start_delays_sec": [0.0, 0.06, 0.12],
+	  "fade_duration_sec": 0.35
+	}
+  },
+  "states": {
+	"charge": {
+	  "duration_sec": 0.6,
+	  "description": "The sky dims as the first impossible snowflakes appear and spiral downward toward the battlefield.",
+	  "animation": {
+		"sky_darkening": {
+		  "opacity_curve": "0.0 -> 0.35",
+		  "tint_curve": "normal -> cold_blue"
+		},
+		"buildup_spiral": {
+		  "particle_count": 50,
+		  "motion": "spiral_downward",
+		  "rotation_speed_deg_per_sec": 240,
+		  "scale_curve": "0.6 -> 1.2"
+		},
+		"screen_edge_frost": {
+		  "opacity_curve": "0.0 -> 0.45",
+		  "growth_direction": "edges_inward"
+		}
+	  },
+	  "particles": {
+		"first_large_snowflakes": 12,
+		"small_frost_particles": 60,
+		"lifetime_sec": [0.5, 1.4]
+	  },
+	  "audio": {
+		"loop": "blizzard_wind_loop.wav",
+		"volume": 0.45,
+		"pitch_ramp": "0.8 -> 1.1"
+	  }
+	},
+	"release": {
+	  "duration_sec": 0.3,
+	  "description": "A sudden white-cyan detonation drops the temperature instantly and floods the screen with snow.",
+	  "animation": {
+		"snowflake_explosion": {
+		  "burst_count": 120,
+		  "pattern": "full_screen_radial_and_downward_blast",
+		  "brightness_multiplier": 1.8
+		},
+		"temperature_plummet": {
+		  "blue_tint_opacity_curve": "0.1 -> 0.4",
+		  "background_desaturation": 0.35,
+		  "frost_flash": true
+		}
+	  },
+	  "screen_effects": {
+		"screen_shake_duration_sec": 0.3,
+		"screen_shake_intensity": "high",
+		"amplitude_px": 6,
+		"cold_refraction": {
+		  "enabled": true,
+		  "duration_sec": 0.25,
+		  "strength": 0.45
+		}
+	  },
+	  "particles": {
+		"large_snowflake_burst": 30,
+		"small_snowflake_burst": 120,
+		"ice_spark_burst": 40
+	  },
+	  "audio": {
+		"sfx": "snowfall_cascade.wav",
+		"volume": 0.9
+	  }
+	},
+	"peak_storm": {
+	  "duration_sec": 2.5,
+	  "description": "The world is consumed by a dense ice storm: heavy snow, icicle rain, blue darkness, and enemy freeze shells.",
+	  "snowfall": {
+		"large_snowflakes_visible": [25, 30],
+		"small_snowflakes_visible": "100+",
+		"layered_parallax": true,
+		"wind_shear": "left_to_right_gusts_with_random_reversals"
+	  },
+	  "icicle_rain": {
+		"rate_per_sec": 15,
+		"size_px": [30, 80],
+		"speed_px_per_sec": [300, 520],
+		"impact_particles_per_icicle": 8
+	  },
+	  "enemy_effects": {
+		"slow_multiplier": 0.5,
+		"freeze_shell": {
+		  "enabled": true,
+		  "formation_duration_sec": 0.25,
+		  "shimmer_frequency_hz": 4,
+		  "opacity": 0.7,
+		  "edge_highlight": "white_cyan"
+		},
+		"freeze_particles": {
+		  "count_per_enemy": 30,
+		  "motion": "slow_rotating_crystal_orbit",
+		  "orbit_radius_px": [18, 34],
+		  "rotation_speed_deg_per_sec": [35, -50],
+		  "lifetime_sec": [0.7, 1.5]
+		}
+	  },
+	  "environment": {
+		"blue_tint_opacity": 0.4,
+		"background_darkening": 0.35,
+		"ground_frost_accumulation": true
+	  },
+	  "audio": {
+		"loop": "blizzard_wind_loop.wav",
+		"volume": 0.85,
+		"layered_loop": {
+		  "file": "snowfall_cascade.wav",
+		  "volume": 0.55
+		}
+	  }
+	},
+	"large_icicle_phase": {
+	  "active_during": "peak_storm",
+	  "trigger_interval_sec": 0.6,
+	  "description": "Massive icicles spear down from the frozen sky and detonate into shockwaves.",
+	  "telegraph": {
+		"duration_sec": 0.18,
+		"indicator": "pale_cyan_vertical_glow_line",
+		"ground_marker_radius_px": 42
+	  },
+	  "icicle": {
+		"size_px": [100, 150],
+		"fall_speed_px_per_sec": [480, 720],
+		"trail": "icy_white_speed_streak",
+		"rotation_deg": [-8, 8]
+	  },
+	  "impact": {
+		"screen_shake_duration_sec": 0.2,
+		"screen_shake_intensity": "medium_high",
+		"ice_shard_particles": 45,
+		"snow_puff_particles": 26,
+		"shockwave_rings": 3,
+		"shockwave_speed_px_per_sec": 300,
+		"impact_radius_px": 85
+	  },
+	  "audio": {
+		"sfx": "icicle_impact.wav",
+		"volume": 0.95
+	  }
+	},
+	"dissipate": {
+	  "duration_sec": 0.8,
+	  "description": "The blizzard loses force, snow slows, the blue tint fades, and frozen enemies begin to thaw.",
+	  "animation": {
+		"snowfall_rate_curve": "1.0 -> 0.25 -> 0.0",
+		"blue_tint_curve": "0.4 -> 0.0",
+		"background_darkening_curve": "0.35 -> 0.0",
+		"edge_frost_curve": "0.45 -> 0.0"
+	  },
+	  "particles": {
+		"settling_snowflakes": 80,
+		"ice_sparkles": 30,
+		"motion": "slow_settle_and_fade",
+		"lifetime_sec": [0.5, 1.4]
+	  },
+	  "enemy_thaw_visual": {
+		"ice_shell_opacity_curve": "0.7 -> 0.0",
+		"crack_shimmer_particles": 18,
+		"thaw_duration_sec": 0.6
+	  },
+	  "audio": {
+		"blizzard_wind_loop_fadeout_sec": 0.8,
+		"snowfall_cascade_fadeout_sec": 0.6,
+		"optional_thaw_sparkle": "freeze_crystallize.wav"
+	  }
+	}
+  },
+  "performance_budget": {
+	"max_large_snowflakes": 30,
+	"max_small_snowflakes": 120,
+	"max_frost_dust_particles": 180,
+	"max_icicles_active": 45,
+	"max_enemy_freeze_particles": 300,
+	"particle_pooling_required": true,
+	"lod_rules": {
+	  "reduce_small_snowflakes_on_mobile": true,
+	  "cap_freeze_particles_per_enemy_when_enemy_count_high": true,
+	  "disable_edge_frost_overlay_on_low_quality": true,
+	  "reduce_large_icicle_shockwave_rings_to_1_on_low_quality": true
+	}
+  }
+},
+  {
+  "skill_name": "Arrow Shot",
+  "type": "radiant_piercing_projectile",
+  "theme": "precise_archery_magic_with_golden_light",
+  "visual_identity": {
+	"primary_color_rgba": [0.2, 0.6, 0.2, 1.0],
+	"golden_light_rgba": [1.0, 0.82, 0.25, 1.0],
+	"core_light_rgba": [1.0, 1.0, 0.82, 0.95],
+	"glow_intensity": 1.3,
+	"blend_mode": "additive_radiant_trail",
+	"mood": "clean_precise_powerful"
+  },
+  "projectile_mechanics": {
+	"flight_speed_px_per_sec": 520,
+	"collision_radius_px": 10,
+	"trajectory_alignment": {
+	  "enabled": true,
+	  "rotation_mode": "align_to_velocity_vector",
+	  "billboard_mode": "3d_facing_camera",
+	  "angle_lerp_speed": "instant_perfect_alignment",
+	  "arrow_tip_faces_target": true
+	},
+	"pierce": {
+	  "enabled": true,
+	  "max_enemies_hit": [2, 4],
+	  "hit_rule": "continue_forward_after_enemy_hit",
+	  "damage_falloff_per_pierce": 0.15,
+	  "line_width_px": 18
+	}
+  },
+  "states": {
+	"draw": {
+	  "duration_sec": 0.15,
+	  "description": "A radiant arrow forms at the player with tight bow tension and growing golden glow.",
+	  "animation": {
+		"materialize": {
+		  "scale_curve": "0.3 -> 1.0",
+		  "opacity_curve": "0.0 -> 1.0",
+		  "glow_curve": "0.4 -> 1.3"
+		},
+		"aim_lock": {
+		  "arrow_rotation": "points_to_selected_target",
+		  "small_target_glint": true
+		}
+	  },
+	  "particles": {
+		"draw_sparks": 10,
+		"particle_type": "gold_green_light_motes",
+		"pattern": "pull_inward_to_arrow_tip",
+		"lifetime_sec": [0.12, 0.3]
+	  },
+	  "audio": {
+		"sfx": "arrow_draw_tension.wav",
+		"volume": 0.55
+	  }
+	},
+	"release": {
+	  "duration_sec": 0.1,
+	  "description": "Arrow snaps forward with a clean shockwave burst and crisp bow twang.",
+	  "animation": {
+		"launch_snap": {
+		  "scale_stretch": "1.0 -> 1.15 -> 1.0",
+		  "motion_blur": true
+		},
+		"shockwave": {
+		  "start_radius_px": 8,
+		  "end_radius_px": 42,
+		  "duration_sec": 0.08,
+		  "shape": "thin_radiant_ring"
+		}
+	  },
+	  "particles": {
+		"release_burst_count": 16,
+		"particle_type": "golden_shock_sparks",
+		"pattern": "backward_cone_from_arrow_tail",
+		"velocity_px_per_sec": [80, 220],
+		"lifetime_sec": [0.12, 0.35]
+	  },
+	  "camera_feedback": {
+		"shake_duration_sec": 0.04,
+		"shake_intensity": "very_light",
+		"amplitude_px": 1.5
+	  },
+	  "audio": {
+		"sfx": "arrow_release_twang.wav",
+		"volume": 0.8
+	  }
+	},
+	"flight": {
+	  "duration_sec": 0.9,
+	  "loop_until_impact": true,
+	  "description": "The arrow cuts forward, perfectly aligned with its path and leaving a golden ribbon of light.",
+	  "movement": {
+		"speed_px_per_sec": 520,
+		"trajectory": "straight_or_slight_homing_if_target_moves",
+		"rotation": "align_to_trajectory_angle_per_frame",
+		"tip_direction": "velocity_vector"
+	  },
+	  "light_trail": {
+		"particle_rate_per_sec": 6,
+		"particle_type": "golden_light_ribbon_segments",
+		"fade_duration_sec": 0.2,
+		"trail_length_px": 70,
+		"width_px": 5,
+		"opacity_curve": "1.0 -> 0.0"
+	  },
+	  "vfx": {
+		"arrow_core_glow": true,
+		"forest_green_edge_light": true,
+		"subtle_wind_cut_lines": 3
+	  },
+	  "audio": {
+		"loop": "arrow_flight_whistle.wav",
+		"volume": 0.35
+	  }
+	},
+	"pre_impact": {
+	  "duration_sec": 0.1,
+	  "trigger": "target_distance_below_threshold",
+	  "description": "Arrow tip shines brighter just before piercing impact.",
+	  "animation": {
+		"tip_glow": {
+		  "brightness_curve": "1.3 -> 1.8",
+		  "scale_curve": "1.0 -> 1.08"
+		},
+		"trail_tightening": {
+		  "trail_width_multiplier": 1.25,
+		  "spark_rate_multiplier": 1.5
+		}
+	  },
+	  "particles": {
+		"pre_impact_sparks": 8,
+		"pattern": "forward_focused",
+		"lifetime_sec": [0.08, 0.2]
+	  }
+	},
+	"impact": {
+	  "duration_sec": 0.25,
+	  "description": "Arrow shatters into radiant light, sending green-gold waves through the pierced line.",
+	  "animation": {
+		"arrow_shatter": {
+		  "duration_sec": 0.05,
+		  "fragments": "golden_light_splinters",
+		  "tip_flash": "white_gold"
+		},
+		"radiant_burst": {
+		  "shape": "star_explosion",
+		  "brightness_multiplier": 1.8
+		},
+		"light_waves": {
+		  "count": 3,
+		  "expansion_speed_px_per_sec": 400,
+		  "ring_width_px": [5, 4, 3],
+		  "start_delays_sec": [0.0, 0.04, 0.08],
+		  "color": "green_gold"
+		}
+	  },
+	  "particles": {
+		"impact_particle_count": 40,
+		"particle_type": "star_shaped_radiant_bursts",
+		"pattern": "outward_spreading",
+		"velocity_px_per_sec": [100, 280],
+		"lifetime_sec": [0.18, 0.55],
+		"colors": ["gold", "white", "forest_green"]
+	  },
+	  "pierce_line_effect": {
+		"enabled": true,
+		"max_markers": 4,
+		"marker_count": "2_to_4_enemies_hit_in_line",
+		"line_flash_duration_sec": 0.12,
+		"line_width_px": 18,
+		"impact_marker": {
+		  "shape": "small_radiant_cross_flash",
+		  "duration_sec": 0.12,
+		  "brightness_multiplier": 1.6,
+		  "particles_per_marker": 8
+		},
+		"through_beam": {
+		  "enabled": true,
+		  "color": "golden_green",
+		  "fade_duration_sec": 0.15
+		}
+	  },
+	  "camera_feedback": {
+		"screen_shake_duration_sec": 0.08,
+		"screen_shake_intensity": "light",
+		"amplitude_px": 2
+	  },
+	  "audio": {
+		"sfx": "radiant_impact.wav",
+		"volume": 0.85
+	  }
+	}
+  },
+  "level_scaling": {
+	"max_pierce_enemies": "2 + level_bonus, capped at 4",
+	"flight_speed_px_per_sec": "520 + 20 * level",
+	"glow_intensity": "1.3 + 0.05 * level",
+	"impact_particles": "40 + 5 * level, capped at 60",
+	"trail_particle_rate_per_sec": "6 + 1 * level"
+  },
+  "performance_budget": {
+	"max_active_arrows": 12,
+	"max_trail_particles_per_arrow": 16,
+	"max_impact_particles": 60,
+	"particle_pooling_required": true,
+	"lod_rules": {
+	  "reduce_trail_particles_on_mobile": true,
+	  "disable_through_beam_when_many_arrows_active": true
+	}
+  }
+},
+  {
+  "skill_name": "Split Arrow",
+  "type": "fan_spread_multi_projectile",
+  "theme": "explosive_lime_green_arrow_light_show",
+  "visual_identity": {
+	"base_color_rgba": [0.4, 0.8, 0.3, 1.0],
+	"trail_color_variants": {
+	  "lime": [0.55, 1.0, 0.25, 1.0],
+	  "forest": [0.2, 0.65, 0.25, 1.0],
+	  "teal": [0.2, 0.9, 0.65, 1.0],
+	  "yellow_green": [0.75, 1.0, 0.25, 1.0],
+	  "mint": [0.55, 1.0, 0.75, 1.0]
+	},
+	"glow_intensity_per_arrow": 1.2,
+	"compound_brightness_behavior": "overlapping_trails_add_together_for_light_show_effect",
+	"blend_mode": "additive_green_light"
+  },
+  "fan_spread_geometry": {
+	"arrow_count": {
+	  "base": 5,
+	  "bonus_per_level": 1,
+	  "max": 7
+	},
+	"total_spread_angle_deg": 60,
+	"half_spread_angle_deg": 30,
+	"angle_distribution": {
+	  "5_arrows_deg": [-30, -15, 0, 15, 30],
+	  "6_arrows_deg": [-30, -18, -6, 6, 18, 30],
+	  "7_arrows_deg": [-30, -20, -10, 0, 10, 20, 30]
+	},
+	"origin": "player_center",
+	"center_direction": "aim_direction_or_nearest_enemy_direction",
+	"formation_style": "simultaneous_fan_release"
+  },
+  "projectile_mechanics": {
+	"arrow_speed_px_per_sec": 480,
+	"flight_duration_sec": 1.0,
+	"collision_radius_px": 9,
+	"trajectory_alignment": {
+	  "rotation_mode": "align_to_velocity_vector",
+	  "arrow_tip_faces_current_path_direction": true,
+	  "billboard_mode": "3d_facing_camera"
+	},
+	"organic_curve": {
+	  "enabled": true,
+	  "side_deflection_px": [5, 15],
+	  "curve_method": "bezier_side_bias_by_arrow_index",
+	  "center_arrow_curve_px": 5,
+	  "outer_arrow_curve_px": 15,
+	  "curve_direction": "away_from_centerline_then_slightly_back_in"
+	},
+	"impact_rule": "each_arrow_impacts_independently"
+  },
+  "states": {
+	"release": {
+	  "duration_sec": 0.15,
+	  "description": "A cluster of arrows bursts outward at once, opening into a clean 60-degree fan.",
+	  "animation": {
+		"fan_spawn": {
+		  "scale_curve": "0.45 -> 1.1 -> 1.0",
+		  "opacity_curve": "0.0 -> 1.0",
+		  "angle_snap": "instant_to_fan_distribution"
+		},
+		"release_flash": {
+		  "duration_sec": 0.06,
+		  "brightness_multiplier": 1.5,
+		  "shape": "wide_green_gold_arc"
+		}
+	  },
+	  "particles": {
+		"release_burst_count": 28,
+		"particle_type": "green_gold_arrow_sparks",
+		"pattern": "wide_fan_cone",
+		"velocity_px_per_sec": [100, 260],
+		"lifetime_sec": [0.15, 0.4]
+	  },
+	  "camera_feedback": {
+		"screen_shake_duration_sec": 0.1,
+		"screen_shake_intensity": "light_medium",
+		"amplitude_px": 2.5
+	  },
+	  "audio": {
+		"sfx": "arrows_release_burst.wav",
+		"layered_draw_sfx": "multi_arrow_draw.wav",
+		"volume": 0.85
+	  }
+	},
+	"flight": {
+	  "duration_sec": 1.0,
+	  "loop_until_impact": true,
+	  "description": "Arrows separate further as the fan opens, creating intersecting ribbons of green light.",
+	  "movement": {
+		"speed_px_per_sec": 480,
+		"fan_opens_over_time": true,
+		"spread_multiplier_curve": "1.0 -> 1.18",
+		"parallel_trajectory_feel": true,
+		"angle_maintenance": "stable_with_subtle_curve"
+	  },
+	  "trails": {
+		"particle_rate_per_sec_per_arrow": 4,
+		"fade_duration_sec": 0.3,
+		"trail_length_px": 65,
+		"trail_width_px": 4,
+		"color_variance_per_arrow": true,
+		"opacity_curve": "1.0 -> 0.0"
+	  },
+	  "light_show_feedback": {
+		"intersecting_trails": true,
+		"trail_overlap_glow_multiplier": 1.25,
+		"subtle_cross_spark_when_trails_overlap": true
+	  },
+	  "particles": {
+		"flight_sparks_per_arrow_per_sec": 4,
+		"particle_type": "lime_forest_teal_light_motes",
+		"lifetime_sec": 0.3,
+		"motion": "dragged_along_arrow_trail"
+	  },
+	  "audio": {
+		"loop": "arrow_flight_cluster.wav",
+		"volume": 0.42
+	  }
+	},
+	"curved_paths": {
+	  "active_during": "flight",
+	  "description": "Each arrow bends slightly for organic ballistic motion instead of perfectly straight lines.",
+	  "curve_settings": {
+		"curve_amount_px": [5, 15],
+		"outer_arrow_curve_bias": "stronger",
+		"inner_arrow_curve_bias": "subtle",
+		"bezier_control_point_offset": "perpendicular_to_arrow_direction",
+		"curve_timing": "largest_deflection_at_55_percent_flight"
+	  },
+	  "rotation_alignment": {
+		"update_per_frame": true,
+		"arrow_angle": "tangent_to_curve",
+		"max_visual_rotation_snap_deg": 0
+	  }
+	},
+	"pre_impact": {
+	  "duration_sec": 0.1,
+	  "trigger": "arrow_near_target_or_collision_predicted",
+	  "description": "Each arrow intensifies before impact, briefly sharpening its trail and glow.",
+	  "animation": {
+		"arrow_glow_curve": "1.2 -> 1.6",
+		"tip_flash": "lime_white",
+		"trail_width_multiplier": 1.3
+	  },
+	  "particles": {
+		"pre_impact_sparks_per_arrow": 5,
+		"pattern": "forward_focused",
+		"lifetime_sec": [0.08, 0.22]
+	  }
+	},
+	"staggered_impact": {
+	  "duration_sec": 0.15,
+	  "description": "Arrows impact in a rapid stagger, producing multiple small radiant explosions across the fan line.",
+	  "staggering": {
+		"delay_between_arrow_impacts_sec": 0.03,
+		"impact_order": "center_then_inner_then_outer_or_actual_collision_time",
+		"total_stagger_window_sec": 0.15
+	  },
+	  "impact_particles": {
+		"particles_per_arrow": 20,
+		"particle_type": "small_green_radiant_burst",
+		"pattern": "radial_explosion",
+		"velocity_px_per_sec": [80, 220],
+		"lifetime_sec": [0.18, 0.5],
+		"colors": ["lime", "forest_green", "teal", "white_core"]
+	  },
+	  "explosion": {
+		"radius_px": 32,
+		"flash_duration_sec": 0.07,
+		"secondary_particles": {
+		  "enabled": true,
+		  "count_per_arrow": 8,
+		  "spread_pattern": "small_radial_spark_scatter"
+		}
+	  },
+	  "camera_feedback": {
+		"first_impact_shake": {
+		  "duration_sec": 0.08,
+		  "intensity": "light",
+		  "amplitude_px": 2
+		},
+		"additional_impact_shake": {
+		  "duration_sec": 0.04,
+		  "intensity": "very_light",
+		  "amplitude_px": 1
+		}
+	  },
+	  "audio": {
+		"sfx": "multiple_impacts.wav",
+		"volume": 0.8,
+		"staggered_layering": true
+	  }
+	}
+  },
+  "level_scaling": {
+	"arrow_count": "5 + 1 per level, capped at 7",
+	"arrow_speed_px_per_sec": "480 + 15 * level",
+	"impact_particles_per_arrow": "20 + 3 * level, capped at 32",
+	"trail_particles_per_sec_per_arrow": "4 + 0.5 * level",
+	"glow_intensity_per_arrow": "1.2 + 0.04 * level",
+	"spread_angle_deg": "60 fixed for readability"
+  },
+  "performance_budget": {
+	"max_arrows_per_cast": 7,
+	"max_trail_particles": 90,
+	"max_impact_particles_total": 224,
+	"particle_pooling_required": true,
+	"lod_rules": {
+	  "reduce_trail_particles_when_many_arrows_active": true,
+	  "disable_cross_spark_overlap_on_mobile": true,
+	  "cap_total_impact_bursts_per_frame": true
+	}
+  }
+},
+  {
+  "skill_name": "Pierce Arrow",
+  "type": "infinite_line_piercing_crystal_projectile",
+  "theme": "transcendent_prismatic_ice_archery",
+  "visual_identity": {
+	"primary_color_rgba": [0.2, 1.0, 0.8, 1.0],
+	"cyan_highlight_rgba": [0.35, 0.9, 1.0, 1.0],
+	"white_lens_flare_rgba": [1.0, 1.0, 1.0, 0.95],
+	"glow_intensity": 1.5,
+	"material": "faceted_translucent_ice_crystal",
+	"blend_mode": "additive_prismatic_ice"
+  },
+  "projectile_mechanics": {
+	"arrow_length_px": 50,
+	"flight_speed_px_per_sec": 560,
+	"flight_path": "perfect_straight_line",
+	"pierce_count": "unlimited",
+	"collision_shape": "thin_line_capsule",
+	"collision_width_px": 16,
+	"rotation_alignment": {
+	  "mode": "align_to_trajectory_angle",
+	  "tip_faces_forward": true,
+	  "billboard_3d": true
+	},
+	"exit_condition": "screen_boundary_or_max_range_reached"
+  },
+  "refractive_lens_effects": {
+	"enabled": true,
+	"lens_artifact_count": [4, 6],
+	"artifact_shape": "prismatic_hex_glints",
+	"trail_offset_px": [12, 48],
+	"refraction_strength": 0.45,
+	"flare_fade_sec": 0.4,
+	"color_split": "cyan_teal_white_prism"
+  },
+  "states": {
+	"charge": {
+	  "duration_sec": 0.12,
+	  "description": "A massive ice arrow crystallizes instantly from cyan energy.",
+	  "animation": {
+		"crystalline_texture_form": {
+		  "scale_curve": "0.45 -> 1.0",
+		  "opacity_curve": "0.0 -> 1.0",
+		  "facet_growth": "tail_to_tip"
+		},
+		"cyan_energy_charge": {
+		  "brightness_curve": "0.6 -> 1.5",
+		  "core_pulse_hz": 12
+		}
+	  },
+	  "particles": {
+		"spiral_particle_count": 20,
+		"particle_type": "cyan_ice_sparks",
+		"pattern": "spiral_into_arrow_core",
+		"velocity_px_per_sec": [80, 220],
+		"lifetime_sec": [0.12, 0.32]
+	  },
+	  "audio": {
+		"sfx": "ice_crystal_charge_hum.wav",
+		"volume": 0.55
+	  }
+	},
+	"release": {
+	  "duration_sec": 0.1,
+	  "description": "The arrow fires with a sharp sonic boom and icy pressure burst.",
+	  "animation": {
+		"launch_snap": {
+		  "motion_blur": true,
+		  "stretch_curve": "1.0 -> 1.18 -> 1.0"
+		},
+		"sonic_boom_ring": {
+		  "start_radius_px": 10,
+		  "end_radius_px": 70,
+		  "duration_sec": 0.1,
+		  "edge_style": "thin_ice_pressure_wave"
+		}
+	  },
+	  "particles": {
+		"release_burst_count": 28,
+		"particle_type": "white_cyan_crystal_sparks",
+		"pattern": "backward_cone_and_ring_burst",
+		"velocity_px_per_sec": [120, 360],
+		"lifetime_sec": [0.15, 0.45]
+	  },
+	  "screen_feedback": {
+		"screen_shake_duration_sec": 0.15,
+		"screen_shake_intensity": "medium_high",
+		"amplitude_px": 5
+	  },
+	  "audio": {
+		"sfx": "sonic_boom_release.wav",
+		"volume": 0.9
+	  }
+	},
+	"flight": {
+	  "duration_sec": 1.2,
+	  "loop_until_exit": true,
+	  "description": "The crystal arrow pierces forward in a flawless straight line, dragging prismatic lens flares behind it.",
+	  "movement": {
+		"speed_px_per_sec": 560,
+		"path_deviation_px": 0,
+		"trajectory": "straight_line"
+	  },
+	  "arrow_visuals": {
+		"ice_facets": true,
+		"internal_light_refraction": true,
+		"white_hot_tip_glow": true,
+		"crystal_edge_shimmer_hz": 8
+	  },
+	  "lens_flare": {
+		"artifact_count": [4, 6],
+		"particles_per_sec": 8,
+		"fade_duration_sec": 0.4,
+		"trail_length_px": 90,
+		"artifact_spacing_px": [10, 24],
+		"prismatic_split": true
+	  },
+	  "particles": {
+		"stream_rate_per_sec": 8,
+		"particle_type": "cyan_lens_flare_sparkles",
+		"motion": "stream_behind_arrow",
+		"lifetime_sec": 0.4,
+		"trail_enabled": true
+	  },
+	  "audio": {
+		"loop": "piercing_whoosh.wav",
+		"volume": 0.4
+	  }
+	},
+	"pierce_hit": {
+	  "duration_sec": 0.08,
+	  "trigger": "enemy_intersects_arrow_line",
+	  "description": "Each enemy is pierced cleanly, leaving a cyan wound-trail and crystal spark burst.",
+	  "per_enemy_effect": {
+		"cyan_flash": {
+		  "duration_sec": 0.06,
+		  "intensity": 1.4,
+		  "hit_point_centered": true
+		},
+		"cyan_light_trail": {
+		  "duration_sec": 0.35,
+		  "shape": "thin_line_through_enemy",
+		  "fade_curve": "1.0 -> 0.0",
+		  "width_px": 4
+		},
+		"impact_sparkles": {
+		  "count": 5,
+		  "particle_type": "tiny_crystal_sparkles",
+		  "pattern": "front_and_back_exit_points",
+		  "velocity_px_per_sec": [40, 160],
+		  "lifetime_sec": [0.12, 0.35]
+		}
+	  },
+	  "screen_feedback": {
+		"shake_duration_sec_per_enemy": 0.08,
+		"shake_amplitude_px": 2,
+		"cumulative_rule": "cap_combined_shake_at_0.18s_and_5px"
+	  }
+	},
+	"exit_impact": {
+	  "duration_sec": 0.3,
+	  "trigger": "arrow_exits_screen_or_hits_boundary",
+	  "description": "The arrow detonates into a massive crystalline shatter at the end of its path.",
+	  "animation": {
+		"crystal_shatter": {
+		  "burst_style": "both_ends_split_then_full_core_explosion",
+		  "shatter_origin": "arrow_tip_and_tail",
+		  "core_flash": "white_cyan"
+		},
+		"crystal_waves": {
+		  "count": 5,
+		  "expansion_speed_px_per_sec": 450,
+		  "ring_width_px": [7, 6, 5, 4, 3],
+		  "start_delays_sec": [0.0, 0.04, 0.08, 0.12, 0.16],
+		  "fade_duration_sec": 0.35
+		}
+	  },
+	  "particles": {
+		"crystal_shards_count": 80,
+		"distribution": {
+		  "small_shards": 42,
+		  "medium_shards": 28,
+		  "large_shards": 10
+		},
+		"pattern": "radial_prismatic_shatter",
+		"velocity_px_per_sec": [120, 420],
+		"lifetime_sec": [0.25, 0.9],
+		"rotation_enabled": true
+	  },
+	  "vfx": {
+		"lens_flare_final_flash": {
+		  "enabled": true,
+		  "artifact_count": 8,
+		  "duration_sec": 0.16
+		},
+		"cold_refraction_burst": {
+		  "enabled": true,
+		  "radius_px": 110,
+		  "duration_sec": 0.22
+		}
+	  },
+	  "audio": {
+		"sfx": "crystal_shatter_exit.wav",
+		"volume": 1.0
+	  }
+	}
+  },
+  "pierce_through_mechanics": {
+	"max_targets": "unlimited",
+	"damage_falloff": "none",
+	"line_query": {
+	  "shape": "capsule_cast",
+	  "width_px": 16,
+	  "sort_hits": "by_distance_from_origin"
+	},
+	"hit_visuals": {
+	  "cyan_flash_per_enemy": true,
+	  "trail_left_inside_enemy": true,
+	  "sparkles_per_enemy": 5
+	},
+	"balance_note": "Unlimited pierce should be balanced by cooldown, narrow hit width, or reduced base damage."
+  },
+  "performance_budget": {
+	"max_active_pierce_arrows": 4,
+	"max_lens_flare_particles": 48,
+	"max_per_enemy_hit_sparkles_per_frame": 60,
+	"max_exit_shards": 80,
+	"particle_pooling_required": true,
+	"lod_rules": {
+	  "reduce_lens_artifacts_on_mobile": true,
+	  "cap_per_enemy_sparkles_when_many_hits_occur": true,
+	  "disable_cold_refraction_burst_on_low_quality": true
+	}
+  }
+},
+  {
+  "skill_name": "Sky Fall",
+  "type": "screen_covering_arrow_bombardment",
+  "theme": "apocalyptic_coordinated_arrow_rain",
+  "visual_identity": {
+	"primary_color_rgba": [0.1, 0.5, 0.2, 1.0],
+	"trail_color_rgba": [0.45, 0.9, 0.35, 0.85],
+	"impact_mark_rgba": [0.28, 0.16, 0.08, 0.8],
+	"dust_color_rgba": [0.45, 0.34, 0.22, 0.65],
+	"glow_intensity": 1.1,
+	"mood": "world_filling_arrow_deluge",
+	"blend_mode": "alpha_projectile_plus_soft_additive_trails"
+  },
+  "bombardment_mechanics": {
+	"total_arrows_by_level": {
+	  "level_1": 50,
+	  "level_2": 55,
+	  "level_3_plus": 60
+	},
+	"visible_arrows_at_once": [15, 20],
+	"screen_coverage_percent": [70, 80],
+	"fall_speed_px_per_sec": {
+	  "base": 380,
+	  "variance_range": [300, 450]
+	},
+	"wave_count": 5,
+	"wave_spacing_sec": 0.5,
+	"arrows_per_wave": [10, 15],
+	"damage_rule": "each_arrow_impacts_ground_or_enemy_independently",
+	"impact_stagger_window_sec": 1.5
+  },
+  "wave_pattern_geometry": {
+	"pattern_style": "purposeful_arcs_and_circle_segments",
+	"not_random": true,
+	"wave_templates": [
+	  {
+		"name": "crescent_arc_left_to_right",
+		"shape": "wide_arc",
+		"coverage_width_percent": 75,
+		"arc_height_px": 90,
+		"arrow_angle_variation_deg": [-8, 8]
+	  },
+	  {
+		"name": "concentric_circle_rain",
+		"shape": "broken_circle_segments",
+		"ring_count": 2,
+		"radius_px": [90, 150],
+		"arrow_angle_variation_deg": [-12, 12]
+	  },
+	  {
+		"name": "diagonal_sweep",
+		"shape": "slanted_wave_line",
+		"sweep_angle_deg": 25,
+		"coverage_width_percent": 80
+	  },
+	  {
+		"name": "center_collapse",
+		"shape": "arrows_fall_toward_center_pattern",
+		"spread_radius_px": 170,
+		"density_bias": "center_heavy"
+	  },
+	  {
+		"name": "final_crown_barrage",
+		"shape": "large_semicircle_crown",
+		"coverage_width_percent": 85,
+		"visual_peak": true
+	  }
+	],
+	"spawn_distribution": {
+	  "spawn_area": "top_120px_of_screen",
+	  "top_to_bottom_materialization": true,
+	  "appear_rate_per_sec": 30
+	}
+  },
+  "environmental_persistence": {
+	"impact_marks": {
+	  "enabled": true,
+	  "persistence_sec": 3.0,
+	  "fade_curve": "1.0 -> 0.0",
+	  "decal_types": ["cracked_dirt", "arrow_hole", "brown_scorch_mark"],
+	  "max_active_marks": 45
+	},
+	"stuck_arrows": {
+	  "enabled": true,
+	  "arrows_per_impact_mark_area": [2, 3],
+	  "stick_duration_sec": 3.0,
+	  "tilt_angle_deg": [-18, 18],
+	  "fade_with_mark": true
+	},
+	"ground_accumulation": {
+	  "enabled": true,
+	  "visual_density_increases_over_time": true,
+	  "final_ground_coverage_percent": 35
+	}
+  },
+  "states": {
+	"appear": {
+	  "duration_sec": 0.4,
+	  "description": "The sky darkens as arrows materialize from top to bottom in ominous formation lines.",
+	  "animation": {
+		"sky_darkening": {
+		  "opacity_curve": "0.0 -> 0.32",
+		  "tint": "deep_green_shadow"
+		},
+		"arrow_materialization": {
+		  "appear_rate_per_sec": 30,
+		  "spawn_direction": "top_to_bottom",
+		  "scale_curve": "0.4 -> 1.0",
+		  "opacity_curve": "0.0 -> 1.0",
+		  "formation_preview": "faint_green_arc_guides"
+		}
+	  },
+	  "particles": {
+		"summon_motes_count": 40,
+		"particle_type": "deep_green_light_sparks",
+		"pattern": "falling_constellation_lines",
+		"lifetime_sec": [0.25, 0.7]
+	  },
+	  "audio": {
+		"sfx": "arrows_appear_whistle.wav",
+		"volume": 0.75
+	  }
+	},
+	"arrow_fall": {
+	  "duration_sec": 2.5,
+	  "description": "Fifty-plus arrows descend in coordinated wave patterns, flooding the screen with readable projectile rhythm.",
+	  "movement": {
+		"fall_speed_base_px_per_sec": 380,
+		"fall_speed_variance_px_per_sec": [300, 450],
+		"trajectory": "downward_with_slight_arc",
+		"rotation": "arrow_tip_points_downward_aligned_to_fall_vector",
+		"parallax_layers": 3
+	  },
+	  "patterning": {
+		"total_arrows": [50, 60],
+		"visible_at_once": [15, 20],
+		"patterns": ["arcs", "circle_segments", "diagonal_sweeps", "center_collapse"],
+		"visual_rhythm": "wave_based_not_random"
+	  },
+	  "trails": {
+		"enabled": true,
+		"trail_type": "green_light_streak",
+		"trail_length_px": [35, 70],
+		"fade_duration_sec": 0.25,
+		"brightness_variance": 0.2
+	  },
+	  "audio": {
+		"loop": "arrow_rain_loop.wav",
+		"volume": 0.65
+	  }
+	},
+	"continuous_rain": {
+	  "active_during": "arrow_fall",
+	  "trigger_interval_sec": 0.3,
+	  "description": "New layers of arrows enter every 0.3 seconds, forming overlapping arcs that create a light-show curtain.",
+	  "waves": {
+		"new_wave_interval_sec": 0.3,
+		"arrows_per_new_wave": [10, 15],
+		"wave_spacing_sec": 0.5,
+		"pattern_sequence": [
+		  "crescent_arc_left_to_right",
+		  "diagonal_sweep",
+		  "concentric_circle_rain",
+		  "center_collapse",
+          "final_crown_barrage"
+		],
+		"layered_falling": true
+	  },
+	  "visual_feedback": {
+		"intersecting_trails": true,
+		"trail_overlap_glow_multiplier": 1.18,
+		"screen_fill_curve": "20_percent -> 80_percent"
+	  }
+	},
+	"impact_rain": {
+	  "duration_sec": 1.5,
+	  "staggered": true,
+	  "description": "Arrows strike in rhythm across the battlefield, creating dust clouds, small explosions, and lasting ground scars.",
+	  "impact": {
+		"stagger_window_sec": 1.5,
+		"impact_order": "follows_wave_geometry",
+		"small_explosion_radius_px": 28,
+		"impact_flash_duration_sec": 0.06
+	  },
+	  "particles": {
+		"impact_particles_per_arrow": 12,
+		"particle_type": "wood_splinters_green_sparks_and_dirt",
+		"pattern": "outward_ground_burst",
+		"velocity_px_per_sec": [60, 220],
+		"lifetime_sec": [0.2, 0.65]
+	  },
+	  "dust_clouds": {
+		"puffs_per_impact": [2, 3],
+		"fade_duration_sec": 0.8,
+		"motion": "upward_drift",
+		"size_px": [12, 28],
+		"opacity_curve": "0.65 -> 0.0"
+	  },
+	  "impact_marks": {
+		"create_decal": true,
+		"persistence_sec": 3.0,
+		"mark_size_px": [18, 36],
+		"stuck_arrows_per_mark_area": [2, 3]
+	  },
+	  "camera_feedback": {
+		"micro_shake_per_cluster": true,
+		"cluster_shake_duration_sec": 0.06,
+		"cluster_shake_amplitude_px": 1.5,
+		"cap_continuous_shake": true
+	  },
+	  "audio": {
+		"sfx": "ground_impact_multi.wav",
+		"volume": 0.85,
+		"layered_randomized_impacts": true,
+		"secondary_sfx": {
+		  "file": "dust_cloud.wav",
+		  "volume": 0.35
+		}
+	  }
+	},
+	"dissipate": {
+	  "duration_sec": 0.6,
+	  "description": "The final arrows clear the screen while dust settles and impact marks slowly fade from the battlefield.",
+	  "animation": {
+		"remaining_arrows_clear": true,
+		"trail_opacity_curve": "1.0 -> 0.0",
+		"sky_darkening_curve": "0.32 -> 0.0"
+	  },
+	  "particles": {
+		"settling_dust_count": 35,
+		"particle_type": "soft_brown_dust_and_green_sparks",
+		"motion": "slow_upward_then_fade",
+		"lifetime_sec": [0.4, 1.0]
+	  },
+	  "environmental_persistence": {
+		"impact_marks_continue_after_skill": true,
+		"remaining_mark_fade_sec": 3.0,
+		"stuck_arrows_fade_with_marks": true
+	  },
+	  "audio": {
+		"arrow_rain_loop_fadeout_sec": 0.4,
+		"impact_layers_fadeout_sec": 0.3
+	  }
+	}
+  },
+  "level_scaling": {
+	"total_arrows": "50 + 5 * level, capped at 60",
+	"arrows_per_wave": "10 + level, capped at 15",
+	"visible_arrows_at_once": "15 + level, capped at 20",
+	"impact_particles_per_arrow": "12 + 2 * level, capped at 18",
+	"glow_intensity": "1.1 + 0.04 * level",
+	"impact_mark_persistence_sec": "3.0 fixed"
+  },
+  "performance_budget": {
+	"max_active_arrows": 22,
+	"max_total_arrows_per_cast": 60,
+	"max_active_impact_particles": 180,
+	"max_active_dust_puffs": 90,
+	"max_active_impact_marks": 45,
+	"particle_pooling_required": true,
+	"lod_rules": {
+	  "reduce_dust_puffs_on_mobile": true,
+	  "merge_nearby_impact_marks_when_dense": true,
+	  "reduce_visible_arrows_to_15_on_low_quality": true,
+	  "disable_trail_overlap_glow_when_many_arrows_active": true
+	}
+  }
+},
+  {
+	"skill_id": "star_knife",
+	"name": "Star Knife",
+	"short": "Spinning projectile (1-3 star knives)",
+	"type": "projectile",
+	"character": "assassin",
+	"is_ultimate": false,
+	"color": [0.5, 0.3, 0.6, 1.0],
+	"color_name": "Purple-Gray Metallic",
+	"animation_states": {
+	  "launch": "star_knife_launch",
+	  "spin": "star_knife_spin",
+	  "trail": "star_knife_trail",
+	  "impact": "star_knife_impact"
+	},
+	"timings": {
+	  "launch": 0.12,
+	  "spin_cycle": 0.25,
+	  "trail": 0.8,
+	  "impact": 0.2
+	},
+	"animation_specs": {
+	  "launch": {
+		"duration": 0.12,
+		"description": "Star knife appears with spin start",
+		"particle_burst": true,
+		"particle_count": 8,
+		"scale_animation": "0.5 to 1.0"
+	  },
+	  "spin": {
+		"duration": 0.25,
+		"loop": true,
+		"description": "Continuous fast spinning throughout flight",
+		"rotation_speed": 1440,
+		"sparkle_intensity": "high"
+	  },
+	  "trail": {
+		"duration": 0.8,
+		"description": "Purple-gray sparkle trail following path",
+		"trail_effect": true,
+		"trail_color": "purple-gray",
+		"particle_spawn_rate": 5,
+		"metallic_shine": true
+	  },
+	  "impact": {
+		"duration": 0.2,
+		"description": "Sharp bounce or burst effect on hit",
+		"particle_burst": true,
+		"particle_count": 15,
+		"screen_shake": 0.08,
+		"impact_sound": true
+	  }
+	},
+	"particle_texture": "res://textures/effects/star_knife_particles.png",
+	"sound_effects": {
+	  "launch": "res://sfx/skills/star_knife_throw.wav",
+	  "impact": "res://sfx/skills/star_knife_impact.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "52x52",
+	  "blend_mode": "Normal",
+	  "projectile_speed": 480,
+	  "projectile_radius": 12,
+	  "rotation_speed_rpm": 1440,
+	  "damage_per_hit": 35
+	}
+  },
+  {
+	"skill_id": "knife_storm",
+	"name": "Knife Storm",
+	"short": "Spinning blade aura",
+	"type": "aura",
+	"character": "assassin",
+	"is_ultimate": false,
+	"color": [0.7, 0.5, 1.0, 1.0],
+	"color_name": "Lavender with Purple Accents",
+	"animation_states": {
+	  "activate": "knife_storm_activate",
+	  "spin": "knife_storm_spin",
+	  "damage_burst": "knife_storm_damage",
+	  "deactivate": "knife_storm_deactivate"
+	},
+	"timings": {
+	  "activate": 0.3,
+	  "spin_cycle": 0.4,
+	  "damage_burst": 0.15,
+	  "deactivate": 0.4
+	},
+	"animation_specs": {
+	  "activate": {
+		"duration": 0.3,
+		"description": "Knives begin spinning around player",
+		"particle_burst": true,
+		"particle_count": 20,
+		"expansion_speed": 50
+	  },
+	  "spin": {
+		"duration": 0.4,
+		"loop": true,
+		"description": "Fast continuous rotation 1.5s per cycle",
+		"rotation_speed": 900,
+		"blade_count": 6,
+		"particle_spawn_rate": 8,
+		"velocity_line_intensity": "high"
+	  },
+	  "damage_burst": {
+		"duration": 0.15,
+		"description": "Intensity spike when dealing damage",
+		"particle_burst": true,
+		"particle_count": 12,
+		"brightness_flash": true,
+		"screen_shake": 0.06
+	  },
+	  "deactivate": {
+		"duration": 0.4,
+		"description": "Blades slow and disappear",
+		"rotation_speed": 180,
+		"alpha_fade": "1.0 to 0.0",
+		"particle_count": 10
+	  }
+	},
+	"particle_texture": "res://textures/effects/knife_storm_particles.png",
+	"sound_effects": {
+	  "activate": "res://sfx/skills/knife_storm_activate.wav",
+	  "loop": "res://sfx/skills/knife_storm_loop.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "96x96",
+	  "blend_mode": "Normal",
+	  "aura_radius_pixels": 70,
+	  "blade_count": 6,
+	  "rotation_speed_degrees_per_second": 900,
+	  "particle_generation_rate": 8,
+	  "max_duration_seconds": 6.0
+	}
+  },
+  {
+	"skill_id": "boomerang",
+	"name": "Boomerang Star",
+	"short": "Returning projectile (1-3 boomerang stars)",
+	"type": "projectile_returning",
+	"character": "assassin",
+	"is_ultimate": false,
+	"color": [1.0, 0.84, 0.0, 1.0],
+	"color_name": "Golden Yellow Metallic",
+	"animation_states": {
+	  "launch": "boomerang_launch",
+	  "outbound": "boomerang_outbound",
+	  "peak": "boomerang_peak",
+	  "return": "boomerang_return",
+	  "catch": "boomerang_catch"
+	},
+	"timings": {
+	  "launch": 0.1,
+	  "outbound": 0.6,
+	  "peak": 0.3,
+	  "return": 0.7,
+	  "catch": 0.2
+	},
+	"animation_specs": {
+	  "launch": {
+		"duration": 0.1,
+		"description": "Star appears with golden glow",
+		"particle_burst": true,
+		"particle_count": 10,
+		"scale_animation": "0.6 to 1.0"
+	  },
+	  "outbound": {
+		"duration": 0.6,
+		"description": "Arc trajectory away from player with trail",
+		"trail_effect": true,
+		"trail_color": "golden",
+		"rotation": 360,
+		"arc_height": 120
+	  },
+	  "peak": {
+		"duration": 0.3,
+		"description": "Brief pause at furthest point",
+		"glow_intensity": "1.0",
+		"particle_count": 5,
+		"pause_visual": true
+	  },
+	  "return": {
+		"duration": 0.7,
+		"description": "Arc trajectory back to player, faster than outbound",
+		"trail_effect": true,
+		"trail_color": "brighter golden",
+		"return_speed_multiplier": 1.3,
+		"rotation": 720
+	  },
+	  "catch": {
+		"duration": 0.2,
+		"description": "Brief glow effect if caught by player",
+		"particle_burst": true,
+		"particle_count": 8,
+		"glow_flash": true,
+		"chime_sound": true
+	  }
+	},
+	"particle_texture": "res://textures/effects/boomerang_particles.png",
+	"sound_effects": {
+	  "launch": "res://sfx/skills/boomerang_throw.wav",
+	  "return": "res://sfx/skills/boomerang_return.wav",
+	  "catch": "res://sfx/skills/boomerang_catch.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "56x56",
+	  "blend_mode": "Additive",
+	  "projectile_speed_outbound": 400,
+	  "projectile_speed_return": 520,
+	  "arc_height_pixels": 120,
+	  "max_distance_pixels": 300,
+	  "damage_per_hit": 30,
+	  "hits_twice": true
+	}
+  },
+  {
+	"skill_id": "seven_slash",
+	"name": "7 Slash",
+	"short": "Screen-wide slash combo (ULTIMATE)",
+	"type": "ultimate_effect",
+	"character": "assassin",
+	"is_ultimate": true,
+	"color": [0.8, 0.1, 0.1, 1.0],
+	"color_name": "Dark Red with Crimson Energy",
+	"animation_states": {
+	  "prepare": "seven_slash_prepare",
+	  "slash": "seven_slash_slash",
+	  "shockwave": "seven_slash_shockwave",
+	  "impact": "seven_slash_impact"
+	},
+	"timings": {
+	  "prepare": 0.2,
+	  "slash_phase": 0.6,
+	  "shockwave": 0.4,
+	  "impact": 0.3
+	},
+	"animation_specs": {
+	  "prepare": {
+		"duration": 0.2,
+		"description": "Darkness and tension buildup",
+		"screen_fade": true,
+		"fade_intensity": "0 to 0.3",
+		"particle_count": 30,
+		"danger_sound": true
+	  },
+	  "slash": {
+		"duration": 0.6,
+		"description": "Seven rapid slashes, staggered ~85ms apart",
+		"slash_count": 7,
+		"slash_interval": 0.085,
+		"slash_expand_duration": 0.15,
+		"slash_angles_varied": true,
+		"slash_color": "crimson",
+		"screen_shake_per_slash": 0.08,
+		"particle_count_per_slash": 12
+	  },
+	  "shockwave": {
+		"duration": 0.4,
+		"description": "Rings emanate from slash intersection points",
+		"ring_count": 7,
+		"ring_speed": 300,
+		"ring_width": 4,
+		"ring_color": "crimson energy"
+	  },
+	  "impact": {
+		"duration": 0.3,
+		"description": "Brief darkness or flash at impacts",
+		"screen_flash_intensity": 0.5,
+		"screen_shake": 0.2,
+		"particle_burst": true,
+		"particle_count": 50
+	  }
+	},
+	"particle_texture": "res://textures/effects/seven_slash_particles.png",
+	"sound_effects": {
+	  "prepare": "res://sfx/skills/seven_slash_start.wav",
+	  "slash": "res://sfx/skills/blade_slash.wav",
+	  "impact": "res://sfx/skills/seven_slash_impact.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "256x256",
+	  "blend_mode": "Additive",
+	  "covers_screen": true,
+	  "slash_count": 7,
+	  "slash_interval_seconds": 0.085,
+	  "total_duration_seconds": 1.5,
+	  "damage_radius_pixels": 1600,
+	  "damage_per_slash": 45,
+	  "cooldown_seconds": 25
+	}
+  },
+  {
+	"skill_id": "swirl_tangerine",
+	"name": "Swirl Tangerine",
+	"short": "Screen-wide energy cyclone (ULTIMATE)",
+	"type": "ultimate_effect",
+	"character": "special",
+	"is_ultimate": true,
+	"color": [1.0, 0.55, 0.0, 1.0],
+	"color_name": "Tangerine Orange",
+	"animation_states": {
+	  "charge": "swirl_charge",
+	  "release": "swirl_release",
+	  "vortex": "swirl_vortex",
+	  "peak": "swirl_peak",
+	  "dissipate": "swirl_dissipate"
+	},
+	"timings": {
+	  "charge": 0.5,
+	  "release": 0.3,
+	  "vortex": 3.0,
+	  "peak": 1.5,
+	  "dissipate": 1.0
+	},
+	"animation_specs": {
+	  "charge": {
+		"duration": 0.5,
+		"description": "Energy gathers, glow intensifies, spin-up begins",
+		"glow_intensity": "0.2 to 1.0",
+		"rotation_speed": "0 to 360",
+		"particle_count": 50,
+		"energy_color": "tangerine",
+		"charge_sound": true
+	  },
+	  "release": {
+		"duration": 0.3,
+		"description": "Sudden vortex appears covering screen",
+		"particle_burst": true,
+		"particle_count": 80,
+		"screen_flash": true,
+		"screen_shake": 0.25,
+		"spiral_expand": true
+	  },
+	  "vortex": {
+		"duration": 3.0,
+		"description": "Main effect at full power with swirling motion",
+		"rotation_speed": 540,
+		"spiral_rings": 5,
+		"concentric_circles": true,
+		"spiral_direction": "inward then outward",
+		"particle_spawn_rate": 40
+	  },
+	  "peak": {
+		"duration": 1.5,
+		"description": "Maximum damage zone with brightest intensity",
+		"glow_intensity": "1.0",
+		"brightness": "maximum",
+		"rotation_speed": 720,
+		"particle_spawn_rate": 60,
+		"energy_density": "high",
+		"screen_shake": 0.1
+	  },
+	  "dissipate": {
+		"duration": 1.0,
+		"description": "Spiral fade as energy disperses",
+		"spiral_collapse": true,
+		"alpha_fade": "1.0 to 0.0",
+		"particle_count": 30,
+		"final_shimmer": true
+	  }
+	},
+	"particle_texture": "res://textures/effects/swirl_tangerine_particles.png",
+	"sound_effects": {
+	  "charge": "res://sfx/skills/tangerine_cast.wav",
+	  "release": "res://sfx/skills/tangerine_vortex.wav",
+	  "peak": "res://sfx/skills/tangerine_vortex.wav",
+	  "end": "res://sfx/skills/tangerine_end.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "256x256",
+	  "blend_mode": "Additive",
+	  "covers_screen": true,
+	  "rotation_speed_degrees_per_second": 540,
+	  "spiral_ring_count": 5,
+	  "total_duration_seconds": 5.8,
+	  "damage_radius_pixels": 1600,
+	  "knockback_force": 200,
+	  "particle_density": "very high",
+	  "cooldown_seconds": 30
+	}
+  }
+]

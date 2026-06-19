@@ -28,6 +28,8 @@ var _back_btn:     Button
 var _store_btn:    Button
 var _rules_btn:    Button
 
+const STASH_RING_ICON_SIZE: float = 54.0
+
 func _ready() -> void:
 	_view = get_viewport_rect().size
 	if selected_character != null:
@@ -198,24 +200,21 @@ func _rebuild_stash() -> void:
 		row.add_theme_stylebox_override("hover",   rs)
 		row.add_theme_stylebox_override("pressed", rs)
 		row.add_theme_stylebox_override("disabled", rs)
-		row.custom_minimum_size = Vector2(0, 72)
-		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		row.icon = RingStore.ring_icon(ring)
-		row.expand_icon = true
-		row.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		row.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
-		var rtext: String = "[%s]  %s  T%d  (%s)" % [
+		row.custom_minimum_size = Vector2(0, 82)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.clip_contents = true
+		row.text = ""
+		var ring_text: String = "[%s]  %s  T%d" % [
 			(ring.get("rarity", "common") as String).to_upper(),
 			ring.get("name", "Ring") as String,
 			int(ring.get("tier", 1)),
-			_format_ring_bonus(ring),
 		]
+		var bonus_text: String = _format_ring_bonus(ring)
 		if is_equipped:
-			rtext += "  - equipped in Slot %d" % (equipped_slot + 1)
-		row.text = rtext
-		row.add_theme_font_size_override("font_size", 32)
-		row.add_theme_color_override("font_color", Color(0.54, 0.54, 0.58) if is_equipped else rc)
+			bonus_text += " - equipped in Slot %d" % (equipped_slot + 1)
+		row.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.0))
 		row.add_theme_color_override("font_disabled_color", Color(0.54, 0.54, 0.58))
+		row.add_child(_make_stash_row_content(ring, ring_text, bonus_text, Color(0.54, 0.54, 0.58) if is_equipped else rc))
 		row.disabled = is_equipped
 		row.modulate = Color(0.66, 0.66, 0.68, 0.78) if is_equipped else Color.WHITE
 		var ridx := i
@@ -223,6 +222,49 @@ func _rebuild_stash() -> void:
 			row.pressed.connect(func(): _on_stash_pressed(ridx))
 		_stash_vbox.add_child(row)
 		_stash_btns.append(row)
+
+func _make_stash_row_content(ring: Dictionary, ring_text: String, bonus_text: String, text_color: Color) -> Control:
+	var content := HBoxContainer.new()
+	content.set_anchors_preset(Control.PRESET_FULL_RECT)
+	content.offset_left = 12
+	content.offset_top = 8
+	content.offset_right = -12
+	content.offset_bottom = -8
+	content.add_theme_constant_override("separation", 12)
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var icon_rect := TextureRect.new()
+	icon_rect.texture = RingStore.ring_icon(ring)
+	icon_rect.custom_minimum_size = Vector2(STASH_RING_ICON_SIZE, STASH_RING_ICON_SIZE)
+	icon_rect.size = Vector2(STASH_RING_ICON_SIZE, STASH_RING_ICON_SIZE)
+	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(icon_rect)
+
+	var labels := VBoxContainer.new()
+	labels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	labels.add_theme_constant_override("separation", 0)
+	labels.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(labels)
+
+	var name_lbl := Label.new()
+	name_lbl.text = ring_text
+	name_lbl.add_theme_font_size_override("font_size", 28)
+	name_lbl.add_theme_color_override("font_color", text_color)
+	name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	labels.add_child(name_lbl)
+
+	var bonus_lbl := Label.new()
+	bonus_lbl.text = bonus_text
+	bonus_lbl.add_theme_font_size_override("font_size", 24)
+	bonus_lbl.add_theme_color_override("font_color", text_color)
+	bonus_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	bonus_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	labels.add_child(bonus_lbl)
+
+	return content
 
 func _refresh_slot_btn(btn: Button, slot: int) -> void:
 	var key: String  = "slot_%d" % slot

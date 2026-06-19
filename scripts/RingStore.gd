@@ -47,12 +47,28 @@ const RING_ICON_FILES: Dictionary = {
 	"Second Chance Ring": "second_chance_ring.png",
 	"Guardian Pulse Ring": "guardian_pulse_ring.png",
 }
+const RING_ICON_FALLBACK_FILES: Dictionary = {
+	"ring_warlords_crest": "warlords_crest.png",
+	"ring_haste_coil": "haste_coil.png",
+	"ring_second_chance": "second_chance_ring.png",
+	"ring_guardian_pulse": "guardian_pulse_ring.png",
+	"skill_dmg": "warlords_crest.png",
+	"skill_cd": "haste_coil.png",
+	"revive_once": "second_chance_ring.png",
+	"timed_shield": "guardian_pulse_ring.png",
+}
 
 static var _stash_cache: Dictionary = {}  # username -> Array[Dictionary]
 
 static func ring_icon_path(ring: Dictionary) -> String:
 	var ring_name: String = ring.get("name", "") as String
 	var file_name: String = RING_ICON_FILES.get(ring_name, "") as String
+	if file_name == "":
+		var ring_id: String = ring.get("id", "") as String
+		file_name = RING_ICON_FALLBACK_FILES.get(ring_id, "") as String
+	if file_name == "":
+		var attr: String = ring.get("attr", "") as String
+		file_name = RING_ICON_FALLBACK_FILES.get(attr, "") as String
 	if file_name == "":
 		return ""
 	var path: String = RING_ICON_DIR + file_name

@@ -8,6 +8,10 @@ const ACCOUNTS_PATH := "user://accounts.json"
 const MIN_USERNAME_LEN := 3
 const MIN_PASSWORD_LEN := 4
 
+## Dev account credentials — grants all IAP without payment
+const DEV_USERNAME := "devadmin"
+const DEV_PASSWORD := "dev12345"
+
 static func _hash(password: String, salt: String) -> String:
 	var ctx := HashingContext.new()
 	ctx.start(HashingContext.HASH_SHA256)
@@ -71,9 +75,19 @@ static func register(username: String, password: String, confirm: String, displa
 
 ## Returns the account dictionary on success, or null on failure.
 static func login(username: String, password: String) -> Variant:
-	var key := username.strip_edges().to_lower()
+	var u := username.strip_edges()
+	var key := u.to_lower()
 	if key.is_empty():
 		return null
+	# Check for hardcoded dev account
+	if key == DEV_USERNAME.to_lower() and password == DEV_PASSWORD:
+		return {
+			"username": DEV_USERNAME,
+			"display_name": "Dev Admin",
+			"favorite_capy": "",
+			"is_dev": true,
+			"created_at": Time.get_datetime_string_from_system(true),
+		}
 	var accounts := _load_all()
 	if not accounts.has(key):
 		return null

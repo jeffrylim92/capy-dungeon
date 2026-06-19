@@ -1,0 +1,25 @@
+[autoload]
+
+# Add this section to project.godot to enable global SkillMgr access
+
+SkillMgr="*res://scripts/SkillManager.gd"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# HOW TO ADD THIS TO YOUR project.godot:
+# 
+# 1. Open: res://project.godot in a text editor
+# 2. Find the section: [autoload]
+#    (If it doesn't exist, add it after [application] or other sections)
+# 3. Add the line: SkillMgr="*res://scripts/SkillManager.gd"
+# 4. Save the file
+# 5. Reload Godot editor (or press F5)
+# 
+# The asterisk (*) means the script is autoloaded as a singleton.
+# After this, SkillMgr is accessible globally from any script:
+#
+#   SkillMgr.cast_skill("orb", self)
+#   SkillMgr.get_skill("fireball")
+#   SkillMgr.get_skill_color("blizzard")
+#   SkillMgr.list_all_skills()
+#
+# ──────────────────────────────────────────────────────────────────────────────

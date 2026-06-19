@@ -103,6 +103,10 @@ func _build_ui() -> void:
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+	scroll.focus_mode = Control.FOCUS_ALL
+	scroll.scroll_started.connect(func() -> void: pass)  # Enable momentum scrolling
 	root.add_child(scroll)
 
 	_content = VBoxContainer.new()
@@ -185,9 +189,11 @@ func _make_product_card(product_id: String, title: String, badge: String, desc: 
 	style.content_margin_bottom = 18
 	card.add_theme_stylebox_override("panel", style)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow scrolling input to pass through
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
+	row.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow scrolling through row
 	card.add_child(row)
 
 	if is_ring:
@@ -198,6 +204,7 @@ func _make_product_card(product_id: String, title: String, badge: String, desc: 
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.mouse_filter = Control.MOUSE_FILTER_PASS  # Allow scrolling through box
 	row.add_child(box)
 
 	var badge_lbl := Label.new()

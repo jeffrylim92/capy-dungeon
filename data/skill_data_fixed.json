@@ -1,0 +1,655 @@
+[
+  {
+	"skill_id": "orb",
+	"name": "Capy Orb",
+	"short": "Three to five magical golden capy-energy orbs continuously orbit the player",
+	"type": "orbit_projectile",
+	"character": "common",
+	"is_ultimate": false,
+	"color": [1.0, 0.84, 0.29, 1.0],
+	"color_name": "Golden Yellow",
+	"animation_states": {
+	  "spawn": "orb_spawn",
+	  "idle": "orb_orbit",
+	  "impact": "orb_impact"
+	},
+	"timings": {
+	  "spawn": 0.5,
+	  "orbit_cycle": 2.0,
+	  "impact": 0.25
+	},
+	"particle_texture": "res://textures/effects/orb_particles.png",
+	"sound_effects": {
+	  "cast": "res://sfx/skills/orb_spawn.wav",
+	  "impact": "res://sfx/skills/orb_impact.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "48x48 or 64x64",
+	  "particle_count_suggestion": 50,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "bolt",
+	"name": "Capy Bolt",
+	"short": "Auto-targeting projectile (1-3 bolts per shot)",
+	"type": "projectile",
+	"character": "common",
+	"is_ultimate": false,
+	"color": [1.0, 0.94, 0.29, 1.0],
+	"color_name": "Bright Yellow",
+	"animation_states": {
+	  "charge": "bolt_charge",
+	  "fire": "bolt_fire",
+	  "travel": "bolt_travel",
+	  "impact": "bolt_impact"
+	},
+	"timings": {
+	  "charge": 0.18,
+	  "fire": 0.1,
+	  "travel": 0.25,
+	  "impact": 0.28
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/bolt_cast.wav",
+	  "impact": "res://sfx/skills/bolt_impact.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "24x64",
+	  "particle_count_suggestion": 40,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "ice_orb",
+	"name": "Ice Orb",
+	"short": "Straight-line projectile (1-3 orbs)",
+	"type": "projectile",
+	"character": "common",
+	"is_ultimate": false,
+	"color": [0.78, 0.94, 1.0, 1.0],
+	"color_name": "Cyan Blue",
+	"animation_states": {
+	  "spawn": "ice_orb_spawn",
+	  "travel": "ice_orb_travel",
+	  "freeze_zone": "ice_orb_freeze",
+	  "impact": "ice_orb_impact"
+	},
+	"timings": {
+	  "spawn": 0.22,
+	  "travel": 0.35,
+	  "freeze_zone": 3.0,
+	  "impact": 0.28
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/ice_spawn.wav",
+	  "impact": "res://sfx/skills/ice_impact.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "40x40",
+	  "particle_count_suggestion": 60,
+	  "blend_mode": "Alpha"
+	}
+  },
+  {
+	"skill_id": "mud_aura",
+	"name": "Mud Aura",
+	"short": "Continuous damage aura around player",
+	"type": "aura",
+	"character": "common",
+	"is_ultimate": false,
+	"color": [0.36, 0.14, 0.09, 1.0],
+	"color_name": "Deep Brown",
+	"animation_states": {
+	  "activate": "mud_activate",
+	  "idle": "mud_idle",
+	  "damage_pulse": "mud_pulse",
+	  "deactivate": "mud_deactivate"
+	},
+	"timings": {
+	  "activate": 0.45,
+	  "idle": 1.2,
+	  "damage_pulse": 0.28,
+	  "deactivate": 0.35
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/mud_activate.wav",
+	  "damage": "res://sfx/skills/mud_splash.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "256x256",
+	  "particle_count_suggestion": 45,
+	  "blend_mode": "Alpha"
+	}
+  },
+  {
+	"skill_id": "wave",
+	"name": "Squeal Wave",
+	"short": "Expanding shockwave projectile",
+	"type": "shockwave",
+	"character": "common",
+	"is_ultimate": false,
+	"color": [0.78, 0.49, 1.0, 1.0],
+	"color_name": "Purple",
+	"animation_states": {
+	  "charge": "wave_charge",
+	  "release": "wave_release",
+	  "expansion": "wave_expand",
+	  "dissipate": "wave_dissipate"
+	},
+	"timings": {
+	  "charge": 0.35,
+	  "release": 0.12,
+	  "expansion": 1.2,
+	  "dissipate": 0.35
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/wave_release.wav",
+	  "expand": "res://sfx/skills/wave_expand.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "512x512",
+	  "particle_count_suggestion": 80,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "regen",
+	"name": "Capy Calm",
+	"short": "Passive continuous regeneration",
+	"type": "passive",
+	"character": "common",
+	"is_ultimate": false,
+	"color": [1.0, 0.49, 0.59, 1.0],
+	"color_name": "Rose Red",
+	"animation_states": {
+	  "heal_tick": "regen_tick",
+	  "idle": "regen_idle"
+	},
+	"timings": {
+	  "heal_tick": 0.35,
+	  "tick_interval": 0.5
+	},
+	"sound_effects": {
+	  "heal": "res://sfx/skills/heal_tick.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "128x128",
+	  "particle_count_suggestion": 20,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "magnet",
+	"name": "XP Magnet",
+	"short": "Passive attraction aura",
+	"type": "passive",
+	"character": "common",
+	"is_ultimate": false,
+	"color": [0.15, 0.85, 0.66, 1.0],
+	"color_name": "Teal Green",
+	"animation_states": {
+	  "idle": "magnet_idle",
+	  "activate": "magnet_activate",
+	  "attract": "magnet_attract"
+	},
+	"timings": {
+	  "idle": 1.6,
+	  "activate": 0.35,
+	  "attract": 0.6
+	},
+	"sound_effects": {
+	  "activate": "res://sfx/skills/magnet_activate.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "256x256",
+	  "particle_count_suggestion": 40,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "fireball",
+	"name": "Fireball",
+	"short": "Orbiting projectile (2-4 fireballs)",
+	"type": "orbit_projectile",
+	"character": "capy_wizard",
+	"character_specific": true,
+	"is_ultimate": false,
+	"color": [1.0, 0.48, 0.05, 1.0],
+	"color_name": "Orange",
+	"animation_states": {
+	  "spawn": "fireball_spawn",
+	  "orbit": "fireball_orbit",
+	  "flicker": "fireball_flicker",
+	  "impact": "fireball_impact"
+	},
+	"timings": {
+	  "spawn": 0.35,
+	  "orbit": 1.4,
+	  "flicker": 0.5,
+	  "impact": 0.32
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/fireball_spawn.wav",
+	  "impact": "res://sfx/skills/fireball_explosion.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "64x64",
+	  "particle_count_suggestion": 70,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "elec_wave",
+	"name": "Elec Shockwave",
+	"short": "Expanding electrical pulse",
+	"type": "shockwave",
+	"character": "capy_wizard",
+	"character_specific": true,
+	"is_ultimate": false,
+	"color": [1.0, 0.92, 0.29, 1.0],
+	"color_name": "Electric Yellow",
+	"animation_states": {
+	  "charge": "elec_charge",
+	  "release": "elec_release",
+	  "expand": "elec_expand",
+	  "crackle": "elec_crackle",
+	  "dissipate": "elec_dissipate"
+	},
+	"timings": {
+	  "charge": 0.4,
+	  "release": 0.12,
+	  "expand": 1.0,
+	  "crackle": 1.0,
+	  "dissipate": 0.35
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/elec_discharge.wav",
+	  "impact": "res://sfx/skills/elec_impact.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "512x512",
+	  "particle_count_suggestion": 100,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "hurricane",
+	"name": "Hurricane",
+	"short": "Continuous spinning aura",
+	"type": "aura",
+	"character": "capy_wizard",
+	"character_specific": true,
+	"is_ultimate": false,
+	"color": [0.55, 0.86, 1.0, 1.0],
+	"color_name": "Light Blue",
+	"animation_states": {
+	  "activate": "hurricane_activate",
+	  "rotate": "hurricane_rotate",
+	  "damage": "hurricane_damage",
+	  "dissipate": "hurricane_dissipate"
+	},
+	"timings": {
+	  "activate": 0.45,
+	  "rotate": 1.0,
+	  "damage": 0.25,
+	  "dissipate": 0.5
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/hurricane_activate.wav",
+	  "loop": "res://sfx/skills/hurricane_loop.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "256x256",
+	  "particle_count_suggestion": 80,
+	  "blend_mode": "Alpha"
+	}
+  },
+  {
+	"skill_id": "blizzard",
+	"name": "Blizzard",
+	"short": "Screen-wide ice storm",
+	"type": "screen_effect",
+	"character": "capy_wizard",
+	"character_specific": true,
+	"is_ultimate": true,
+	"color": [0.78, 0.94, 1.0, 1.0],
+	"color_name": "Pale Cyan",
+	"animation_states": {
+	  "charge": "blizzard_charge",
+	  "release": "blizzard_release",
+	  "peak": "blizzard_peak",
+	  "dissipate": "blizzard_dissipate"
+	},
+	"timings": {
+	  "charge": 0.5,
+	  "release": 0.25,
+	  "peak": 2.0,
+	  "dissipate": 1.0
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/blizzard_cast.wav",
+	  "loop": "res://sfx/skills/blizzard_loop.wav",
+	  "impact": "res://sfx/skills/blizzard_end.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "512x512",
+	  "particle_count_suggestion": 150,
+	  "blend_mode": "Alpha"
+	}
+  },
+  {
+	"skill_id": "arrow",
+	"name": "Arrow Shot",
+	"short": "Fast projectile (1-3 arrows per shot)",
+	"type": "projectile",
+	"character": "capy_archer",
+	"character_specific": true,
+	"is_ultimate": false,
+	"color": [0.52, 0.80, 0.42, 1.0],
+	"color_name": "Forest Green",
+	"animation_states": {
+	  "draw": "arrow_draw",
+	  "fire": "arrow_fire",
+	  "travel": "arrow_travel",
+	  "impact": "arrow_impact"
+	},
+	"timings": {
+	  "draw": 0.18,
+	  "fire": 0.08,
+	  "travel": 0.4,
+	  "impact": 0.16
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/arrow_fire.wav",
+	  "impact": "res://sfx/skills/arrow_impact.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "64x16",
+	  "particle_count_suggestion": 35,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "split_arrow",
+	"name": "Split Arrow",
+	"short": "Fan spread projectile (3-7 arrows per shot)",
+	"type": "projectile",
+	"character": "capy_archer",
+	"character_specific": true,
+	"is_ultimate": false,
+	"color": [0.65, 1.0, 0.18, 1.0],
+	"color_name": "Lime Green",
+	"animation_states": {
+	  "fire": "split_arrow_fire",
+	  "spread": "split_arrow_spread",
+	  "travel": "split_arrow_travel",
+	  "impact": "split_arrow_impact"
+	},
+	"timings": {
+	  "fire": 0.1,
+	  "spread": 0.15,
+	  "travel": 0.45,
+	  "impact": 0.16
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/split_arrow_fire.wav",
+	  "impact": "res://sfx/skills/arrow_impact.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "64x16",
+	  "particle_count_suggestion": 45,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "pierce_arrow",
+	"name": "Pierce Arrow",
+	"short": "Heavy piercing projectile (1-3 arrows)",
+	"type": "projectile",
+	"character": "capy_archer",
+	"character_specific": true,
+	"is_ultimate": false,
+	"color": [0.22, 0.97, 0.95, 1.0],
+	"color_name": "Teal",
+	"animation_states": {
+	  "charge": "pierce_arrow_charge",
+	  "fire": "pierce_arrow_fire",
+	  "travel": "pierce_arrow_travel",
+	  "pierce": "pierce_arrow_pierce"
+	},
+	"timings": {
+	  "charge": 0.1,
+	  "fire": 0.08,
+	  "travel": 0.5,
+	  "pierce": 0.14
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/pierce_arrow_fire.wav",
+	  "impact": "res://sfx/skills/pierce_arrow_impact.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "80x16",
+	  "particle_count_suggestion": 50,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "sky_fall",
+	"name": "Sky Fall",
+	"short": "Screen-wide arrow rain",
+	"type": "screen_effect",
+	"character": "capy_archer",
+	"character_specific": true,
+	"is_ultimate": true,
+	"color": [0.18, 0.49, 0.20, 1.0],
+	"color_name": "Deep Green",
+	"animation_states": {
+	  "appear": "sky_fall_appear",
+	  "rain": "sky_fall_rain",
+	  "impact": "sky_fall_impact",
+	  "dissipate": "sky_fall_dissipate"
+	},
+	"timings": {
+	  "appear": 0.3,
+	  "rain": 2.0,
+	  "impact": 0.2,
+	  "dissipate": 0.5
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/sky_fall_start.wav",
+	  "rain": "res://sfx/skills/arrow_rain_loop.wav",
+	  "impact": "res://sfx/skills/arrow_impact.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "1024x768",
+	  "particle_count_suggestion": 120,
+	  "blend_mode": "Alpha"
+	}
+  },
+  {
+	"skill_id": "star_knife",
+	"name": "Star Knife",
+	"short": "Spinning projectile (1-3 star knives)",
+	"type": "projectile",
+	"character": "capy_assassin",
+	"character_specific": true,
+	"is_ultimate": false,
+	"color": [0.58, 0.41, 0.56, 1.0],
+	"color_name": "Purple-Gray",
+	"animation_states": {
+	  "launch": "star_knife_launch",
+	  "rotate": "star_knife_rotate",
+	  "travel": "star_knife_travel",
+	  "impact": "star_knife_impact"
+	},
+	"timings": {
+	  "launch": 0.12,
+	  "rotate": 0.25,
+	  "travel": 0.45,
+	  "impact": 0.18
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/star_knife_throw.wav",
+	  "impact": "res://sfx/skills/star_knife_impact.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "64x64",
+	  "particle_count_suggestion": 40,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "knife_storm",
+	"name": "Knife Storm",
+	"short": "Spinning blade aura",
+	"type": "aura",
+	"character": "capy_assassin",
+	"character_specific": true,
+	"is_ultimate": false,
+	"color": [0.84, 0.49, 1.0, 1.0],
+	"color_name": "Lavender",
+	"animation_states": {
+	  "activate": "knife_storm_activate",
+	  "rotate": "knife_storm_rotate",
+	  "damage": "knife_storm_damage",
+	  "deactivate": "knife_storm_deactivate"
+	},
+	"timings": {
+	  "activate": 0.4,
+	  "rotate": 1.5,
+	  "damage": 0.22,
+	  "deactivate": 0.45
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/knife_storm_activate.wav",
+	  "loop": "res://sfx/skills/knife_storm_loop.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "256x256",
+	  "particle_count_suggestion": 70,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "boomerang",
+	"name": "Boomerang Star",
+	"short": "Returning projectile (1-3 boomerang stars)",
+	"type": "projectile",
+	"character": "capy_assassin",
+	"character_specific": true,
+	"is_ultimate": false,
+	"color": [1.0, 0.86, 0.42, 1.0],
+	"color_name": "Golden Yellow",
+	"animation_states": {
+	  "launch": "boomerang_launch",
+	  "outbound": "boomerang_outbound",
+	  "return": "boomerang_return",
+	  "catch": "boomerang_catch"
+	},
+	"timings": {
+	  "launch": 0.16,
+	  "outbound": 0.65,
+	  "return": 0.42,
+	  "catch": 0.18
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/boomerang_throw.wav",
+	  "return": "res://sfx/skills/boomerang_return.wav",
+	  "catch": "res://sfx/skills/boomerang_catch.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "64x64",
+	  "particle_count_suggestion": 50,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "seven_slash",
+	"name": "7 Slash",
+	"short": "Screen-wide slash combo",
+	"type": "screen_effect",
+	"character": "capy_assassin",
+	"character_specific": true,
+	"is_ultimate": true,
+	"color": [0.69, 0.0, 0.13, 1.0],
+	"color_name": "Dark Red",
+	"animation_states": {
+	  "prepare": "seven_slash_prepare",
+	  "slash": "seven_slash_slash",
+	  "shockwave": "seven_slash_shockwave",
+	  "impact": "seven_slash_impact"
+	},
+	"timings": {
+	  "prepare": 0.2,
+	  "slash": 0.6,
+	  "shockwave": 0.4,
+	  "impact": 0.12
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/seven_slash_start.wav",
+	  "slash": "res://sfx/skills/blade_slash.wav",
+	  "impact": "res://sfx/skills/seven_slash_impact.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "1024x768",
+	  "particle_count_suggestion": 90,
+	  "blend_mode": "Additive"
+	}
+  },
+  {
+	"skill_id": "swirl_tangerine",
+	"name": "Swirl Tangerine",
+	"short": "Screen-wide energy cyclone",
+	"type": "screen_effect",
+	"character": "capy_brown",
+	"character_specific": true,
+	"is_ultimate": true,
+	"color": [1.0, 0.65, 0.0, 1.0],
+	"color_name": "Tangerine Orange",
+	"animation_states": {
+	  "charge": "tangerine_charge",
+	  "release": "tangerine_release",
+	  "vortex": "tangerine_vortex",
+	  "peak": "tangerine_peak",
+	  "dissipate": "tangerine_dissipate"
+	},
+	"timings": {
+	  "charge": 0.5,
+	  "release": 0.25,
+	  "vortex": 3.0,
+	  "peak": 1.5,
+	  "dissipate": 1.0
+	},
+	"sound_effects": {
+	  "cast": "res://sfx/skills/tangerine_cast.wav",
+	  "loop": "res://sfx/skills/tangerine_vortex.wav",
+	  "end": "res://sfx/skills/tangerine_end.wav"
+	},
+	"specifications": {
+	  "format": "PNG with alpha",
+	  "dimensions": "1024x1024",
+	  "particle_count_suggestion": 150,
+	  "blend_mode": "Additive"
+	}
+  }
+]

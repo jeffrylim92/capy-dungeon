@@ -1,0 +1,463 @@
+{
+  "skills": {
+    "common": {
+      "orb": {
+        "name": "Capy Orb",
+        "short": "Orbiting damage balls",
+        "color": "Color(0.98, 0.72, 0.08)",
+        "color_name": "Golden Yellow",
+        "category": "common",
+        "character_specific": false,
+        "texture_prompt": "Generate a golden-yellow glowing orb particle effect for a dungeon game. The orb should be round, smooth, and emit warm light. Include a subtle trailing glow and sparkle effect as it moves through the air. The orb should appear solid yet ethereal, with a bright yellow core surrounded by a softer golden halo. Size: 32x32 pixels, alpha channel, seamless tileable texture with glow. Art style: pixel art meets particle effect.",
+        "animation_timeline": {
+          "entrance": "0.2s fade-in with scale-up",
+          "loop": "Orbiting path with 1-2s cycle time",
+          "impact": "0.3s expand + fade flash effect"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "32x32 pixels",
+          "particle_count_suggestion": 50,
+          "blend_mode": "Add"
+        }
+      },
+      "bolt": {
+        "name": "Capy Bolt",
+        "short": "Auto-targeting lightning",
+        "color": "Color(1.0, 0.88, 0.10)",
+        "color_name": "Bright Yellow",
+        "category": "common",
+        "character_specific": false,
+        "texture_prompt": "Create a high-voltage lightning bolt projectile for a game. The bolt should be bright yellow with electric effects. Include jagged lightning trails and crackling energy around the edges. The bolt tapers from thick at the base to thin at the tip. Add subtle electric arc effects and particle sparks. Dimensions: 16x64 pixels (portrait), alpha channel. The effect should suggest motion and high energy. Art style: pixel art with electric glow effects.",
+        "animation_timeline": {
+          "fire": "0.1s charge glow",
+          "travel": "0.15s fast arc with trail",
+          "impact": "0.2s explosion with electric sparks radiating outward"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "16x64 pixels",
+          "particle_count_suggestion": 60,
+          "blend_mode": "Add"
+        }
+      },
+      "ice_orb": {
+        "name": "Ice Orb",
+        "short": "Straight-line freeze orbs",
+        "color": "Color(0.60, 0.90, 1.0)",
+        "color_name": "Cyan Blue",
+        "category": "common",
+        "character_specific": false,
+        "texture_prompt": "Design a cyan ice orb projectile with a frosted glass appearance. The orb should have visible icicles radiating outward and a crystalline interior pattern. Include a frosty mist effect around it and icy sparkles. The colors should range from light cyan to deeper blue. Add subtle snowflake particles trailing behind. Dimensions: 28x28 pixels, alpha channel, smooth gradients. Style: crystalline and elegant with cold atmosphere.",
+        "animation_timeline": {
+          "spawn": "0.15s grow with frost particles",
+          "travel": "Straight line movement with trailing mist",
+          "freeze_zone": "0.4s radius circle with icy shimmer effect"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "28x28 pixels",
+          "particle_count_suggestion": 70,
+          "blend_mode": "Alpha"
+        }
+      },
+      "aura": {
+        "name": "Mud Aura",
+        "short": "Continuous damage aura",
+        "color": "Color(0.52, 0.36, 0.18)",
+        "color_name": "Deep Brown",
+        "category": "common",
+        "character_specific": false,
+        "texture_prompt": "Create a muddy brown protective aura particle effect. The aura should feel earthy and grounded with swirling mud patterns. Include organic flowing shapes, swirling particles, and a slight gravitational feel pulling inward. Colors: browns, tans, and dark earth tones. Add occasional small rock or dirt particle sparkles. Dimensions: 256x256 pixels (radial gradient), alpha channel. Style: organic, fluid, natural earth magic.",
+        "animation_timeline": {
+          "idle": "Slow rotating swirl animation (3-4s cycle)",
+          "hit": "Brief color intensification and pulse outward",
+          "duration": "Continuous while skill is active"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "256x256 pixels",
+          "particle_count_suggestion": 80,
+          "blend_mode": "Alpha"
+        }
+      },
+      "wave": {
+        "name": "Squeal Wave",
+        "short": "Periodic shockwave",
+        "color": "Color(0.72, 0.46, 1.0)",
+        "color_name": "Purple",
+        "category": "common",
+        "character_specific": false,
+        "texture_prompt": "Generate a purple shockwave ring effect expanding outward. The wave should look like ripples in water but with magical purple energy. Include concentric rings that fade with distance, with bright centers fading to transparent edges. Add small purple sparkle particles along the wave front. Dimensions: 512x512 pixels (radial), alpha channel for transparency gradient. Style: magical energy blast, ethereal and powerful.",
+        "animation_timeline": {
+          "spawn": "0.05s appear at player position",
+          "expand": "1.0s radial expansion at constant speed",
+          "fade": "0.3s fade-out at edges while expanding"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "512x512 pixels",
+          "particle_count_suggestion": 100,
+          "blend_mode": "Add"
+        }
+      },
+      "regen": {
+        "name": "Capy Calm",
+        "short": "HP regeneration",
+        "color": "Color(0.90, 0.32, 0.42)",
+        "color_name": "Rose Red",
+        "category": "common",
+        "character_specific": false,
+        "texture_prompt": "Create a soothing rose-red healing particle effect. Small gentle particles should float upward with a calming motion. Include soft glows and a nurturing energy feel. Add subtle heart or cross symbols that fade away. Colors: rose red, pink, warm white. The effect should convey healing and recovery. Dimensions: 16x16 pixels per particle, alpha channel. Style: warm, gentle, magical healing vibes.",
+        "animation_timeline": {
+          "spawn": "Random gentle rise (0.8-1.2s) with fade",
+          "frequency": "Every 0.5s one particle spawns per active stack"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "16x16 pixels",
+          "particle_count_suggestion": 50,
+          "blend_mode": "Add"
+        }
+      },
+      "magnet": {
+        "name": "XP Magnet",
+        "short": "Attract XP from further away",
+        "color": "Color(0.28, 0.88, 0.60)",
+        "color_name": "Teal Green",
+        "category": "common",
+        "character_specific": false,
+        "texture_prompt": "Design a teal-green attraction field effect. Create a series of concentric circles with arrows pointing inward toward the player. Include glowing lines and particles that curve toward the center. The effect should feel magnetic and attractive. Add sparkle particles moving along the attraction lines. Dimensions: 200x200 pixels, alpha channel. Colors: teal and green with bright highlights. Style: magical attraction, magnetism visualization.",
+        "animation_timeline": {
+          "pulse": "0.6s breathing animation (expand/contract)",
+          "particle_flow": "Continuous inward-flowing particles along radii",
+          "intensity": "Increases when XP orbs are nearby"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "200x200 pixels",
+          "particle_count_suggestion": 60,
+          "blend_mode": "Alpha"
+        }
+      }
+    },
+    "wizard": {
+      "fireball": {
+        "name": "Fireball",
+        "short": "Orbiting fire orbs",
+        "color": "Color(1.0, 0.48, 0.05)",
+        "color_name": "Orange",
+        "category": "wizard",
+        "character_specific": true,
+        "character": "capy_wizard",
+        "texture_prompt": "Generate a blazing fireball particle effect in orange and red tones. The fireball should have a bright yellow core surrounded by orange flames. Include flickering fire animations and small embers flying outward. Add a subtle heat shimmer around the edges. Dimensions: 40x40 pixels, alpha channel with smooth gradients. The effect should radiate heat and power. Style: intense flame, magical fire.",
+        "animation_timeline": {
+          "orbit": "Circular path around player with 1-2s cycle",
+          "flicker": "Random subtle size variations (flame flicker)",
+          "impact": "0.4s exploding fire burst with ember particles"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "40x40 pixels",
+          "particle_count_suggestion": 70,
+          "blend_mode": "Add"
+        }
+      },
+      "elec_wave": {
+        "name": "Elec Shockwave",
+        "short": "Zapping shockwave",
+        "color": "Color(0.88, 0.98, 0.18)",
+        "color_name": "Electric Yellow",
+        "category": "wizard",
+        "character_specific": true,
+        "character": "capy_wizard",
+        "texture_prompt": "Create a jagged electric shockwave in bright yellow with blue highlights. The wave should have broken, zigzag edges suggesting electricity. Include crackling effects and branching lightning tendrils. Add electric spark particles that jump outward. Dimensions: 512x512 pixels (radial), alpha channel. Colors: bright yellow, electric blue, white hot core. Style: high voltage, chaotic energy, powerful electromagnetic blast.",
+        "animation_timeline": {
+          "charge": "0.3s glow intensification",
+          "release": "0.5s rapid radial expansion with crackling",
+          "decay": "0.3s fade with electric sparks lingering"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "512x512 pixels",
+          "particle_count_suggestion": 100,
+          "blend_mode": "Add"
+        }
+      },
+      "hurricane": {
+        "name": "Hurricane",
+        "short": "Whirling wind aura",
+        "color": "Color(0.58, 0.88, 0.96)",
+        "color_name": "Light Blue",
+        "category": "wizard",
+        "character_specific": true,
+        "character": "capy_wizard",
+        "texture_prompt": "Design a swirling blue wind aura with a tornado feel. Create spiral patterns in light blue and cyan. Include swirling particles, wind lines, and a vortex appearance. Add small debris particles caught in the whirl. Dimensions: 256x256 pixels (radial), alpha channel. The effect should feel cyclonic and powerful. Style: natural disaster, wind magic, swirling energy.",
+        "animation_timeline": {
+          "idle": "Continuous slow rotation (4s cycle)",
+          "hit": "Brief speed increase and color flare",
+          "duration": "Active while skill maintains"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "256x256 pixels",
+          "particle_count_suggestion": 80,
+          "blend_mode": "Alpha"
+        }
+      },
+      "blizzard": {
+        "name": "Blizzard",
+        "short": "Whole-screen ice storm",
+        "color": "Color(0.78, 0.94, 1.0)",
+        "color_name": "Pale Cyan",
+        "category": "wizard",
+        "character_specific": true,
+        "character": "capy_wizard",
+        "is_ultimate": true,
+        "texture_prompt": "Create a massive blizzard particle sheet with pale cyan snowflakes and ice shards. Include large and small snowflakes falling, icicle formations, and freezing effects. The effect should fill the screen with cold wind streaks and frozen crystal bursts. Colors: pale cyan, white, icy blue. Add frosted glass textures and sparkling ice effects. Dimensions: 512x512 pixels tileable, alpha channel. Style: extreme cold, winter storm, absolute zero magic.",
+        "animation_timeline": {
+          "warmup": "0.5s intensifying snow and wind",
+          "peak": "2s full screen blizzard with max particle density",
+          "fade": "1s snow settling and fading away"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "512x512 pixels",
+          "particle_count_suggestion": 150,
+          "blend_mode": "Alpha",
+          "ultimate_indicator": true
+        }
+      }
+    },
+    "archer": {
+      "arrow": {
+        "name": "Arrow Shot",
+        "short": "Fast piercing arrows",
+        "color": "Color(0.45, 0.78, 0.25)",
+        "color_name": "Forest Green",
+        "category": "archer",
+        "character_specific": true,
+        "character": "capy_archer",
+        "texture_prompt": "Generate a sleek green arrow projectile. The arrow should be sharp and pointed with fletching details. Include a subtle wind trail behind it. Add a slight glow indicating its speed. Dimensions: 12x48 pixels (tall portrait), alpha channel. Colors: forest green with lighter highlights on the edges. The arrow should look piercing and fast. Style: archer weapon, dynamic motion lines.",
+        "animation_timeline": {
+          "spawn": "0.05s fade-in",
+          "travel": "Straight line with rotation matching direction",
+          "trail": "Fading line following path for 0.3s",
+          "impact": "0.2s pierce spark effect"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "12x48 pixels",
+          "particle_count_suggestion": 50,
+          "blend_mode": "Alpha"
+        }
+      },
+      "split_arrow": {
+        "name": "Split Arrow",
+        "short": "Fan of arrows",
+        "color": "Color(0.55, 0.86, 0.30)",
+        "color_name": "Lime Green",
+        "category": "archer",
+        "character_specific": true,
+        "character": "capy_archer",
+        "texture_prompt": "Design a bright lime-green arrow projectile that fans out. Create a single arrow shape with a fan burst pattern radiating outward. Include light streaks showing the spread pattern and velocity. Dimensions: 10x40 pixels per arrow in fan, alpha channel. Colors: lime green with bright highlights. Add subtle sparkle particles in the spread pattern. Style: splitting projectile, directional burst.",
+        "animation_timeline": {
+          "fan_spread": "0.15s arrows fan out from center point",
+          "travel": "Each arrow moves independently in its direction",
+          "trail": "Green light trails following each arrow"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "10x40 pixels",
+          "particle_count_suggestion": 60,
+          "blend_mode": "Add"
+        }
+      },
+      "pierce_arrow": {
+        "name": "Pierce Arrow",
+        "short": "Arrow pierces all enemies",
+        "color": "Color(0.28, 0.90, 0.55)",
+        "color_name": "Teal",
+        "category": "archer",
+        "character_specific": true,
+        "character": "capy_archer",
+        "texture_prompt": "Create a sharp teal-colored piercing arrow. The arrow should look heavy and penetrating with a glowing teal aura. Include a trailing energy effect and small sparkles showing its power. Dimensions: 14x52 pixels, alpha channel. Colors: teal with bright cyan highlights and energy glow. The effect should convey power and penetration. Style: magical piercing weapon, energy-infused projectile.",
+        "animation_timeline": {
+          "spawn": "0.1s charge glow",
+          "travel": "Straight motion with teal energy trail",
+          "pierce": "Small burst effect on each enemy hit (no stop)"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "14x52 pixels",
+          "particle_count_suggestion": 55,
+          "blend_mode": "Add"
+        }
+      },
+      "sky_fall": {
+        "name": "Sky Fall",
+        "short": "Rain of arrows — whole screen",
+        "color": "Color(0.22, 0.72, 0.18)",
+        "color_name": "Deep Green",
+        "category": "archer",
+        "character_specific": true,
+        "character": "capy_archer",
+        "is_ultimate": true,
+        "texture_prompt": "Generate a torrential rain of deep-green arrows falling from above. Create a dense particle effect with arrows falling at various angles and speeds (slightly randomized). Include wind streaks and motion trails. Add impact effects on the ground. Dimensions: 512x512 pixels for the effect area, alpha channel. Colors: deep green with darker shadows on arrows. Style: arrow storm, rain of projectiles, overwhelming barrage.",
+        "animation_timeline": {
+          "appear": "0.3s arrows spawning from top",
+          "rain": "2s continuous rain at max density",
+          "impact": "0.2s hit effects on ground contact",
+          "fade": "0.5s arrows disappearing and fading away"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "512x512 pixels",
+          "particle_count_suggestion": 150,
+          "blend_mode": "Alpha",
+          "ultimate_indicator": true
+        }
+      }
+    },
+    "assassin": {
+      "star_knife": {
+        "name": "Star Knife",
+        "short": "Spinning star blades",
+        "color": "Color(0.72, 0.70, 0.82)",
+        "color_name": "Purple-Gray",
+        "category": "assassin",
+        "character_specific": true,
+        "character": "capy_assassin",
+        "texture_prompt": "Create a sharp spinning star/ninja star shape in purple-gray tones. The star should have 5-6 points with a metallic sheen. Include spinning animation indicators and sharp highlights. Add small sparkles trailing behind. Dimensions: 32x32 pixels (square), alpha channel. Colors: purple-gray with silver/white highlights and shadows. The effect should feel sharp and deadly. Style: ninja weapon, spinning projectile, martial arts.",
+        "animation_timeline": {
+          "spawn": "0.05s appear with rotation",
+          "travel": "Straight line with continuous fast rotation",
+          "trail": "Purple-gray sparkle trail following path",
+          "impact": "0.15s sharp bounce effect"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "32x32 pixels",
+          "particle_count_suggestion": 60,
+          "blend_mode": "Alpha"
+        }
+      },
+      "knife_storm": {
+        "name": "Knife Storm",
+        "short": "Spinning blade aura",
+        "color": "Color(0.78, 0.74, 0.88)",
+        "color_name": "Lavender",
+        "category": "assassin",
+        "character_specific": true,
+        "character": "capy_assassin",
+        "texture_prompt": "Design a violent spinning blade aura in lavender and purple. Create a circular storm of knife shapes rotating rapidly. Include sharp velocity lines and sparks flying outward. Add occasional larger blade silhouettes mixed with particles. Dimensions: 256x256 pixels (radial), alpha channel. Colors: lavender, purple with white sparks and shadows. The effect should feel dangerous and sharp. Style: blade vortex, martial tempest, deadly aura.",
+        "animation_timeline": {
+          "spin": "Fast continuous rotation (1.5s per cycle)",
+          "particle": "Constant outward spark generation",
+          "hit": "Brief intensity spike when dealing damage"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "256x256 pixels",
+          "particle_count_suggestion": 90,
+          "blend_mode": "Alpha"
+        }
+      },
+      "boomerang": {
+        "name": "Boomerang Star",
+        "short": "Returns to player, hits twice",
+        "color": "Color(0.92, 0.84, 0.28)",
+        "color_name": "Golden Yellow",
+        "category": "assassin",
+        "character_specific": true,
+        "character": "capy_assassin",
+        "texture_prompt": "Generate a golden star-shaped boomerang projectile. The star should have a polished metallic look with golden highlights. Include a curved trajectory indicator and trail effect. Add sparkles suggesting magical return property. Dimensions: 28x28 pixels, alpha channel. Colors: golden yellow with bronze shadows and bright white highlights. The effect should suggest movement and return. Style: magical boomerang, returning weapon.",
+        "animation_timeline": {
+          "outbound": "Arc trajectory away from player with trail",
+          "arc_peak": "0.3s pause at furthest point",
+          "return": "Arc trajectory back to player with faster motion",
+          "hit": "0.2s impact effect each time (out and return)"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "28x28 pixels",
+          "particle_count_suggestion": 70,
+          "blend_mode": "Add"
+        }
+      },
+      "seven_slash": {
+        "name": "7 Slash",
+        "short": "Whole-screen blade storm",
+        "color": "Color(0.82, 0.24, 0.36)",
+        "color_name": "Dark Red",
+        "category": "assassin",
+        "character_specific": true,
+        "character": "capy_assassin",
+        "is_ultimate": true,
+        "texture_prompt": "Create a devastating 7-slash effect with dark red energy. Design 7 diagonal slash lines crossing the screen with dark red and crimson colors. Include impact effects at each slash and trailing energy. Add small shockwave rings at intersection points. Dimensions: 512x512 pixels per slash line, alpha channel. Colors: dark red, crimson, black shadows with bright red highlights. Style: devastating finishing move, screen-clearing attack.",
+        "animation_timeline": {
+          "preparation": "0.2s darkening and tension",
+          "slashes": "7 rapid slashes over 0.6s (staggered ~85ms apart)",
+          "each_slash": "0.15s expand and fade",
+          "shockwaves": "0.4s emanating rings from impacts"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "512x512 pixels",
+          "particle_count_suggestion": 140,
+          "blend_mode": "Add",
+          "ultimate_indicator": true
+        }
+      }
+    },
+    "brown_capy": {
+      "swirl_tangerine": {
+        "name": "Swirl Tangerine",
+        "short": "Tangerine energy cyclone — whole screen",
+        "color": "Color(1.0, 0.55, 0.05)",
+        "color_name": "Tangerine Orange",
+        "category": "brown_capy",
+        "character_specific": true,
+        "character": "capy_brown",
+        "is_ultimate": true,
+        "texture_prompt": "Generate a massive tangerine-orange energy cyclone covering the entire screen. Create swirling vortex patterns with concentric circles and spiraling energy. Include bright tangerine cores with darker orange shadows. Add small energy particles and sparkles caught in the vortex. Dimensions: 1024x1024 pixels, alpha channel, radial pattern. The effect should feel ultimate-level powerful. Style: elemental ultimate, devastating energy storm, game-winning move.",
+        "animation_timeline": {
+          "charge": "0.5s glow and spin-up",
+          "vortex": "3s main cyclone effect at full power",
+          "peak": "1.5s maximum damage radius",
+          "dissipate": "1s spiral fade and energy dispersal"
+        },
+        "specifications": {
+          "format": "PNG with alpha",
+          "dimensions": "1024x1024 pixels",
+          "particle_count_suggestion": 200,
+          "blend_mode": "Add",
+          "ultimate_indicator": true
+        }
+      }
+    }
+  },
+  "character_skill_mapping": {
+    "capy_brown": [
+      "orb", "bolt", "ice_orb", "wave", "regen", "magnet", "swirl_tangerine"
+    ],
+    "capy_wizard": [
+      "fireball", "elec_wave", "hurricane", "blizzard", "regen", "magnet"
+    ],
+    "capy_archer": [
+      "arrow", "split_arrow", "pierce_arrow", "sky_fall", "regen", "magnet"
+    ],
+    "capy_assassin": [
+      "star_knife", "knife_storm", "boomerang", "seven_slash", "regen", "magnet"
+    ],
+    "_default": [
+      "orb", "bolt", "ice_orb", "wave", "aura", "regen", "magnet"
+    ]
+  },
+  "ultimate_skills": {
+    "capy_brown": "swirl_tangerine",
+    "capy_wizard": "blizzard",
+    "capy_archer": "sky_fall",
+    "capy_assassin": "seven_slash"
+  }
+}
