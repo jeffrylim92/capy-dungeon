@@ -230,7 +230,7 @@ func _build_personal_panel(y: float, h: float, w: float) -> Control:
 			continue
 		kill_rank += 1
 		vbox.add_child(_personal_rank_row(kill_rank, e["data"],
-			str(kills) + " kills", Color(0.95, 0.72, 0.20)))
+			str(kills) + " kills", Color(0.95, 0.72, 0.20), _best_local_record_for_character(String((e["data"] as CharacterData).id))))
 	if kill_rank == 0:
 		vbox.add_child(_empty_hint("Play a match to see your kill ranking"))
 
@@ -246,13 +246,13 @@ func _build_personal_panel(y: float, h: float, w: float) -> Control:
 			continue
 		surv_rank += 1
 		vbox.add_child(_personal_rank_row(surv_rank, e["data"],
-			StatsStore.format_seconds(secs), Color(0.50, 0.88, 0.62)))
+			StatsStore.format_seconds(secs), Color(0.50, 0.88, 0.62), _best_local_record_for_character(String((e["data"] as CharacterData).id))))
 	if surv_rank == 0:
 		vbox.add_child(_empty_hint("Play a match to see your survive ranking"))
 
 	return panel
 
-func _personal_rank_row(rank: int, data: CharacterData, value_text: String, value_color: Color) -> Control:
+func _personal_rank_row(rank: int, data: CharacterData, value_text: String, value_color: Color, detail_record: Dictionary) -> Control:
 	var card := PanelContainer.new()
 	var cs := StyleBoxFlat.new()
 	cs.bg_color = Color(1.0, 0.99, 0.96)
@@ -308,12 +308,14 @@ func _personal_rank_row(rank: int, data: CharacterData, value_text: String, valu
 	val_lbl.add_theme_color_override("font_color", value_color)
 	col.add_child(val_lbl)
 
-	var ring_lbl := Label.new()
-	ring_lbl.text = _equipped_ring_text(String(data.id))
-	ring_lbl.add_theme_font_size_override("font_size", 26)
-	ring_lbl.add_theme_color_override("font_color", Color(0.36, 0.26, 0.14))
-	ring_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
-	col.add_child(ring_lbl)
+	var detail_btn := Button.new()
+	detail_btn.text = "View Equipment Details"
+	detail_btn.custom_minimum_size = Vector2(250, 42)
+	detail_btn.add_theme_font_size_override("font_size", 24)
+	_style_match_detail_btn(detail_btn)
+	var personal_detail: Dictionary = _equipment_detail_for_character(String(data.id), detail_record)
+	detail_btn.pressed.connect(func() -> void: _show_match_detail_modal(personal_detail))
+	col.add_child(detail_btn)
 
 	return card
 
@@ -439,10 +441,17 @@ func _populate_global_section(section: String, entries: Array, is_survive: bool)
 	placeholder.queue_free()
 
 	if entries.is_empty():
-		var hint := _empty_hint("No data yet — play a match to appear here!")
-		vbox.add_child(hint)
-		vbox.move_child(hint, insert_idx)
-		insert_idx += 1
+		var local_fallback: Variant = _local_best_rank_entry(is_survive)
+		if typeof(local_fallback) == TYPE_DICTIONARY:
+			var fallback_entry: Dictionary = local_fallback as Dictionary
+			vbox.add_child(_global_rank_row(fallback_entry, is_survive))
+			vbox.move_child(vbox.get_child(vbox.get_child_count() - 1), insert_idx)
+			insert_idx += 1
+		else:
+			var hint := _empty_hint("No data yet — play a match to appear here!")
+			vbox.add_child(hint)
+			vbox.move_child(hint, insert_idx)
+			insert_idx += 1
 		var retry := Button.new()
 		retry.text = "↺  Retry"
 		retry.add_theme_font_size_override("font_size", 30)
@@ -558,12 +567,17 @@ func _global_user_rank_card(title: String, entry: Dictionary, is_survive: bool) 
 	val_lbl.add_theme_color_override("font_color", value_color)
 	col.add_child(val_lbl)
 
-	var ring_lbl := Label.new()
-	ring_lbl.text = _global_entry_ring_text(entry, char_id)
-	ring_lbl.add_theme_font_size_override("font_size", 26)
-	ring_lbl.add_theme_color_override("font_color", Color(0.82, 0.78, 0.96))
-	ring_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
-	col.add_child(ring_lbl)
+	var detail_btn := Button.new()
+	detail_btn.text = "View Equipment Details"
+	detail_btn.custom_minimum_size = Vector2(250, 42)
+	detail_btn.add_theme_font_size_override("font_size", 23)
+	_style_match_detail_btn(detail_btn)
+	var detail_entry: Dictionary = _detail_entry_from_global_entry(entry, is_survive)
+	if detail_entry.is_empty():
+		detail_btn.disabled = true
+	else:
+		detail_btn.pressed.connect(func() -> void: _show_match_detail_modal(detail_entry))
+	col.add_child(detail_btn)
 
 	return card
 
@@ -584,6 +598,40 @@ func _style_retry(btn: Button) -> void:
 	btn.add_theme_color_override("font_color",         Color(0.90, 0.90, 1.0))
 	btn.add_theme_color_override("font_hover_color",   Color(1.0, 1.0, 1.0))
 	btn.add_theme_color_override("font_pressed_color", Color(0.72, 0.72, 0.88))
+
+func _style_match_detail_btn(btn: Button) -> void:
+	var n := StyleBoxFlat.new()
+	n.bg_color = Color(0.24, 0.18, 0.10, 0.94)
+	n.corner_radius_top_left = 14
+	n.corner_radius_top_right = 14
+	n.corner_radius_bottom_right = 14
+	n.corner_radius_bottom_left = 14
+	n.border_color = Color(0.84, 0.68, 0.42, 0.85)
+	n.set_border_width_all(2)
+	n.shadow_color = Color(0.20, 0.10, 0.02, 0.24)
+	n.shadow_size = 4
+	n.shadow_offset = Vector2(0, 2)
+
+	var h := n.duplicate() as StyleBoxFlat
+	h.bg_color = Color(0.32, 0.24, 0.12, 0.98)
+	h.border_color = Color(0.92, 0.76, 0.50, 0.90)
+
+	var p := n.duplicate() as StyleBoxFlat
+	p.bg_color = Color(0.16, 0.12, 0.07, 1.0)
+
+	var d := n.duplicate() as StyleBoxFlat
+	d.bg_color = Color(0.20, 0.18, 0.16, 0.72)
+	d.border_color = Color(0.55, 0.50, 0.46, 0.58)
+
+	btn.add_theme_stylebox_override("normal", n)
+	btn.add_theme_stylebox_override("hover", h)
+	btn.add_theme_stylebox_override("pressed", p)
+	btn.add_theme_stylebox_override("disabled", d)
+	btn.add_theme_color_override("font_color", Color(0.98, 0.90, 0.78))
+	btn.add_theme_color_override("font_hover_color", Color(1.0, 0.95, 0.86))
+	btn.add_theme_color_override("font_pressed_color", Color(0.88, 0.80, 0.68))
+	btn.add_theme_color_override("font_disabled_color", Color(0.72, 0.68, 0.64))
+	btn.focus_mode = Control.FOCUS_NONE
 
 func _global_rank_row(entry: Dictionary, is_survive: bool) -> Control:
 	var rank: int       = int(entry.get("rank", 0))
@@ -651,12 +699,17 @@ func _global_rank_row(entry: Dictionary, is_survive: bool) -> Control:
 	val_lbl.add_theme_color_override("font_color", value_color)
 	col.add_child(val_lbl)
 
-	var ring_lbl := Label.new()
-	ring_lbl.text = _global_entry_ring_text(entry, char_id)
-	ring_lbl.add_theme_font_size_override("font_size", 26)
-	ring_lbl.add_theme_color_override("font_color", Color(0.82, 0.78, 0.96))
-	ring_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
-	col.add_child(ring_lbl)
+	var detail_btn := Button.new()
+	detail_btn.text = "View Equipment Details"
+	detail_btn.custom_minimum_size = Vector2(250, 40)
+	detail_btn.add_theme_font_size_override("font_size", 22)
+	_style_match_detail_btn(detail_btn)
+	var detail_entry: Dictionary = _detail_entry_from_global_entry(entry, is_survive)
+	if detail_entry.is_empty():
+		detail_btn.disabled = true
+	else:
+		detail_btn.pressed.connect(func() -> void: _show_match_detail_modal(detail_entry))
+	col.add_child(detail_btn)
 
 	return card
 
@@ -849,12 +902,15 @@ func _make_char_card(data: CharacterData, stats: Dictionary, card_w: float) -> P
 	line3.add_theme_color_override("font_color", Color(0.42, 0.30, 0.16))
 	col.add_child(line3)
 
-	var ring_lbl := Label.new()
-	ring_lbl.text = _equipped_ring_text(String(data.id))
-	ring_lbl.add_theme_font_size_override("font_size", 28)
-	ring_lbl.add_theme_color_override("font_color", Color(0.34, 0.24, 0.14))
-	ring_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
-	col.add_child(ring_lbl)
+	var detail_record: Dictionary = _best_local_record_for_character(String(data.id))
+	var detail_btn := Button.new()
+	detail_btn.text = "View Equipment Details"
+	detail_btn.custom_minimum_size = Vector2(260, 44)
+	detail_btn.add_theme_font_size_override("font_size", 24)
+	_style_match_detail_btn(detail_btn)
+	var history_detail: Dictionary = _equipment_detail_for_character(String(data.id), detail_record)
+	detail_btn.pressed.connect(func() -> void: _show_match_detail_modal(history_detail))
+	col.add_child(detail_btn)
 
 	return panel
 
@@ -864,6 +920,13 @@ func _equipped_ring_text(char_id: String) -> String:
 		return "Rings: No rings equipped"
 	var equipped: Dictionary = RingStore.get_equipped_rings(username, char_id)
 	return _ring_text_from_slots(equipped, "Rings: No rings equipped")
+
+func _equipped_artifact_text(char_id: String) -> String:
+	var username: String = String(account.get("username", ""))
+	if username.is_empty() or char_id.is_empty():
+		return "Artifacts: None equipped"
+	var equipped: Dictionary = ArtifactStore.get_equipped_artifacts(username, char_id)
+	return _artifact_text_from_slots(equipped)
 
 func _global_entry_ring_text(entry: Dictionary, char_id: String) -> String:
 	var rings_value: Variant = entry.get("rings", null)
@@ -892,6 +955,224 @@ func _ring_text_from_slots(equipped: Dictionary, empty_text: String) -> String:
 	if parts.is_empty():
 		return empty_text
 	return "Rings: " + "  ·  ".join(parts)
+
+func _artifact_text_from_slots(equipped: Dictionary) -> String:
+	var parts: Array[String] = []
+	for slot in 2:
+		var art = equipped.get("slot_%d" % slot, null)
+		if art == null:
+			continue
+		var a: Dictionary = art as Dictionary
+		parts.append(a.get("name", "Artifact") as String)
+	if parts.is_empty():
+		return "Artifacts: None equipped"
+	return "Artifacts: " + "  ·  ".join(parts)
+
+func _best_local_record_for_character(char_id: String) -> Dictionary:
+	var username: String = String(account.get("username", ""))
+	if username.is_empty() or char_id.is_empty():
+		return {}
+	var recs: Array = StatsStore.get_recent_match_records(username, 80)
+	for rec in recs:
+		if typeof(rec) != TYPE_DICTIONARY:
+			continue
+		var d: Dictionary = rec as Dictionary
+		if String(d.get("character", "")) == char_id:
+			return d
+	return {}
+
+func _equipment_detail_for_character(char_id: String, seed: Dictionary = {}) -> Dictionary:
+	if char_id.is_empty():
+		return {}
+	var out: Dictionary = seed.duplicate(true)
+	out["character"] = char_id
+
+	var username: String = String(account.get("username", ""))
+	var all_stats: Dictionary = StatsStore.get_all_for_user(username)
+	var stats: Dictionary = all_stats.get(char_id, {}) as Dictionary
+
+	if not out.has("kills"):
+		out["kills"] = int(stats.get("total_kills", 0))
+	if not out.has("survive_seconds"):
+		out["survive_seconds"] = float(stats.get("best_survive_seconds", 0.0))
+
+	var rings_value: Variant = out.get("rings", null)
+	if typeof(rings_value) != TYPE_DICTIONARY or (rings_value as Dictionary).is_empty():
+		out["rings"] = RingStore.get_equipped_rings(username, char_id)
+
+	var arts_value: Variant = out.get("artifacts", null)
+	if typeof(arts_value) != TYPE_DICTIONARY or (arts_value as Dictionary).is_empty():
+		out["artifacts"] = ArtifactStore.get_equipped_artifacts(username, char_id)
+
+	if not out.has("ts"):
+		out["ts"] = 0
+	return out
+
+func _detail_entry_from_global_entry(entry: Dictionary, is_survive: bool) -> Dictionary:
+	var char_id: String = String(entry.get("character", ""))
+	if char_id.is_empty():
+		return {}
+	var local: Dictionary = _best_local_record_for_character(char_id)
+	var out: Dictionary = {
+		"character": char_id,
+		"kills": int(entry.get("value", 0)) if not is_survive else int(local.get("kills", 0)),
+		"survive_seconds": float(entry.get("value", 0.0)) if is_survive else float(local.get("survive_seconds", 0.0)),
+		"rings": entry.get("rings", local.get("rings", {})),
+		"artifacts": local.get("artifacts", {}),
+		"ts": local.get("ts", 0),
+	}
+	return out
+
+func _show_match_detail_modal(record: Dictionary) -> void:
+	if record.is_empty():
+		return
+	var view: Vector2 = get_viewport_rect().size
+	var layer := CanvasLayer.new()
+	add_child(layer)
+
+	var overlay := ColorRect.new()
+	overlay.color = Color(0.0, 0.0, 0.0, 0.70)
+	overlay.size = view
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.add_child(overlay)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(min(view.x - 80.0, 760.0), min(view.y - 140.0, 700.0))
+	panel.position = Vector2((view.x - panel.custom_minimum_size.x) * 0.5, (view.y - panel.custom_minimum_size.y) * 0.5)
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.17, 0.14, 0.22, 0.97)
+	st.corner_radius_top_left = 18
+	st.corner_radius_top_right = 18
+	st.corner_radius_bottom_right = 18
+	st.corner_radius_bottom_left = 18
+	st.border_color = Color(0.74, 0.66, 0.92, 0.90)
+	st.set_border_width_all(2)
+	st.content_margin_left = 18
+	st.content_margin_right = 18
+	st.content_margin_top = 14
+	st.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", st)
+	layer.add_child(panel)
+
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 8)
+	panel.add_child(root)
+
+	var char_id: String = String(record.get("character", ""))
+	var title := Label.new()
+	title.text = "Equipment Details — %s" % [char_id]
+	title.add_theme_font_size_override("font_size", 34)
+	title.add_theme_color_override("font_color", Color(0.96, 0.90, 0.80))
+	root.add_child(title)
+
+	var stats := Label.new()
+	stats.text = "Kills: %d  ·  Survive: %s" % [int(record.get("kills", 0)), StatsStore.format_seconds(float(record.get("survive_seconds", 0.0)))]
+	stats.add_theme_font_size_override("font_size", 28)
+	stats.add_theme_color_override("font_color", Color(0.84, 0.80, 0.94))
+	root.add_child(stats)
+
+	var rings_title := Label.new()
+	rings_title.text = "Rings"
+	rings_title.add_theme_font_size_override("font_size", 27)
+	rings_title.add_theme_color_override("font_color", Color(0.98, 0.89, 0.72))
+	root.add_child(rings_title)
+
+	_add_equipment_lines(root, "ring", record.get("rings", {}) as Dictionary)
+
+	var arts_title := Label.new()
+	arts_title.text = "Artifacts"
+	arts_title.add_theme_font_size_override("font_size", 27)
+	arts_title.add_theme_color_override("font_color", Color(0.98, 0.89, 0.72))
+	root.add_child(arts_title)
+
+	_add_equipment_lines(root, "artifact", record.get("artifacts", {}) as Dictionary)
+
+	var close_btn := Button.new()
+	close_btn.text = "Close"
+	close_btn.custom_minimum_size = Vector2(180, 56)
+	close_btn.add_theme_font_size_override("font_size", 28)
+	close_btn.focus_mode = Control.FOCUS_NONE
+	close_btn.pressed.connect(func() -> void: layer.queue_free())
+	root.add_child(close_btn)
+
+func _add_equipment_lines(root: VBoxContainer, item_type: String, slots: Dictionary) -> void:
+	var found := false
+	for slot in 2:
+		var item = slots.get("slot_%d" % slot, null)
+		if item == null:
+			continue
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		found = true
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		root.add_child(row)
+
+		var item_dict: Dictionary = item as Dictionary
+		var icon: Texture2D = _equipment_icon(item_type, item_dict)
+		if icon != null:
+			var icon_rect := TextureRect.new()
+			icon_rect.texture = icon
+			icon_rect.custom_minimum_size = Vector2(40, 40)
+			icon_rect.size = Vector2(40, 40)
+			icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			row.add_child(icon_rect)
+
+		var text_lbl := Label.new()
+		if item_type == "ring":
+			var ring_data: Dictionary = RingStore.normalize_ring(item_dict)
+			text_lbl.text = "• %s T%d (%s)" % [
+				ring_data.get("name", "Ring") as String,
+				int(ring_data.get("tier", 1)),
+				_format_ring_bonus(ring_data),
+			]
+		else:
+			text_lbl.text = "• %s" % [item_dict.get("name", "Artifact") as String]
+		text_lbl.add_theme_font_size_override("font_size", 24)
+		text_lbl.add_theme_color_override("font_color", Color(0.90, 0.86, 0.96))
+		text_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
+		text_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(text_lbl)
+
+	if found:
+		return
+
+	var empty_lbl := Label.new()
+	empty_lbl.text = "None equipped"
+	empty_lbl.add_theme_font_size_override("font_size", 23)
+	empty_lbl.add_theme_color_override("font_color", Color(0.68, 0.64, 0.74))
+	root.add_child(empty_lbl)
+
+func _equipment_icon(item_type: String, item: Dictionary) -> Texture2D:
+	if item_type == "ring":
+		return RingStore.ring_icon(item)
+
+	var explicit: String = String(item.get("icon", ""))
+	if not explicit.is_empty() and ResourceLoader.exists(explicit):
+		return load(explicit) as Texture2D
+
+	var raw_id: String = String(item.get("id", ""))
+	if raw_id.is_empty():
+		return null
+	var base_id: String = raw_id
+	var cut: int = raw_id.rfind("_")
+	if cut > 0:
+		var suffix: String = raw_id.substr(cut + 1)
+		if suffix.is_valid_int():
+			base_id = raw_id.substr(0, cut)
+
+	var candidates: Array[String] = [
+		"res://assets/artifacts/%s.png" % base_id,
+		"res://assets/artifacts/%s.webp" % base_id,
+		"res://assets/sprites/artifacts/%s.png" % base_id,
+		"res://assets/sprites/artifacts/%s.webp" % base_id,
+	]
+	for path in candidates:
+		if ResourceLoader.exists(path):
+			return load(path) as Texture2D
+	return null
 
 func _format_ring_bonus(ring: Dictionary) -> String:
 	var attr: String = ring.get("attr", "") as String

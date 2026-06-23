@@ -9,6 +9,7 @@ const SELECT_SCENE := preload("res://scenes/CharacterSelect.tscn")
 const INVENTORY_SCENE := preload("res://scenes/Inventory.tscn")
 const MATCH_SCENE := preload("res://scenes/Match.tscn")
 const HISTORY_SCENE := preload("res://scenes/History.tscn")
+const COLLECTIBLES_SCENE := preload("res://scenes/Collectibles.tscn")
 
 const BGM_LOBBY_PATH:   String = "res://assets/sfx/bgm_lobby.mp3"
 const BGM_DUNGEON_PATH: String = "res://assets/sfx/bgm_dungeon.mp3"
@@ -190,6 +191,7 @@ func _on_logged_in(account: Dictionary) -> void:
 	_account = account
 	var username: String = String(account.get("username", ""))
 	if not username.is_empty():
+		PurchaseStore.set_username(username)
 		# Silently restore cloud-backed stats on login so history survives reinstalls.
 		# Runs in background — lobby shows immediately; stats populate before user
 		# can navigate to History.
@@ -205,8 +207,16 @@ func _show_lobby() -> void:
 	lobby.account = _account
 	lobby.start_game_requested.connect(_show_select)
 	lobby.history_requested.connect(_show_history)
+	lobby.collectibles_requested.connect(_show_collectibles)
 	lobby.logout_requested.connect(_show_login)
 	add_child(lobby)
+
+func _show_collectibles() -> void:
+	_clear_children()
+	var c := COLLECTIBLES_SCENE.instantiate()
+	c.account_username = String(_account.get("username", ""))
+	c.back_requested.connect(_show_lobby)
+	add_child(c)
 
 func _show_history() -> void:
 	_clear_children()

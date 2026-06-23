@@ -20,6 +20,7 @@ var _active_tab: String = "character"
 var _content: VBoxContainer = null
 var _character_tab: Button = null
 var _ring_tab: Button = null
+var _key_tab: Button = null
 var _status_lbl: Label = null
 
 func _ready() -> void:
@@ -99,6 +100,10 @@ func _build_ui() -> void:
 	_ring_tab.pressed.connect(func() -> void: _show_tab("ring"))
 	tabs.add_child(_ring_tab)
 
+	_key_tab = _make_tab_button("Key")
+	_key_tab.pressed.connect(func() -> void: _show_tab("key"))
+	tabs.add_child(_key_tab)
+
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -134,10 +139,13 @@ func _show_tab(tab: String) -> void:
 	_active_tab = tab
 	_update_tab_style(_character_tab, tab == "character")
 	_update_tab_style(_ring_tab, tab == "ring")
+	_update_tab_style(_key_tab, tab == "key")
 	for child in _content.get_children():
 		child.queue_free()
 	if tab == "ring":
 		_build_ring_tab()
+	elif tab == "key":
+		_build_key_tab()
 	else:
 		_build_character_tab()
 
@@ -163,16 +171,32 @@ func _build_character_tab() -> void:
 		var data: CharacterData = _find_character(chars, product_id)
 		var display_name: String = data.display_name if data != null else product_id
 		var desc: String = JOB_SKILLS.get(product_id, "Premium character") as String
-		_content.add_child(_make_product_card(product_id, display_name, "Premium Job", desc, false))
+		_content.add_child(_make_product_card(product_id, display_name, "Premium Job", desc, false, false))
 
 func _build_ring_tab() -> void:
 	for product_id in PurchaseStore.RING_PRODUCTS.keys():
 		var ring: Dictionary = PurchaseStore.ring_product_to_ring(product_id as String)
 		var desc: String = ring.get("desc", "") as String
 		desc += "\nShared from your ring stash across all available characters."
-		_content.add_child(_make_product_card(product_id as String, ring.get("name", "Ring") as String, "Store Ring", desc, true))
+		_content.add_child(_make_product_card(product_id as String, ring.get("name", "Ring") as String, "Store Ring", desc, true, false))
 
-func _make_product_card(product_id: String, title: String, badge: String, desc: String, is_ring: bool) -> Control:
+func _build_key_tab() -> void:
+	var ordered_ids: Array[String] = ["key_pack_1", "key_pack_3", "key_pack_5", "key_pack_10"]
+	for product_id in ordered_ids:
+		if not PurchaseStore.KEY_PRODUCTS.has(product_id):
+			continue
+		var data: Dictionary = PurchaseStore.KEY_PRODUCTS[product_id] as Dictionary
+		var keys: int = int(data.get("keys", 0))
+		var bonus: int = int(data.get("bonus_keys", 0))
+		var desc: String = "Spend door keys to enter boss-room challenge doors after boss waves.\nEach key pack can be purchased once per week."
+		if bonus > 0:
+			desc += "\nIncludes %d free key%s." % [bonus, "s" if bonus != 1 else ""]
+		var title: String = "Door Key x%d" % keys
+		if bonus > 0:
+			title += " (+%d free)" % bonus
+		_content.add_child(_make_product_card(product_id, title, "Key Pack", desc, false, true))
+
+func _make_product_card(product_id: String, title: String, badge: String, desc: String, is_ring: bool, is_key: bool) -> Control:
 	var ring: Dictionary = PurchaseStore.ring_product_to_ring(product_id) if is_ring else {}
 	var card := PanelContainer.new()
 	var style := StyleBoxFlat.new()
@@ -198,6 +222,8 @@ func _make_product_card(product_id: String, title: String, badge: String, desc: 
 
 	if is_ring:
 		row.add_child(_make_ring_icon(ring, 118.0))
+	elif is_key:
+		row.add_child(_make_key_icon())
 	else:
 		row.add_child(_make_character_portrait(product_id))
 
@@ -236,9 +262,12 @@ func _make_product_card(product_id: String, title: String, badge: String, desc: 
 		box.add_child(bonus_lbl)
 
 	var buy_btn := Button.new()
-	var owned: bool = PurchaseStore.is_purchased(product_id)
+	var owned: bool = PurchaseStore.is_purchased(product_id) if not is_key else not PurchaseStore.can_buy_key_product_this_week(product_id)
 	var price: String = PurchaseStore.PRICES.get(product_id, "") as String
-	buy_btn.text = "Owned" if owned else "Buy " + price
+	if is_key:
+		buy_btn.text = "Bought this week" if owned else "Buy " + price
+	else:
+		buy_btn.text = "Owned" if owned else "Buy " + price
 	buy_btn.disabled = owned
 	buy_btn.add_theme_font_size_override("font_size", 30)
 	buy_btn.custom_minimum_size = Vector2(0, 56)
@@ -247,6 +276,30 @@ func _make_product_card(product_id: String, title: String, badge: String, desc: 
 	box.add_child(buy_btn)
 
 	return card
+
+func _make_key_icon() -> Control:
+	var panel := Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.24, 0.18, 0.10, 1.0)
+	style.corner_radius_top_left = 14
+	style.corner_radius_top_right = 14
+	style.corner_radius_bottom_right = 14
+	style.corner_radius_bottom_left = 14
+	style.border_color = Color(1.0, 0.78, 0.26, 0.9)
+	style.set_border_width_all(2)
+	panel.add_theme_stylebox_override("panel", style)
+	panel.custom_minimum_size = Vector2(118, 118)
+	panel.size = Vector2(118, 118)
+
+	var lbl := Label.new()
+	lbl.text = "KEY"
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lbl.add_theme_font_size_override("font_size", 32)
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.38))
+	panel.add_child(lbl)
+	return panel
 
 func _make_character_portrait(char_id: String) -> Control:
 	const PORTRAIT_SIZE: float = 126.0

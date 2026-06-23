@@ -5,6 +5,7 @@ extends Node2D
 
 signal start_game_requested
 signal history_requested
+signal collectibles_requested
 signal logout_requested
 
 const SETTINGS_SCENE := preload("res://scenes/Settings.tscn")
@@ -118,6 +119,10 @@ func _build_ui() -> void:
 	var history_btn := _make_button("History", 32, Vector2(0, 90))
 	history_btn.pressed.connect(func() -> void: history_requested.emit())
 	root.add_child(history_btn)
+
+	var collectibles_btn := _make_button("Collectibles", 32, Vector2(0, 90))
+	collectibles_btn.pressed.connect(func() -> void: collectibles_requested.emit())
+	root.add_child(collectibles_btn)
 
 	var settings_btn := _make_button("Settings", 32, Vector2(0, 90))
 	settings_btn.pressed.connect(_on_settings_pressed)

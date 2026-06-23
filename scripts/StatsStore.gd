@@ -111,6 +111,56 @@ static func record_match(username: String, character_id: String, outcome: String
 	data[key] = per_char
 	_save_all(data)
 
+static func record_match_detail(username: String, character_id: String, kills: int, elapsed_seconds: float, rings: Dictionary, artifacts: Dictionary) -> void:
+	if username.is_empty() or character_id.is_empty():
+		return
+	var key: String = username.to_lower()
+	var path: String = "user://match_records_%s.json" % key
+	var records: Array = []
+	if FileAccess.file_exists(path):
+		var rf := FileAccess.open(path, FileAccess.READ)
+		if rf != null:
+			var parsed: Variant = JSON.parse_string(rf.get_as_text())
+			rf.close()
+			if parsed is Array:
+				records = parsed as Array
+	records.append({
+		"ts": int(Time.get_unix_time_from_system()),
+		"character": character_id,
+		"kills": kills,
+		"survive_seconds": elapsed_seconds,
+		"rings": rings.duplicate(true),
+		"artifacts": artifacts.duplicate(true),
+	})
+	while records.size() > 200:
+		records.remove_at(0)
+	var wf := FileAccess.open(path, FileAccess.WRITE)
+	if wf == null:
+		return
+	wf.store_string(JSON.stringify(records, "\t"))
+	wf.close()
+
+static func get_recent_match_records(username: String, limit: int = 30) -> Array:
+	if username.is_empty():
+		return []
+	var path: String = "user://match_records_%s.json" % username.to_lower()
+	if not FileAccess.file_exists(path):
+		return []
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return []
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	if parsed is Array:
+		var src: Array = parsed as Array
+		var out: Array = []
+		for i in range(src.size() - 1, -1, -1):
+			out.append(src[i])
+			if out.size() >= max(limit, 1):
+				break
+		return out
+	return []
+
 static func format_seconds(s: float) -> String:
 	if s <= 0.0:
 		return "—"
@@ -151,6 +201,8 @@ static func restore_from_server(username: String, server_per_char: Dictionary) -
 
 static func is_brown_unlocked(username: String) -> bool:
 	if AdminStore.is_admin(username):
+		return true
+	if username.to_lower() == AccountStore.DEV_USERNAME.to_lower():
 		return true
 	var prog := get_brown_unlock_progress(username)
 	return (prog["capy_zoomer"] as int) >= 3 and (prog["capy_chef"] as int) >= 3 and (prog["capy_swamp"] as int) >= 3

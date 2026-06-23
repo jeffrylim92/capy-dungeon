@@ -23,6 +23,9 @@ const SKILL_NAMES: Dictionary = {
 }
 
 const JOB_SKILLS: Dictionary = {
+	"capy_zoomer":   "Capy Orb · Mud Aura · Ice Orb · Capy Calm · XP Magnet",
+	"capy_chef":     "Capy Orb · Capy Bolt · Capy Calm · XP Magnet",
+	"capy_swamp":    "Mud Aura · Squeal Wave · Ice Orb · Capy Calm · XP Magnet",
 	"capy_wizard":   "Fireball · Electric Wave · Hurricane · ✦ Blizzard (Ulti)",
 	"capy_archer":   "Power Arrow · Split Arrow · Pierce Arrow · ✦ Sky Fall (Ulti)",
 	"capy_assassin": "Star Knife · Knife Storm · Boomerang · ✦ 7 Slash (Ulti)",
