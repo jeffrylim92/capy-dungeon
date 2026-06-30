@@ -82,6 +82,13 @@ def _fetchall(conn, sql: str, params: tuple = ()):
     return conn.execute(sql, params).fetchall()
 
 
+def _normalize_limit(limit: int, max_limit: int = 5000) -> int:
+    """Return 0 for 'all rows', else clamp to a safe positive max."""
+    if limit <= 0:
+        return 0
+    return min(max(limit, 1), max_limit)
+
+
 def _db_init() -> None:
     with _db_lock:
         conn = _db_connect()
@@ -245,7 +252,7 @@ async def stats_user(username: str) -> dict:
 
 @app.get("/stats/leaderboard/kills")
 async def leaderboard_kills(limit: int = 10, username: str = "") -> dict:
-    limit = min(max(limit, 1), 50)
+    limit = _normalize_limit(limit)
     ph = _PH
     user_entry = None
     uname = username.strip().lower()
@@ -275,24 +282,32 @@ async def leaderboard_kills(limit: int = 10, username: str = "") -> dict:
         if uname and entry["username"] == uname:
             user_entry = dict(entry)
 
+    entries = ranked if limit == 0 else ranked[:limit]
     return {
-        "entries": ranked[:limit],
+        "entries": entries,
         "user_entry": user_entry,
     }
 
 
 @app.get("/stats/leaderboard/survive")
 async def leaderboard_survive(limit: int = 10, username: str = "") -> dict:
-    limit = min(max(limit, 1), 50)
+    limit = _normalize_limit(limit)
     ph = _PH
     user_entry = None
     uname = username.strip().lower()
     with _db_lock:
         conn = _db_connect()
-        rows = _fetchall(conn,
-            f"SELECT username, display_name, best_survive_sec, best_survive_char, rings_json "
-            f"FROM leaderboard ORDER BY best_survive_sec DESC LIMIT {ph}", (limit,)
-        )
+        if limit == 0:
+            rows = _fetchall(conn,
+                "SELECT username, display_name, best_survive_sec, best_survive_char, rings_json "
+                "FROM leaderboard WHERE best_survive_sec > 0 ORDER BY best_survive_sec DESC",
+                (),
+            )
+        else:
+            rows = _fetchall(conn,
+                f"SELECT username, display_name, best_survive_sec, best_survive_char, rings_json "
+                f"FROM leaderboard WHERE best_survive_sec > 0 ORDER BY best_survive_sec DESC LIMIT {ph}", (limit,)
+            )
         if uname:
             user_row = _fetchone(conn,
                 f"SELECT username, display_name, best_survive_sec, best_survive_char, rings_json FROM leaderboard WHERE username = {ph}",

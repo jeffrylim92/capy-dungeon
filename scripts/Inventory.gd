@@ -212,9 +212,11 @@ func _refresh_slots() -> void:
 		var aa = _artifacts_equipped.get("slot_%d" % i, null)
 		if aa == null:
 			_artifact_slot_btns[i].text = "Artifact Slot %d\n(empty)" % (i + 1)
+			_artifact_slot_btns[i].icon = null
 		else:
 			var ad: Dictionary = aa as Dictionary
 			_artifact_slot_btns[i].text = "Artifact %d\n%s" % [i + 1, ad.get("name", "Artifact") as String]
+			_artifact_slot_btns[i].icon = ArtifactStore.artifact_icon(ad)
 
 func _update_key_info() -> void:
 	if _key_info_lbl == null:
@@ -422,30 +424,7 @@ func _style_stash_card(btn: Button, item_type: String, disabled: bool) -> void:
 	btn.modulate = Color(0.68, 0.68, 0.68, 0.76) if disabled else Color.WHITE
 
 func _artifact_icon(artifact: Dictionary) -> Texture2D:
-	var explicit_path: String = String(artifact.get("icon", ""))
-	if not explicit_path.is_empty() and ResourceLoader.exists(explicit_path):
-		return load(explicit_path) as Texture2D
-
-	var raw_id: String = String(artifact.get("id", ""))
-	if raw_id.is_empty():
-		return null
-	var base_id: String = raw_id
-	var last_underscore: int = raw_id.rfind("_")
-	if last_underscore > 0:
-		var suffix: String = raw_id.substr(last_underscore + 1)
-		if suffix.is_valid_int():
-			base_id = raw_id.substr(0, last_underscore)
-
-	var candidates: Array[String] = [
-		"res://assets/artifacts/%s.png" % base_id,
-		"res://assets/artifacts/%s.webp" % base_id,
-		"res://assets/sprites/artifacts/%s.png" % base_id,
-		"res://assets/sprites/artifacts/%s.webp" % base_id,
-	]
-	for path in candidates:
-		if ResourceLoader.exists(path):
-			return load(path) as Texture2D
-	return null
+	return ArtifactStore.artifact_icon(artifact)
 
 func _on_stash_item_pressed(item_type: String, data: Dictionary) -> void:
 	if item_type == "ring":

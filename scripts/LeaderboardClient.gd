@@ -5,6 +5,7 @@ extends RefCounted
 ## All methods are static — pass a live Node as `host` so HTTPRequest has a parent.
 
 const BASE_URL := "https://capy-dungeon.onrender.com"
+const GLOBAL_LIMIT_ALL := 0
 
 ## Submit the calling user's cumulative stats after each match.
 ## Fire-and-forget: errors are logged but not surfaced.
@@ -89,7 +90,7 @@ static func fetch_kills(host: Node, callback: Callable) -> void:
 ## Fetch the global kill leaderboard plus this user's own best rank.
 ## `callback` receives { entries: Array, user_entry: Dictionary/null }.
 static func fetch_kills_with_user(host: Node, username: String, callback: Callable) -> void:
-	_fetch_payload(host, _leaderboard_url("kills", username), callback)
+	_fetch_payload(host, _leaderboard_url("kills", username, GLOBAL_LIMIT_ALL), callback)
 
 ## Fetch the global survive leaderboard. `callback` receives Array of entry dicts:
 ##   { rank, display_name, value (float seconds), character (id string) }
@@ -101,12 +102,17 @@ static func fetch_survive(host: Node, callback: Callable) -> void:
 ## Fetch the global survive leaderboard plus this user's own best rank.
 ## `callback` receives { entries: Array, user_entry: Dictionary/null }.
 static func fetch_survive_with_user(host: Node, username: String, callback: Callable) -> void:
-	_fetch_payload(host, _leaderboard_url("survive", username), callback)
+	_fetch_payload(host, _leaderboard_url("survive", username, GLOBAL_LIMIT_ALL), callback)
 
-static func _leaderboard_url(kind: String, username: String) -> String:
+static func _leaderboard_url(kind: String, username: String, limit: int = GLOBAL_LIMIT_ALL) -> String:
 	var url := BASE_URL + "/stats/leaderboard/" + kind
+	var query: PackedStringArray = []
 	if not username.is_empty():
-		url += "?username=" + username.to_lower().uri_encode()
+		query.append("username=" + username.to_lower().uri_encode())
+	if limit != GLOBAL_LIMIT_ALL:
+		query.append("limit=" + str(limit))
+	if query.size() > 0:
+		url += "?" + "&".join(query)
 	return url
 
 static func _fetch_payload(host: Node, url: String, callback: Callable) -> void:

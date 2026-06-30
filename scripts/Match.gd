@@ -41,7 +41,7 @@ const LAVA_LINE_ERUPT_TIME: float = 3.0
 const LAVA_CHARGE_TIME: float = 1.35
 const LAVA_CHARGE_TRAIL_LIFE: float = 5.0
 const BOSS_ARENA_HALF: Vector2 = Vector2(610.0, 424.0)
-const ROOM_SPAN_WAVES: int = 3
+const ROOM_SPAN_WAVES: int = 4
 const ROOM_ROUTE: Array = [
 	{"id": "lava", "name": "Lava Rooms", "short": "Damage over time", "col": Color(1.0, 0.42, 0.12), "desc": "The ground burns — take periodic fire damage while standing still."},
 	{"id": "frozen", "name": "Frozen Floors", "short": "Sliding movement", "col": Color(0.52, 0.84, 1.0), "desc": "Icy surface causes momentum — movement feels slippery and hard to stop."},
@@ -291,9 +291,9 @@ const SKILL_DEFS: Dictionary = {
 		"name": "Time Warp", "short": "Slow zone with tiny clocks — no damage",
 		"col": Color(0.55, 0.72, 1.0), "max_lvl": 3,
 		"lvl": [
-			{"r": 180.0, "slow": 0.55, "cd": 22.0, "life": 8.0, "note": "Slow zone — no damage"},
-			{"r": 240.0, "slow": 0.72, "cd": 19.0, "life": 11.0, "note": "Wider, stronger slow"},
-			{"r": 310.0, "slow": 0.88, "cd": 16.0, "life": 14.0, "note": "TIME FREEZE ZONE"},
+			{"r": 180.0, "slow": 0.35, "cd": 22.0, "life": 8.0, "note": "Slow zone — no damage"},
+			{"r": 240.0, "slow": 0.50, "cd": 19.0, "life": 11.0, "note": "Wider, stronger slow"},
+			{"r": 310.0, "slow": 0.65, "cd": 16.0, "life": 14.0, "note": "TIME SLOW ZONE"},
 		],
 	},
 	"crystal_prism": {
@@ -320,7 +320,7 @@ const SKILL_DEFS: Dictionary = {
 	},
 	# ── Archer extra skills ───────────────────────────────────────────────────
 	"ricochet_arrow": {
-		"name": "Ricochet Arrow", "short": "Bouncing arrows",
+		"name": "Ricochet", "short": "Bouncing bomb arrows",
 		"col": Color(0.88, 0.72, 0.24), "max_lvl": 5,
 		"lvl": [
 			{"n": 1, "dmg": 32.0, "cd": 1.4, "spd": 900.0, "ricochet_pct": 0.25, "bounces": 1, "note": "Bounces once at 25% damage"},
@@ -560,11 +560,11 @@ const SKILL_DEFS: Dictionary = {
 		"name": "Master Kitchen", "short": "Utensil burst around player",
 		"col": Color(1.0, 0.68, 0.22), "max_lvl": 5,
 		"lvl": [
-			{"r": 210.0, "dmg": 36.0, "cd": 8.5, "n": 6, "note": "Short utensil burst"},
-			{"r": 250.0, "dmg": 46.0, "cd": 7.8, "n": 7, "note": "Larger burst"},
-			{"r": 295.0, "dmg": 58.0, "cd": 7.2, "n": 8, "note": "More utensils"},
-			{"r": 340.0, "dmg": 72.0, "cd": 6.8, "n": 9, "note": "Wider and stronger"},
-			{"r": 390.0, "dmg": 88.0, "cd": 6.2, "n": 11, "note": "MAX kitchen storm"},
+			{"r": 230.0, "dmg": 62.0, "cd": 7.6, "n": 6, "note": "Short utensil burst"},
+			{"r": 275.0, "dmg": 82.0, "cd": 7.0, "n": 7, "note": "Larger burst"},
+			{"r": 325.0, "dmg": 108.0, "cd": 6.5, "n": 8, "note": "More utensils"},
+			{"r": 378.0, "dmg": 138.0, "cd": 6.0, "n": 9, "note": "Wider and stronger"},
+			{"r": 435.0, "dmg": 172.0, "cd": 5.4, "n": 11, "note": "MAX kitchen storm"},
 		],
 	},
 	# ── Brown Capy extra skills ───────────────────────────────────────────────
@@ -580,14 +580,14 @@ const SKILL_DEFS: Dictionary = {
 		],
 	},
 	"friendly_aura": {
-		"name": "Friendly Aura", "short": "Good vibes damage nearby enemies",
+		"name": "Friendly Aura", "short": "Damages nearby enemies with a friendly aura",
 		"col": Color(1.0, 0.82, 0.50), "max_lvl": 5,
 		"lvl": [
-			{"r": 145.0, "dps": 12.0, "note": "The power of friendship hurts"},
-			{"r": 175.0, "dps": 18.0, "note": "+range & damage"},
-			{"r": 206.0, "dps": 25.0, "note": "+range & damage"},
-			{"r": 238.0, "dps": 34.0, "note": "+range & damage"},
-			{"r": 274.0, "dps": 46.0, "note": "BEST FRIEND FOREVER — MAX"},
+			{"r": 145.0, "dps": 12.0, "note": "Deals periodic damage to enemies inside the aura"},
+			{"r": 175.0, "dps": 18.0, "note": "+range and damage"},
+			{"r": 206.0, "dps": 25.0, "note": "+range and damage"},
+			{"r": 238.0, "dps": 34.0, "note": "+range and damage"},
+			{"r": 274.0, "dps": 46.0, "note": "Maximum aura damage and range"},
 		],
 	},
 	"lucky_clover": {
@@ -749,8 +749,10 @@ var _wave_spawn_q:    Array[Dictionary] = []  # queued enemies to trickle-spawn
 var _wave_spawn_t:    float = 0.0
 var _between_t:       float = 0.0    # countdown before next wave
 const BETWEEN_DELAY:  float = 2.5   # seconds between waves
-const BOSS_TYPES:     Array = ["teleporter_boss", "shield_boss", "shooter_boss", "lava_boss"]
+const WAVE_BOSS_TYPES: Array = ["teleporter_boss", "shield_boss", "shooter_boss", "lava_boss"]
+const PORTAL_BOSS_TYPES: Array = ["abyss_gate_warden", "prism_triarch", "blight_vine_tyrant", "thunderforge_behemoth"]
 var _boss_bag:        Array = []
+var _portal_boss_bag: Array = []
 
 # ─── Map / room modifiers ───────────────────────────────────────────────────
 var _room_index: int = 0
@@ -774,6 +776,7 @@ var _potions: Array[Dictionary] = []
 
 # ─── Ring drops  {pos,life,ring} ─────────────────────────────────────────────
 var _ring_drops: Array[Dictionary] = []
+var _artifact_drops: Array[Dictionary] = []
 var _rings_obtained: Array[Dictionary] = []
 var _boss_artifact_result: Dictionary = {}
 
@@ -880,6 +883,23 @@ var _bog_pools: Array[Dictionary] = []
 var _corruption_pools: Array[Dictionary] = []
 var _kitchen_queue: Array[Dictionary] = []
 
+# Boss skill effects
+var _boss_chains: Array[Dictionary] = []
+var _prism_zones: Array[Dictionary] = []
+var _venom_pods: Array[Dictionary] = []
+var _lightning_markers: Array[Dictionary] = []
+var _thorn_patches: Array[Dictionary] = []
+var _boss_summons: Array[Dictionary] = []
+
+# ─── Jump state for belly bounce ──────────────────────────────────────────────
+var _player_jump_vel_y: float = 0.0
+
+# ─── Stampede centipede  {pos,dir,life,max_life,dmg,speed,hit_enemies} ─
+var _stampedes: Array[Dictionary] = []
+
+# ─── Capy Charge shadow rush  {pos,dir,life,max_life,dmg,speed,hit_enemies} ──
+var _capy_charge_rushes: Array[Dictionary] = []
+
 # ─── Boss intermission challenge ───────────────────────────────────────────
 var _boss_keys: int = 0
 var _run_key_dropped: bool = false
@@ -963,6 +983,10 @@ func _ready() -> void:
 		"shield_boss":     "res://assets/bosses/boss_shield.png",
 		"shooter_boss":    "res://assets/bosses/boss_shooter.png",
 		"lava_boss":       "res://assets/bosses/boss_lava.png",
+		"abyss_gate_warden": "res://assets/bosses/boss_abyss_gate_warden.png",
+		"prism_triarch":     "res://assets/bosses/boss_prism_triarch.png",
+		"blight_vine_tyrant":    "res://assets/bosses/boss_blight_vine_tyrant.png",
+		"thunderforge_behemoth":       "res://assets/bosses/boss_thunderforge_behemoth.png",
 	}
 	for ek in _enemy_tex_map:
 		var ep2: String = _enemy_tex_map[ek]
@@ -1052,6 +1076,13 @@ func _process(delta: float) -> void:
 	_player_move_dir    = _pmove
 	_update_idle_enemy_boost(delta, _pmove)
 	_apply_room_movement(delta, _pmove)
+	
+	# Update belly bounce jump
+	if _player_jump_vel_y != 0.0:
+		_player_jump_vel_y -= 800.0 * delta  # Gravity
+		if _player_jump_vel_y <= 0.0:
+			_player_jump_vel_y = 0.0
+	
 	if _pmove.x > 0.01:    _player_facing_x = 1
 	elif _pmove.x < -0.01: _player_facing_x = -1
 	_camera.position    = _player_pos
@@ -1083,9 +1114,17 @@ func _process(delta: float) -> void:
 	_update_combo_arcs(delta)
 	_update_aoe_flashes(delta)
 	_update_waves(delta)
+	_update_capy_charge_rushes(delta)
+	_update_stampedes(delta)
 	_update_xp_orbs(delta)
 	_update_potions(delta)
+	_update_boss_chains(delta)
+	_update_prism_zones(delta)
+	_update_venom_pods(delta)
+	_update_lightning_markers(delta)
+	_update_thorn_patches(delta)
 	_update_ring_drops(delta)
+	_update_artifact_drops(delta)
 	_update_boss_projs(delta)
 	_update_mortar_strikes(delta)
 	_update_lava_lines(delta)
@@ -1108,8 +1147,24 @@ func _update_idle_enemy_boost(delta: float, move_dir: Vector2) -> void:
 	else:
 		_stand_still_t = 0.0
 		_idle_enemy_speed_boost_active = false
-	if _stand_still_t >= 2.0:
-		_idle_enemy_speed_boost_active = true
+	_idle_enemy_speed_boost_active = _stand_still_t >= 2.0
+
+func _idle_enemy_speed_boost_multiplier() -> float:
+	if _stand_still_t < 2.0:
+		return 1.0
+	var extra_time: float = _stand_still_t - 2.0
+	return 1.0 + extra_time * 0.18
+
+func _boss_progression_tier() -> int:
+	return max(int(floor(float(max(_wave, 4) - 4) / 4.0)), 0)
+
+func _boss_progression_multiplier() -> Dictionary:
+	var tier: int = _boss_progression_tier()
+	return {
+		"hp": 1.0 + float(tier) * 0.12,
+		"dmg": 1.0 + float(tier) * 0.08,
+		"spd": 1.0 + float(tier) * 0.035,
+	}
 
 func _sync_room_state(force_reset: bool = false) -> void:
 	var new_index: int = _current_room_index()
@@ -1258,7 +1313,7 @@ func _update_skills(delta: float) -> void:
 			_play_skill_sfx("skill_aura", -14.0, 1.0, 0.75)
 			var adef: Dictionary = _slvl("aura", as_["level"] as int)
 			var ar: float        = adef["r"] as float
-			var tick: float      = (adef["dps"] as float) * 0.5
+			var tick: float      = (adef.get("dps", 0.0) as float) * 0.5
 			for i in range(_enemies.size() - 1, -1, -1):
 				var ep: Vector2 = _enemies[i]["pos"] as Vector2
 				if ep.distance_to(_player_pos) <= ar + (_enemies[i]["r"] as float):
@@ -1347,7 +1402,7 @@ func _update_skills(delta: float) -> void:
 			_play_skill_sfx("skill_hurricane", -15.0, 1.0, 0.75)
 			var hdef: Dictionary = _slvl("hurricane", hs["level"] as int)
 			var hr: float = hdef["r"] as float
-			var htick: float = (hdef["dps"] as float) * 0.5
+			var htick: float = (hdef.get("dps", 0.0) as float) * 0.5
 			for i in range(_enemies.size() - 1, -1, -1):
 				var ep: Vector2 = _enemies[i]["pos"] as Vector2
 				if ep.distance_to(_player_pos) <= hr + (_enemies[i]["r"] as float):
@@ -1363,7 +1418,7 @@ func _update_skills(delta: float) -> void:
 			_play_skill_sfx("skill_knife_storm", -14.0, 1.0, 0.75)
 			var kdef: Dictionary = _slvl("knife_storm", ks["level"] as int)
 			var kr: float = kdef["r"] as float
-			var ktick: float = (kdef["dps"] as float) * 0.5
+			var ktick: float = (kdef.get("dps", 0.0) as float) * 0.5
 			for i in range(_enemies.size() - 1, -1, -1):
 				var ep: Vector2 = _enemies[i]["pos"] as Vector2
 				if ep.distance_to(_player_pos) <= kr + (_enemies[i]["r"] as float):
@@ -1454,7 +1509,7 @@ func _update_skills(delta: float) -> void:
 		if (tls["aura_t"] as float) <= 0.0:
 			tls["aura_t"] = 0.5
 			var aura_r: float = tldef["r"] as float
-			var aura_tick: float = (tldef["dps"] as float) * 0.5
+			var aura_tick: float = (tldef.get("dps", 0.0) as float) * 0.5
 			for i in range(_enemies.size() - 1, -1, -1):
 				var ep: Vector2 = _enemies[i]["pos"] as Vector2
 				if ep.distance_to(_player_pos) <= aura_r + (_enemies[i]["r"] as float):
@@ -1493,7 +1548,7 @@ func _update_skills(delta: float) -> void:
 				_na_s["aura_t"] = 0.5
 				var _na_def: Dictionary = _slvl(_na_sid, _na_s["level"] as int)
 				var _na_r: float = _na_def["r"] as float
-				var _na_tick: float = (_na_def["dps"] as float) * 0.5
+				var _na_tick: float = (_na_def.get("dps", 0.0) as float) * 0.5
 				for _i in range(_enemies.size() - 1, -1, -1):
 					var _ep: Vector2 = _enemies[_i]["pos"] as Vector2
 					if _ep.distance_to(_player_pos) <= _na_r + (_enemies[_i]["r"] as float):
@@ -1517,6 +1572,9 @@ func _update_skills(delta: float) -> void:
 			if (_nw_s["timer"] as float) <= 0.0:
 				var _nw_def: Dictionary = _slvl(_nw_sid, _nw_s["level"] as int)
 				_nw_s["timer"] = _nw_def["cd"] as float
+				# Add jump effect for belly bounce
+				var jump_height: float = 40.0
+				_player_jump_vel_y = sqrt(2.0 * jump_height * 800.0)  # Physics: v = sqrt(2*g*h)
 				_trigger_wave_kind(_nw_def["r"] as float, _nw_def["dmg"] as float, _nw_sid)
 
 	# ── Toxic Mushroom: spawn local mushroom that pulses fog every 2s ─────────
@@ -1609,8 +1667,26 @@ func _update_skills(delta: float) -> void:
 			_bs_s["timer"] = _bs_def["cd"] as float
 			_do_blink_strike(_bs_def["r"] as float, _bs_def["dmg"] as float)
 
-	# ── Screen AOE skills ──────────────────────────────────────────────────
-	for aoe_sid in ["blizzard", "sky_fall", "seven_slash", "swirl_tangerine", "capy_charge", "stampede"]:
+	# ── Capy Charge: shadow rush toward nearest enemy ─────────────────────────
+	if _has_skill("capy_charge"):
+		var _cc_s: Dictionary = _get_skill("capy_charge")
+		_cc_s["timer"] = (_cc_s["timer"] as float) - delta
+		if (_cc_s["timer"] as float) <= 0.0 and not _enemies.is_empty():
+			var _cc_def: Dictionary = _slvl("capy_charge", _cc_s["level"] as int)
+			_cc_s["timer"] = _cc_def["cd"] as float
+			_do_capy_charge_shadow(_cc_def["dmg"] as float)
+
+	# ── Stampede: centipede rush in random direction ──────────────────────────
+	if _has_skill("stampede"):
+		var _st_s: Dictionary = _get_skill("stampede")
+		_st_s["timer"] = (_st_s["timer"] as float) - delta
+		if (_st_s["timer"] as float) <= 0.0:
+			var _st_def: Dictionary = _slvl("stampede", _st_s["level"] as int)
+			_st_s["timer"] = _st_def["cd"] as float
+			_do_stampede_charge(_st_def["dmg"] as float, _st_s["level"] as int)
+
+	# ── Screen AOE skills (excluding capy_charge and stampede) ──────────────────────────
+	for aoe_sid in ["blizzard", "sky_fall", "seven_slash", "swirl_tangerine"]:
 		if _has_skill(aoe_sid):
 			var ao: Dictionary = _get_skill(aoe_sid)
 			ao["timer"] = (ao["timer"] as float) - delta
@@ -1722,6 +1798,8 @@ func _fire_bolts(n: int, dmg: float, spd: float, kind: String = "bolt") -> void:
 		var best: float = INF
 		var best_j: int = -1
 		for j in _enemies.size():
+			if j < 0 or j >= _enemies.size():
+				continue
 			if checked.has(j):
 				continue
 			var d: float = _player_pos.distance_to(_enemies[j]["pos"] as Vector2)
@@ -1729,6 +1807,8 @@ func _fire_bolts(n: int, dmg: float, spd: float, kind: String = "bolt") -> void:
 				best = d
 				best_j = j
 		if best_j < 0:
+			break
+		if best_j >= _enemies.size():
 			break
 		checked.append(best_j)
 		var dir: Vector2 = ((_enemies[best_j]["pos"] as Vector2) - _player_pos).normalized()
@@ -1738,12 +1818,165 @@ func _trigger_wave_kind(r: float, dmg: float, kind: String = "wave") -> void:
 	_play_skill_sfx("skill_elec_wave" if kind == "elec_wave" else "skill_wave", -5.0, 1.0, 0.2)
 	var vp: Rect2 = get_viewport_rect()
 	for i in range(_enemies.size() - 1, -1, -1):
+		if i < 0 or i >= _enemies.size():
+			continue
 		var ep: Vector2 = _enemies[i]["pos"] as Vector2
 		var sp: Vector2 = ep - _camera.position + vp.size * 0.5
 		if not vp.grow(60.0).has_point(sp): continue
 		if ep.distance_to(_player_pos) <= r:
 			_hit_enemy(i, dmg)
 	_waves.append({"pos": _player_pos, "r": 0.0, "max_r": r, "life": 0.55, "max_life": 0.55, "kind": kind})
+
+func _do_capy_charge_shadow(dmg: float) -> void:
+	if _enemies.is_empty():
+		return
+	# Find nearest enemy
+	var nearest_idx: int = 0
+	var nearest_dist: float = INF
+	for i in range(_enemies.size()):
+		if i < 0 or i >= _enemies.size():
+			continue
+		var e: Dictionary = _enemies[i]
+		var ed: float = _player_pos.distance_to(e.get("pos", Vector2.ZERO) as Vector2)
+		if ed < nearest_dist:
+			nearest_dist = ed
+			nearest_idx = i
+	# Create shadow rush toward that enemy
+	if nearest_idx >= 0 and nearest_idx < _enemies.size():
+		var target_pos: Vector2 = (_enemies[nearest_idx].get("pos", Vector2.ZERO) as Vector2)
+		var rush_dir: Vector2 = (target_pos - _player_pos).normalized()
+		_capy_charge_rushes.append({
+			"pos": _player_pos,
+			"dir": rush_dir,
+			"life": 0.6,
+			"max_life": 0.6,
+			"dmg": dmg,
+			"speed": 1200.0,
+			"hit_enemies": [],
+			"id": randi(),
+		})
+		# Grant temporary invincibility during charge
+		_player_iframes += 0.65
+		_play_skill_sfx("skill_capy_charge", -3.0, 1.0, 0.5)
+
+func _update_capy_charge_rushes(delta: float) -> void:
+	for i in range(_capy_charge_rushes.size() - 1, -1, -1):
+		if i < 0 or i >= _capy_charge_rushes.size():
+			continue
+		var rush: Dictionary = _capy_charge_rushes[i]
+		rush["life"] = (rush["life"] as float) - delta
+		var rush_pos: Vector2 = (rush["pos"] as Vector2) + (rush["dir"] as Vector2) * (rush["speed"] as float) * delta
+		rush["pos"] = rush_pos
+		# Check collision with enemies - flow through all
+		for j in range(_enemies.size() - 1, -1, -1):
+			if j < 0 or j >= _enemies.size():
+				continue
+			var e: Dictionary = _enemies[j]
+			var ep: Vector2 = e.get("pos", Vector2.ZERO) as Vector2
+			var enemy_id: int = e.get("id", -1) as int
+			var hit_list: Array = rush.get("hit_enemies", []) as Array
+			if ep.distance_to(rush_pos) < 80.0 and enemy_id not in hit_list:
+				_hit_enemy(j, rush["dmg"] as float)
+				hit_list.append(enemy_id)
+				rush["hit_enemies"] = hit_list
+		if (rush["life"] as float) <= 0.0:
+			_capy_charge_rushes.remove_at(i)
+
+func _do_stampede_charge(dmg: float, level: int) -> void:
+	# Spawn 3 + level centipedes that hunt nearest enemies
+	var num_centipedes: int = max(2, 2 + int(floor(float(level) * 0.5)))
+	var base_dmg: float = dmg * (0.42 + float(level) * 0.06)  # Damage scales with level
+	
+	for c in range(num_centipedes):
+		var spawn_angle: float = float(c) * TAU / float(num_centipedes)  # Spread out in different directions
+		var spawn_offset: Vector2 = Vector2(cos(spawn_angle), sin(spawn_angle)) * 80.0
+		_stampedes.append({
+			"start_pos": _player_pos,
+			"pos": _player_pos + spawn_offset,
+			"spawn_angle": spawn_angle,  # Remember direction for visual
+			"target_id": -1,  # Will track nearest enemy
+			"elapsed": 0.0,
+			"life": 2.5,
+			"max_life": 2.5,
+			"dmg": base_dmg,
+			"speed": 270.0 + float(level) * 16.0,  # Speed increases with level
+			"hit_enemies": [],
+			"has_hit": false,  # Track if this centipede has hit an enemy
+			"id": randi(),
+		})
+	_play_skill_sfx("skill_stampede", -3.0, 1.0, 0.5)
+
+func _update_stampedes(delta: float) -> void:
+	var vp: Rect2 = get_viewport_rect()
+	var screen_edge_margin: float = 200.0
+	for i in range(_stampedes.size() - 1, -1, -1):
+		if i < 0 or i >= _stampedes.size():
+			continue
+		var centipede: Dictionary = _stampedes[i]
+		centipede["elapsed"] = (centipede["elapsed"] as float) + delta
+		centipede["life"] = (centipede["life"] as float) - delta
+		
+		var cent_pos: Vector2 = centipede.get("pos", _player_pos) as Vector2
+		
+		# Find nearest enemy to hunt (update target every frame)
+		var best_dist: float = 99999.0
+		var best_idx: int = -1
+		for j in range(_enemies.size()):
+			if j < 0 or j >= _enemies.size():
+				continue
+			var ep: Vector2 = (_enemies[j].get("pos", Vector2.ZERO)) as Vector2
+			var d: float = cent_pos.distance_to(ep)
+			if d < best_dist:
+				best_dist = d
+				best_idx = j
+		
+		# Chase nearest enemy or move forward from start position
+		if best_idx >= 0 and best_idx < _enemies.size():
+			var target_pos: Vector2 = (_enemies[best_idx].get("pos", Vector2.ZERO)) as Vector2
+			var dir: Vector2 = (target_pos - cent_pos).normalized()
+			cent_pos += dir * (centipede["speed"] as float) * delta
+		else:
+			# No enemies found, move in direction away from player
+			var start_pos: Vector2 = centipede.get("start_pos", _player_pos) as Vector2
+			var outward_dir: Vector2 = (cent_pos - start_pos).normalized()
+			if outward_dir.length_squared() < 0.01:
+				outward_dir = Vector2(cos(float(i) * TAU / 3.0), sin(float(i) * TAU / 3.0))
+			cent_pos += outward_dir * (centipede["speed"] as float) * delta
+		
+		centipede["pos"] = cent_pos
+		
+		# Check if reached screen edge and fade out
+		var cam_pos: Vector2 = _camera.position
+		var screen_pos: Vector2 = cent_pos - cam_pos + vp.size * 0.5
+		if not vp.grow(screen_edge_margin).has_point(screen_pos):
+			centipede["life"] = min((centipede["life"] as float), 0.4)
+		
+		# Check collision with enemies - disappear on first hit
+		var hit_this_frame: bool = false
+		for j in range(_enemies.size() - 1, -1, -1):
+			if j < 0 or j >= _enemies.size():
+				continue
+			var e: Dictionary = _enemies[j]
+			var ep: Vector2 = e.get("pos", Vector2.ZERO) as Vector2
+			var enemy_id: int = e.get("id", -1) as int
+			var dist: float = ep.distance_to(cent_pos)
+			
+			# Hit detected - damage and disappear
+			if dist < 60.0:
+				_hit_enemy(j, centipede["dmg"] as float * 1.0)
+				centipede["has_hit"] = true
+				hit_this_frame = true
+				break  # Only hit first enemy, then disappear
+			elif dist < 100.0:
+				_hit_enemy(j, centipede["dmg"] as float * 0.75)
+				centipede["has_hit"] = true
+				hit_this_frame = true
+				break  # Only hit first enemy, then disappear
+		
+		if hit_this_frame:
+			centipede["life"] = 0.0  # Disappear immediately after hitting
+		if (centipede["life"] as float) <= 0.0:
+			_stampedes.remove_at(i)
 
 func _trigger_aoe(kind: String, dmg: float, slow: float) -> void:
 	# Trigger SkillMgr animations/effects for AOE skills (updated for new JSON format)
@@ -1865,7 +2098,7 @@ func _update_lava_boss_special(boss: Dictionary, delta: float) -> void:
 			boss["special_timer"] = 0.0
 		return
 	boss["special_timer"] = (boss["special_timer"] as float) + delta
-	if (boss["special_timer"] as float) < 2.7:
+	if (boss["special_timer"] as float) < 1.3:
 		return
 	boss["special_timer"] = 0.0
 	match randi() % 3:
@@ -1949,6 +2182,509 @@ func _reflect_lava_shield(boss: Dictionary) -> void:
 	})
 
 # ═════════════════════════════════════════════════════════════════════════════
+# ABYSS GATE WARDEN SKILLS
+# ═════════════════════════════════════════════════════════════════════════════
+
+func _update_abyss_warden_special(boss: Dictionary, delta: float) -> void:
+	if not boss.has("warden_state"):
+		boss["warden_state"] = "idle"
+		boss["warden_state_t"] = 0.0
+		boss["special_timer"] = 0.0
+		boss["skill_cycle_num"] = -1
+	
+	boss["special_timer"] = (boss["special_timer"] as float) + delta
+	var st: float = boss["special_timer"] as float
+	
+	# Phase 2 and 3 transitions based on HP
+	var hp_ratio: float = (boss["hp"] as float) / (boss["max_hp"] as float)
+	var phase: int = 1 if hp_ratio > 0.66 else (2 if hp_ratio > 0.33 else 3)
+	boss["phase"] = phase
+	
+	var cycle_num: int = int(st / 7.5)
+	if cycle_num != (boss.get("skill_cycle_num", -1) as int):
+		boss["skill_cycle_num"] = cycle_num
+		boss["chain_fired"] = false
+		boss["pulse_fired"] = false
+		boss["summon_fired"] = false
+	var skill_cycle: float = fmod(st, 7.5)
+	if skill_cycle < 2.25 and not boss.get("chain_fired", false):
+		_fire_abyss_chain(boss, phase)
+		boss["chain_fired"] = true
+	elif skill_cycle >= 2.25 and skill_cycle < 4.5 and not boss.get("pulse_fired", false):
+		_fire_abyss_pulse(boss, phase)
+		boss["pulse_fired"] = true
+	elif skill_cycle >= 4.5 and not boss.get("summon_fired", false):
+		_fire_abyss_summon(boss)
+		boss["summon_fired"] = true
+
+func _fire_abyss_chain(boss: Dictionary, phase: int) -> void:
+	var boss_pos: Vector2 = boss["pos"] as Vector2
+	var num_chains: int = 4 + phase
+	var base_dmg: float = boss["dmg"] as float
+	
+	for i in num_chains:
+		var angle: float = float(i) / float(num_chains) * TAU
+		var chain_dir: Vector2 = Vector2(cos(angle), sin(angle))
+		_boss_chains.append({
+			"boss_pos": boss_pos,
+			"direction": chain_dir,
+			"length": 120.0,
+			"state": "extend",
+			"state_t": 0.0,
+			"retract_t": 0.8,
+			"total_t": 0.0,
+			"dmg": base_dmg * 1.2,
+			"corrupted": phase >= 2,
+		})
+
+func _fire_abyss_pulse(boss: Dictionary, phase: int) -> void:
+	var boss_pos: Vector2 = boss["pos"] as Vector2
+	var base_dmg: float = boss["dmg"] as float
+	var num_waves: int = 1 if phase == 1 else 2
+	
+	for w in num_waves:
+		var delay: float = float(w) * 0.3
+		_mortar_strikes.append({
+			"pos": boss_pos,
+			"r": 160.0,
+			"life": delay + 0.6,
+			"max_life": delay + 0.6,
+			"dmg": base_dmg * 1.3,
+			"kind": "abyss_pulse",
+			"warning_life": delay,
+		})
+
+func _fire_abyss_summon(boss: Dictionary) -> void:
+	# Summon 2-3 corrupted enemies, max 6 total
+	if (_enemies.size() as int) > 10:
+		return
+	# Calculate wave scaling from boss's hp_mult (back out from hp_mult = 32.0 * ws)
+	var ws: float = (boss.get("hp_mult", 32.0) as float) / 32.0
+	var num_spawn: int = 2 + randi() % 2
+	for _i in num_spawn:
+		var spawn_angle: float = randf() * TAU
+		var spawn_dist: float = 200.0
+		var spawn_pos: Vector2 = (boss["pos"] as Vector2) + Vector2(cos(spawn_angle), sin(spawn_angle)) * spawn_dist
+		var summon_kind: String = ["normal", "normal_tank", "normal_fast"][randi() % 3]
+		_enemies.append(_make_enemy_data(summon_kind, ws))
+		_enemies[-1]["pos"] = spawn_pos
+		_enemies[-1]["corrupted"] = true
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PRISM TRIARCH SKILLS
+# ═════════════════════════════════════════════════════════════════════════════
+
+func _update_prism_triarch_special(boss: Dictionary, delta: float) -> void:
+	if not boss.has("prism_state"):
+		boss["prism_state"] = "idle"
+		boss["prism_angle"] = 0.0
+		boss["special_timer"] = 0.0
+	
+	boss["special_timer"] = (boss["special_timer"] as float) + delta
+	boss["prism_angle"] = (boss["prism_angle"] as float) + delta * 1.2
+	
+	var st: float = boss["special_timer"] as float
+	var cycle_num: int = int(st / 6.0)
+	if cycle_num != (boss.get("skill_cycle_num", -1) as int):
+		boss["skill_cycle_num"] = cycle_num
+		boss["link_fired"] = false
+		boss["barrage_fired"] = false
+		boss["link2_fired"] = false
+		boss["collapse_fired"] = false
+	var skill_cycle: float = fmod(st, 6.0)
+	
+	# Skill rotation: Link (1.5s) → Barrage (1.5s) → Link (1.5s) → Ultimate (1.5s)
+	if skill_cycle < 1.5 and not boss.get("link_fired", false):
+		_fire_prism_link(boss)
+		boss["link_fired"] = true
+	elif skill_cycle >= 1.5 and skill_cycle < 3.0 and not boss.get("barrage_fired", false):
+		_fire_prism_barrage(boss)
+		boss["barrage_fired"] = true
+	elif skill_cycle >= 3.0 and skill_cycle < 4.5 and not boss.get("link2_fired", false):
+		_fire_prism_link(boss)
+		boss["link2_fired"] = true
+	elif skill_cycle >= 4.5 and not boss.get("collapse_fired", false):
+		_fire_prism_collapse(boss)
+		boss["collapse_fired"] = true
+
+func _fire_prism_link(boss: Dictionary) -> void:
+	var boss_pos: Vector2 = boss["pos"] as Vector2
+	var base_dmg: float = boss["dmg"] as float
+	var angle: float = boss.get("prism_angle", 0.0) as float
+	
+	# Create 3 prism nodes in triangle formation
+	var nodes: Array[Vector2] = []
+	for i in 3:
+		var node_angle: float = angle + float(i) / 3.0 * TAU
+		var node_pos: Vector2 = boss_pos + Vector2(cos(node_angle), sin(node_angle)) * 85.0
+		nodes.append(node_pos)
+	
+	_prism_zones.append({
+		"boss_pos": boss_pos,
+		"nodes": nodes,
+		"state": "forming",
+		"state_t": 0.0,
+		"duration": 2.0,
+		"dmg": base_dmg * 1.1,
+		"rotating": false,
+	})
+
+func _fire_prism_barrage(boss: Dictionary) -> void:
+	var boss_pos: Vector2 = boss["pos"] as Vector2
+	var base_dmg: float = boss["dmg"] as float
+	var aim: Vector2 = (_player_pos - boss_pos).normalized()
+	if aim == Vector2.ZERO:
+		aim = Vector2.RIGHT
+	
+	# Fire beam that splits into 3, then 6 rays
+	for split_num in [1, 3, 6]:
+		var delay: float = 0.15 * float(split_num - 1) / 2.0
+		for i in split_num:
+			var angle_offset: float = (float(i) - float(split_num - 1) * 0.5) * (PI / 6.0)
+			var dir: Vector2 = aim.rotated(angle_offset)
+			_boss_projs.append({
+				"kind": "prism_beam",
+				"pos": boss_pos,
+				"vel": dir * 280.0,
+				"dmg": base_dmg * 0.75,
+				"life": 3.0,
+				"delay": delay,
+			})
+
+func _fire_prism_collapse(boss: Dictionary) -> void:
+	var boss_pos: Vector2 = boss["pos"] as Vector2
+	var base_dmg: float = boss["dmg"] as float
+	
+	_prism_zones.append({
+		"boss_pos": boss_pos,
+		"state": "collapse",
+		"state_t": 0.0,
+		"collapse_duration": 2.5,
+		"dmg": base_dmg * 2.0,
+		"rotating": true,
+	})
+
+# ═════════════════════════════════════════════════════════════════════════════
+# BLIGHT VINE TYRANT SKILLS
+# ═════════════════════════════════════════════════════════════════════════════
+
+func _update_blight_tyrant_special(boss: Dictionary, delta: float) -> void:
+	if not boss.has("blight_state"):
+		boss["blight_state"] = "idle"
+		boss["special_timer"] = 0.0
+	
+	boss["special_timer"] = (boss["special_timer"] as float) + delta
+	
+	var st: float = boss["special_timer"] as float
+	var cycle_num: int = int(st / 6.75)
+	if cycle_num != (boss.get("skill_cycle_num", -1) as int):
+		boss["skill_cycle_num"] = cycle_num
+		boss["lash_fired"] = false
+		boss["pods_fired"] = false
+		boss["lash2_fired"] = false
+		boss["bloom_fired"] = false
+	var skill_cycle: float = fmod(st, 6.75)
+	
+	# Skill rotation: Lash (1.5s) → Pods (1.5s) → Lash (1.5s) → Bloom (2.25s)
+	if skill_cycle < 1.5 and not boss.get("lash_fired", false):
+		_fire_thorn_lash(boss)
+		boss["lash_fired"] = true
+	elif skill_cycle >= 1.5 and skill_cycle < 3.0 and not boss.get("pods_fired", false):
+		_fire_venom_pods(boss)
+		boss["pods_fired"] = true
+	elif skill_cycle >= 3.0 and skill_cycle < 4.5 and not boss.get("lash2_fired", false):
+		_fire_thorn_lash(boss)
+		boss["lash2_fired"] = true
+	elif skill_cycle >= 4.5 and not boss.get("bloom_fired", false):
+		_fire_corrupted_bloom(boss)
+		boss["bloom_fired"] = true
+
+func _fire_thorn_lash(boss: Dictionary) -> void:
+	var boss_pos: Vector2 = boss["pos"] as Vector2
+	var base_dmg: float = boss["dmg"] as float
+	var aim: Vector2 = (_player_pos - boss_pos).normalized()
+	if aim == Vector2.ZERO:
+		aim = Vector2.DOWN
+	
+	# 3 cone directions: left, center, right
+	for cone_offset in [-0.5, 0.0, 0.5]:
+		var dir: Vector2 = aim.rotated(float(cone_offset))
+		_boss_projs.append({
+			"kind": "thorn",
+			"pos": boss_pos,
+			"vel": dir * 240.0,
+			"dmg": base_dmg * 0.9,
+			"life": 2.5,
+		})
+		
+		# Create thorn patch where it lands
+		_thorn_patches.append({
+			"pos": boss_pos + dir * 150.0,
+			"r": 35.0,
+			"life": 3.0,
+			"max_life": 3.0,
+			"dmg_per_tick": base_dmg * 0.4,
+			"tick_t": 0.0,
+		})
+
+func _fire_venom_pods(boss: Dictionary) -> void:
+	var boss_pos: Vector2 = boss["pos"] as Vector2
+	var num_pods: int = 4 + randi() % 3
+	
+	for _i in num_pods:
+		var angle: float = randf() * TAU
+		var speed: float = randf_range(150.0, 220.0)
+		_venom_pods.append({
+			"pos": boss_pos,
+			"vel": Vector2(cos(angle), sin(angle)) * speed,
+			"life": 2.0,
+			"max_life": 2.0,
+			"pop_t": 0.0,
+			"dmg": boss["dmg"] as float * 1.1,
+		})
+
+func _fire_corrupted_bloom(boss: Dictionary) -> void:
+	var boss_pos: Vector2 = boss["pos"] as Vector2
+	var base_dmg: float = boss["dmg"] as float
+	
+	# Create expanding root eruptions
+	var num_roots: int = 8
+	for i in num_roots:
+		var angle: float = float(i) / float(num_roots) * TAU
+		var root_pos: Vector2 = boss_pos + Vector2(cos(angle), sin(angle)) * 200.0
+		_mortar_strikes.append({
+			"pos": root_pos,
+			"r": 50.0,
+			"life": 1.2,
+			"max_life": 1.2,
+			"dmg": base_dmg * 1.4,
+			"kind": "blight_root",
+			"warning_life": 0.6,
+		})
+
+# ═════════════════════════════════════════════════════════════════════════════
+# THUNDERFORGE BEHEMOTH SKILLS
+# ═════════════════════════════════════════════════════════════════════════════
+
+func _update_thunderforge_special(boss: Dictionary, delta: float) -> void:
+	if not boss.has("storm_state"):
+		boss["storm_state"] = "idle"
+		boss["special_timer"] = 0.0
+	
+	boss["special_timer"] = (boss["special_timer"] as float) + delta
+	
+	var st: float = boss["special_timer"] as float
+	var cycle_num: int = int(st / 7.5)
+	if cycle_num != (boss.get("skill_cycle_num", -1) as int):
+		boss["skill_cycle_num"] = cycle_num
+		boss["hammer_fired"] = false
+		boss["coil_fired"] = false
+		boss["hammer2_fired"] = false
+		boss["cataclysm_fired"] = false
+	var skill_cycle: float = fmod(st, 7.5)
+	
+	# Skill rotation: Hammer (1.5s) → Coil (1.5s) → Hammer (1.5s) → Cataclysm (3s)
+	if skill_cycle < 1.5 and not boss.get("hammer_fired", false):
+		_fire_thunder_hammer(boss)
+		boss["hammer_fired"] = true
+	elif skill_cycle >= 1.5 and skill_cycle < 3.0 and not boss.get("coil_fired", false):
+		_fire_arc_coil(boss)
+		boss["coil_fired"] = true
+	elif skill_cycle >= 3.0 and skill_cycle < 4.5 and not boss.get("hammer2_fired", false):
+		_fire_thunder_hammer(boss)
+		boss["hammer2_fired"] = true
+	elif skill_cycle >= 4.5 and not boss.get("cataclysm_fired", false):
+		_fire_storm_cataclysm(boss)
+		boss["cataclysm_fired"] = true
+
+func _fire_thunder_hammer(boss: Dictionary) -> void:
+	var boss_pos: Vector2 = boss["pos"] as Vector2
+	var base_dmg: float = boss["dmg"] as float
+	
+	# X-shaped fissure pattern (4 lines)
+	for angle_base in [0.0, PI / 4.0]:
+		for offset in [-1.0, 1.0]:
+			var angle: float = angle_base + offset * (PI / 8.0)
+			var fissure_pos: Vector2 = boss_pos + Vector2(cos(angle), sin(angle)) * 140.0
+			_mortar_strikes.append({
+				"pos": fissure_pos,
+				"r": 60.0,
+				"life": 0.8,
+				"max_life": 0.8,
+				"dmg": base_dmg * 1.5,
+				"kind": "lightning_strike",
+				"warning_life": 0.4,
+			})
+
+func _fire_arc_coil(boss: Dictionary) -> void:
+	var boss_pos: Vector2 = boss["pos"] as Vector2
+	var num_balls: int = 6 + randi() % 5
+	
+	for _i in num_balls:
+		var angle: float = randf() * TAU
+		var orbit_r: float = randf_range(180.0, 280.0)
+		_lightning_markers.append({
+			"pos": boss_pos + Vector2(cos(angle), sin(angle)) * orbit_r,
+			"angle": angle,
+			"orbit_r": orbit_r,
+			"life": 4.0,
+			"max_life": 4.0,
+			"charge_t": 0.0,
+			"dmg": boss["dmg"] as float * 0.9,
+		})
+
+func _fire_storm_cataclysm(boss: Dictionary) -> void:
+	var boss_pos: Vector2 = boss["pos"] as Vector2
+	var base_dmg: float = boss["dmg"] as float
+	
+	# Random lightning markers that intensify
+	var num_markers: int = 12
+	for _i in num_markers:
+		var angle: float = randf() * TAU
+		var dist: float = randf_range(100.0, 250.0)
+		_lightning_markers.append({
+			"pos": boss_pos + Vector2(cos(angle), sin(angle)) * dist,
+			"cataclysm": true,
+			"life": 3.5,
+			"max_life": 3.5,
+			"dmg": base_dmg * 1.6,
+			"phase": 0,
+		})
+
+# ═════════════════════════════════════════════════════════════════════════════
+# BOSS SKILL EFFECT UPDATES
+# ═════════════════════════════════════════════════════════════════════════════
+
+func _update_boss_chains(delta: float) -> void:
+	for i in range(_boss_chains.size() - 1, -1, -1):
+		var chain: Dictionary = _boss_chains[i]
+		chain["total_t"] = (chain["total_t"] as float) + delta
+		var state: String = chain.get("state", "extend") as String
+		
+		if state == "extend":
+			chain["state_t"] = (chain["state_t"] as float) + delta
+			if (chain["state_t"] as float) >= 0.8:
+				chain["state"] = "retract"
+				chain["state_t"] = 0.0
+		elif state == "retract":
+			chain["state_t"] = (chain["state_t"] as float) + delta
+			var retract_t: float = chain.get("retract_t", 0.8) as float
+			if (chain["state_t"] as float) >= retract_t:
+				# Check player damage during retract
+				if _player_iframes <= 0.0:
+					var chain_end: Vector2 = (chain["boss_pos"] as Vector2) + (chain["direction"] as Vector2) * (chain["length"] as float)
+					if _player_pos.distance_to(chain_end) < PLAYER_R + 20.0:
+						_damage_player(chain["dmg"] as float, 0.45)
+				_boss_chains.remove_at(i)
+				continue
+		
+		# Check if player touches chain during extension
+		if state == "extend" and _player_iframes <= 0.0:
+			var chain_pos: Vector2 = (chain["boss_pos"] as Vector2) + (chain["direction"] as Vector2) * (chain["length"] as float) * ((chain["state_t"] as float) / 0.8)
+			if _player_pos.distance_to(chain_pos) < PLAYER_R + 15.0:
+				_damage_player(chain["dmg"] as float * 0.6, 0.3)
+
+func _update_prism_zones(delta: float) -> void:
+	for i in range(_prism_zones.size() - 1, -1, -1):
+		var zone: Dictionary = _prism_zones[i]
+		var state: String = zone.get("state", "forming") as String
+		zone["state_t"] = (zone["state_t"] as float) + delta
+		
+		if state == "forming":
+			var duration: float = zone.get("duration", 2.0) as float
+			if (zone["state_t"] as float) >= duration:
+				_prism_zones.remove_at(i)
+				continue
+			
+			# Damage check - only if player is within zone area
+			if _player_iframes <= 0.0:
+				var boss_pos: Vector2 = zone.get("boss_pos", Vector2.ZERO) as Vector2
+				var nodes: Array = zone.get("nodes", []) as Array
+				if nodes.size() >= 3:
+					# Check if player is within the triangle zone (distance to center)
+					var zone_center: Vector2 = Vector2.ZERO
+					for node in nodes:
+						zone_center += node as Vector2
+					zone_center /= 3.0
+					var zone_radius: float = 120.0
+					if _player_pos.distance_to(zone_center) < zone_radius:
+						_damage_player(zone["dmg"] as float * delta, 0.1)
+		
+		elif state == "collapse":
+			var collapse_duration: float = zone.get("collapse_duration", 2.5) as float
+			if (zone["state_t"] as float) >= collapse_duration:
+				# Final shockwave damage
+				if _player_iframes <= 0.0 and _player_pos.distance_to(zone["boss_pos"] as Vector2) < 250.0:
+					_damage_player(zone["dmg"] as float * 0.5, 0.4)
+				_prism_zones.remove_at(i)
+
+func _update_venom_pods(delta: float) -> void:
+	for i in range(_venom_pods.size() - 1, -1, -1):
+		var pod: Dictionary = _venom_pods[i]
+		pod["pos"] = (pod["pos"] as Vector2) + (pod["vel"] as Vector2) * delta * 0.85  # Friction
+		pod["life"] = (pod["life"] as float) - delta
+		
+		if (pod["life"] as float) <= 0.0:
+			# Pop into poison cloud
+			_venom_pools.append({
+				"kind": "venom_cloud",
+				"pos": pod["pos"] as Vector2,
+				"r": 50.0,
+				"life": 2.5,
+				"max_life": 2.5,
+				"dmg_per_tick": pod["dmg"] as float * 0.5,
+				"tick_t": 0.0,
+			})
+			_venom_pods.remove_at(i)
+			continue
+		
+		# Player collision
+		if _player_iframes <= 0.0 and (pod["pos"] as Vector2).distance_to(_player_pos) < PLAYER_R + 15.0:
+			_damage_player(pod["dmg"] as float * 0.4, 0.25)
+			_venom_pods.remove_at(i)
+
+func _update_lightning_markers(delta: float) -> void:
+	for i in range(_lightning_markers.size() - 1, -1, -1):
+		var marker: Dictionary = _lightning_markers[i]
+		marker["life"] = (marker["life"] as float) - delta
+		
+		if marker.get("cataclysm", false):
+			marker["charge_t"] = (marker.get("charge_t", 0.0) as float) + delta
+			var max_life: float = marker.get("max_life", 3.5) as float
+			var elapsed: float = max_life - (marker["life"] as float)
+			var phase: int = int(elapsed / (max_life / 3.0))
+			marker["phase"] = phase
+			
+			if (marker["life"] as float) <= 0.0:
+				if _player_iframes <= 0.0 and _player_pos.distance_to(marker["pos"] as Vector2) < 100.0 + (float(phase) * 20.0):
+					_damage_player(marker["dmg"] as float, 0.3)
+				_lightning_markers.remove_at(i)
+		else:
+			# Orbiting lightning balls
+			var elapsed: float = (marker.get("max_life", 4.0) as float) - (marker["life"] as float)
+			var dmg_threshold: float = (marker.get("max_life", 4.0) as float) * 0.75
+			if elapsed >= dmg_threshold and _player_iframes <= 0.0:
+				if _player_pos.distance_to(marker["pos"] as Vector2) < 150.0:
+					_damage_player(marker["dmg"] as float * 0.3, 0.2)
+			
+			if (marker["life"] as float) <= 0.0:
+				_lightning_markers.remove_at(i)
+
+func _update_thorn_patches(delta: float) -> void:
+	for i in range(_thorn_patches.size() - 1, -1, -1):
+		var patch: Dictionary = _thorn_patches[i]
+		patch["life"] = (patch["life"] as float) - delta
+		patch["tick_t"] = (patch.get("tick_t", 0.0) as float) + delta
+		
+		if (patch["tick_t"] as float) >= 0.4:
+			if _player_iframes <= 0.0 and _player_pos.distance_to(patch["pos"] as Vector2) < PLAYER_R + (patch["r"] as float):
+				_damage_player(patch["dmg_per_tick"] as float, 0.2)
+			patch["tick_t"] = 0.0
+		
+		if (patch["life"] as float) <= 0.0:
+			_thorn_patches.remove_at(i)
+
+# ═════════════════════════════════════════════════════════════════════════════
 # ENTITY UPDATES
 # ═════════════════════════════════════════════════════════════════════════════
 
@@ -1985,8 +2721,8 @@ func _update_enemies(delta: float) -> void:
 					_hit_enemy(i, (e.get("beetle_dps", 0.0) as float) * 0.5)
 					if i >= _enemies.size():
 						continue
-		e["alive_t"] = (e["alive_t"] as float) + delta
-		if not (e.get("speed_boosted", false) as bool) and (e["alive_t"] as float) >= ENEMY_SURVIVE_SPEEDUP_SEC:
+		e["alive_t"] = (e.get("alive_t", 0.0) as float) + delta
+		if not (e.get("speed_boosted", false) as bool) and (e.get("alive_t", 0.0) as float) >= ENEMY_SURVIVE_SPEEDUP_SEC:
 			e["speed_boosted"] = true
 			e["base_spd"] = (e["base_spd"] as float) * ENEMY_SURVIVE_SPEEDUP_MULT
 			e["spd"] = (e["spd"] as float) * ENEMY_SURVIVE_SPEEDUP_MULT
@@ -1997,7 +2733,7 @@ func _update_enemies(delta: float) -> void:
 		if _idle_enemy_speed_boost_active:
 			var ep_screen: Vector2 = ep - _camera.position + get_viewport_rect().size * 0.5
 			if get_viewport_rect().grow(40.0).has_point(ep_screen):
-				move_speed *= 1.35
+				move_speed *= _idle_enemy_speed_boost_multiplier()
 		if (e.get("trap_t", 0.0) as float) > 0.0:
 			move_speed = 0.0
 		if ekind == "lava_boss":
@@ -2019,33 +2755,38 @@ func _update_enemies(delta: float) -> void:
 					_hit_enemy(i, (e["dmg"] as float) * (mb_def.get("reflect", 0.05) as float))
 					if i >= _enemies.size():
 						continue
+					_aoe_flashes.append({"life": 0.55, "max_life": 0.55, "kind": "meatball_barrage", "pos": _player_pos})
 				if _damage_player(e["dmg"] as float, IFRAMES_SEC):
 					return
 
 		# ── Boss special behaviors ──────────────────────────────────
 		if ekind == "teleporter_boss":
 			e["special_timer"] = (e["special_timer"] as float) + delta
-			if (e["special_timer"] as float) >= 3.5:
+			if (e["special_timer"] as float) >= 1.8:
 				e["special_timer"] = 0.0
-				# Teleport 60% closer to player (shorten distance)
 				var cur_p: Vector2 = e["pos"] as Vector2
 				var to_player: Vector2 = _player_pos - cur_p
-				var dist: float = to_player.length()
-				if dist > 120.0:  # only teleport if far enough away
+				if to_player.length() > 120.0:
 					e["pos"] = cur_p + to_player * 0.60
 		elif ekind == "shield_boss":
 			e["special_timer"] = (e["special_timer"] as float) + delta
-			var st: float = e["special_timer"] as float
-			# Cycle: 6s vulnerable, 2.5s shielded
-			var cycle: float = fmod(st, 8.5)
+			var cycle: float = fmod(e["special_timer"] as float, 8.5)
 			e["shield_active"] = cycle >= 6.0
 		elif ekind == "shooter_boss":
 			e["special_timer"] = (e["special_timer"] as float) + delta
-			if (e["special_timer"] as float) >= 2.2:
-				e["special_timer"] = -randf_range(0.15, 0.85)
+			if (e["special_timer"] as float) >= 1.3:
+				e["special_timer"] = -randf_range(0.15, 0.35)
 				_fire_shooter_boss_pattern(e)
 		elif ekind == "lava_boss":
 			_update_lava_boss_special(e, delta)
+		elif ekind == "abyss_gate_warden":
+			_update_abyss_warden_special(e, delta)
+		elif ekind == "prism_triarch":
+			_update_prism_triarch_special(e, delta)
+		elif ekind == "blight_vine_tyrant":
+			_update_blight_tyrant_special(e, delta)
+		elif ekind == "thunderforge_behemoth":
+			_update_thunderforge_special(e, delta)
 
 func _update_bolts(delta: float) -> void:
 	var vp: Rect2 = get_viewport_rect()
@@ -2129,8 +2870,8 @@ func _update_bolts(delta: float) -> void:
 						next_target_pos = cand_pos
 						has_next_target = true
 						break
-				var hit_ok: bool = _hit_enemy_with_result(rj, b["dmg"] as float)
-				if hit_ok and bounces_left > 0 and has_next_target:
+				_hit_enemy(rj, b["dmg"] as float)
+				if bounces_left > 0 and has_next_target:
 					var dir_r: Vector2 = (next_target_pos - hit_pos).normalized()
 					if dir_r.length_squared() > 0.001:
 						_bolts.append({
@@ -2159,16 +2900,16 @@ func _update_bolts(delta: float) -> void:
 				var pbase: float = b.get("base_dmg", b["dmg"] as float) as float
 				var died: bool = _hit_enemy_with_result(pj, b["dmg"] as float)
 				if died:
-					for _k in split_n:
-						var tidx: int = _nearest_enemy_index(ppos, 520.0)
+					for _k in maxi(split_n, 3):
+						var tidx: int = _nearest_enemy_index(ppos, 3200.0)
 						if tidx < 0:
 							break
 						var vdir: Vector2 = ((_enemies[tidx]["pos"] as Vector2) - ppos).normalized()
 						_bolts.append({
 							"pos": ppos,
-							"vel": vdir * 980.0,
+							"vel": vdir * 760.0,
 							"dmg": pbase * split_pct,
-							"life": 1.2,
+							"life": 1.9,
 							"kind": "phantom_homing",
 						})
 				_bolts.remove_at(i)
@@ -2292,19 +3033,22 @@ func _spawn_shadow_clone(pos: Vector2, hp: float, level: int) -> void:
 func _update_shadow_clones(delta: float) -> void:
 	var clone_dmg: float = 32.0
 	if _has_skill("shadow_clone"):
-		clone_dmg = (_slvl("shadow_clone", _get_skill("shadow_clone")["level"] as int)["dps"] as float) * 2.0 * 0.14
+		clone_dmg = (_slvl("shadow_clone", _get_skill("shadow_clone")["level"] as int).get("dps", 0.0) as float) * 2.0 * 0.14
 	for i in range(_shadow_clones.size() - 1, -1, -1):
 		var c: Dictionary = _shadow_clones[i]
 		c["life"] = (c["life"] as float) - delta
 		if (c["life"] as float) <= 0.0 or (c["hp"] as float) <= 0.0:
 			_shadow_clones.remove_at(i)
 			continue
+		if c.get("passive", false) as bool:
+			continue
 		var cpos: Vector2 = c["pos"] as Vector2
 		# Enemies that touch the clone deal damage to it
 		for j in range(_enemies.size() - 1, -1, -1):
 			if j >= _enemies.size(): continue
 			if cpos.distance_to(_enemies[j]["pos"] as Vector2) < 30.0 + (_enemies[j]["r"] as float):
-				c["hp"] = (c["hp"] as float) - (_enemies[j]["dmg"] as float) * delta * 2.0
+				var enemy_dmg: float = float((_enemies[j] as Dictionary).get("dmg", 0.0))
+				c["hp"] = (c["hp"] as float) - enemy_dmg * delta * 2.0
 				if (c["hp"] as float) <= 0.0: break
 		if (c["hp"] as float) <= 0.0: continue
 		# Clone fires shadow daggers toward the nearest enemy within range
@@ -2335,22 +3079,42 @@ func _do_mana_push(radius: float, force: float) -> void:
 
 func _do_blink_strike(dash_r: float, dmg: float) -> void:
 	_play_skill_sfx("skill_blink_strike", -5.0, 1.0, 0.08)
-	var dir: Vector2 = _player_move_dir
+	# Find nearest enemy and blink towards it
+	var dir: Vector2 = Vector2(float(_player_facing_x), 0.0)
+	var nearest_dist: float = INF
+	for enemy in _enemies:
+		var ep: Vector2 = enemy["pos"] as Vector2
+		var dist: float = _player_pos.distance_to(ep)
+		if dist < nearest_dist:
+			nearest_dist = dist
+			dir = (ep - _player_pos).normalized()
+	# Fallback if no enemies
 	if dir.length_squared() < 0.01:
 		dir = Vector2(float(_player_facing_x), 0.0)
 	dir = dir.normalized()
 	var start_pos: Vector2 = _player_pos
-	var end_pos:   Vector2 = _player_pos + dir * dash_r
+	var end_pos:   Vector2 = _player_pos + dir * (dash_r * 1.35)
 	var blink_dmg: float   = dmg * TARGET_SKILL_DAMAGE_MULT
 	for i in range(_enemies.size() - 1, -1, -1):
 		var ep: Vector2 = _enemies[i]["pos"] as Vector2
-		if _point_to_segment_dist(ep, start_pos, end_pos) < 46.0 + (_enemies[i]["r"] as float):
+		if _point_to_segment_dist(ep, start_pos, end_pos) < 64.0 + (_enemies[i]["r"] as float):
 			_hit_enemy(i, blink_dmg)
-	_player_pos            = end_pos
-	_camera.position       = end_pos
-	_player_iframes        = max(_player_iframes, 0.5)
+	# New behavior: keep player position, create a long slash and leave a short-lived shadow clone at slash end.
+	_shadow_clones.append({
+		"pos": end_pos,
+		"hp": 9999.0,
+		"max_hp": 9999.0,
+		"life": 2.0,
+		"max_life": 2.0,
+		"fire_t": 99.0,
+		"level": 1,
+		"facing_x": 1 if dir.x >= 0.0 else -1,
+		"passive": true,
+	})
+	_player_iframes        = max(_player_iframes, 0.35)
 	_aoe_flashes.append({"life": 0.45, "max_life": 0.45, "kind": "blink_trail",
 		"pos": start_pos, "end_pos": end_pos})
+	_spawn_combo_arc(start_pos, end_pos, Color(0.20, 0.10, 0.28, 0.95), 0.20, 7.0)
 
 func _point_to_segment_dist(p: Vector2, a: Vector2, b: Vector2) -> float:
 	var ab: Vector2   = b - a
@@ -2662,7 +3426,7 @@ func _update_venom_pools(delta: float) -> void:
 		p["tick_t"] = 0.0
 		for ei in range(_enemies.size() - 1, -1, -1):
 			if (_enemies[ei]["pos"] as Vector2).distance_to(p["pos"] as Vector2) <= (p["r"] as float) + (_enemies[ei]["r"] as float):
-				_hit_enemy(ei, (p["dps"] as float) * 0.5)
+				_hit_enemy(ei, (p.get("dps", 0.0) as float) * 0.5)
 
 func _spawn_toxic_mushroom(def: Dictionary) -> void:
 	var ang: float = randf() * TAU
@@ -2688,7 +3452,7 @@ func _update_toxic_mushrooms(delta: float) -> void:
 			m["pulse_t"] = 0.0
 			for ei in range(_enemies.size() - 1, -1, -1):
 				if (_enemies[ei]["pos"] as Vector2).distance_to(m["pos"] as Vector2) <= (m["r"] as float) + (_enemies[ei]["r"] as float):
-					_hit_enemy(ei, (m["dps"] as float) * 0.7)
+					_hit_enemy(ei, (m.get("dps", 0.0) as float) * 0.7)
 
 func _spawn_bog_pool(def: Dictionary) -> void:
 	var ang: float = randf() * TAU
@@ -2750,7 +3514,7 @@ func _update_corruption_pools(delta: float) -> void:
 			p["tick_t"] = (p["tick_t"] as float) + delta
 			if (p["tick_t"] as float) >= 0.5:
 				p["tick_t"] = 0.0
-				_hit_enemy(idx, (p["dps"] as float) * 0.5)
+				_hit_enemy(idx, (p.get("dps", 0.0) as float) * 0.5)
 			if idx < _enemies.size():
 				_enemies[idx]["trap_t"] = max(_enemies[idx].get("trap_t", 0.0) as float, 0.12)
 				_enemies[idx]["corr_sink_t"] = max((_enemies[idx].get("corr_sink_t", 0.0) as float) - delta, 0.0)
@@ -2818,14 +3582,27 @@ func _spawn_embers(center: Vector2, count: int, dps: float) -> void:
 		})
 
 func _queue_master_kitchen(def: Dictionary) -> void:
-	var n: int = def.get("n", 6) as int
+	var base_r: float = (def.get("r", 210.0) as float) * 1.25
+	var dmg: float = def.get("dmg", 36.0) as float
+	var n: int = maxi(def.get("n", 6) as int, 12)
+	var utensil_types: Array[String] = ["knife", "spoon", "spatula", "board", "hat", "fork", "grater", "whisk", "soup", "shoup", "hotdog", "meatball", "pizza"]
 	for i in n:
-		var a: float = float(i) / float(max(n, 1)) * TAU + randf_range(-0.18, 0.18)
+		var a: float = float(i) / float(max(n, 1)) * TAU
+		var u: String = utensil_types[i % utensil_types.size()]
+		var width: float = 28.0
+		if u == "board":
+			width = 36.0
+		elif u == "hat":
+			width = 30.0
+		elif u == "hotdog":
+			width = 34.0
 		_kitchen_queue.append({
-			"delay": float(i) * 0.08,
+			"delay": float(i) * 0.04,
 			"dir": Vector2(cos(a), sin(a)),
-			"r": def.get("r", 210.0) as float,
-			"dmg": def.get("dmg", 36.0) as float,
+			"r": base_r,
+			"dmg": dmg,
+			"width": width,
+			"utensil": u,
 		})
 
 func _update_kitchen_queue(delta: float) -> void:
@@ -2836,17 +3613,22 @@ func _update_kitchen_queue(delta: float) -> void:
 			continue
 		var dir: Vector2 = q["dir"] as Vector2
 		var radius: float = q["r"] as float
-		var tip: Vector2 = _player_pos + dir * radius
+		var width: float = q.get("width", 22.0) as float
+		var start: Vector2 = _player_pos
+		var tip: Vector2 = start + dir * radius
 		for ei in range(_enemies.size() - 1, -1, -1):
-			if _point_to_segment_dist(_enemies[ei]["pos"] as Vector2, _player_pos, tip) <= 22.0 + (_enemies[ei]["r"] as float):
+			if ei < 0 or ei >= _enemies.size():
+				continue
+			var enemy: Dictionary = _enemies[ei]
+			if _point_to_segment_dist(enemy.get("pos", Vector2.ZERO) as Vector2, start, tip) <= width + (enemy.get("r", 24.0) as float):
 				_hit_enemy(ei, q["dmg"] as float)
-		_aoe_flashes.append({"life": 0.25, "max_life": 0.25, "kind": "master_kitchen", "pos": _player_pos, "dir": dir, "r": radius})
+		_aoe_flashes.append({"life": 0.30, "max_life": 0.30, "kind": "master_kitchen", "pos": start, "from_pos": start, "to_pos": tip, "dir": dir, "r": radius, "utensil": q.get("utensil", "knife") as String})
 		_kitchen_queue.remove_at(i)
 
 func _fire_phantom_hunt(def: Dictionary) -> void:
 	var n: int = def.get("n", 3) as int
 	var shot_dmg: float = def.get("dmg", 70.0) as float * PROJECTILE_SKILL_DAMAGE_MULT
-	var spd: float = def.get("spd", 960.0) as float
+	var spd: float = def.get("spd", 960.0) as float * 0.90
 	var ph_level: int = 1
 	if _has_skill("phantom_hunt"):
 		ph_level = _get_skill("phantom_hunt").get("level", 1) as int
@@ -2865,7 +3647,7 @@ func _fire_phantom_hunt(def: Dictionary) -> void:
 			"vel": dir * spd,
 			"dmg": shot_dmg,
 			"base_dmg": shot_dmg,
-			"life": 1.4,
+			"life": 1.8,
 			"kind": "phantom_hunt",
 			"spawn_n": split_n,
 			"spawn_pct": split_pct,
@@ -2885,6 +3667,10 @@ func _update_boss_intermission(_delta: float) -> void:
 			if _boss_portal_confirm_layer == null:
 				_show_boss_portal_confirm()
 		elif _player_pos.distance_to(ladder_pos) < PLAYER_R + 150.0:
+			if _boss_portal_confirm_layer == null:
+				_show_ladder_confirm()
+	elif state == "await_ladder":
+		if _player_pos.distance_to(ladder_pos) < PLAYER_R + 150.0:
 			if _boss_portal_confirm_layer == null:
 				_show_ladder_confirm()
 
@@ -3051,19 +3837,49 @@ func _enter_boss_challenge_arena() -> void:
 	_enemies.clear()
 	_wave_spawn_q.clear()
 	var ws: float = 1.0 + float(max(_wave, 1) - 1) * 0.22
-	var btype: String = _next_boss_type()
+	var btype: String = _next_portal_boss_type()
 	var data: Dictionary = _make_enemy_data(btype, ws * 1.45)
+	data["spawn_pos"] = _random_arena_edge_spawn_pos(_player_pos, BOSS_ARENA_HALF, 56.0)
 	_spawn_enemy_from(data)
 
+func _random_arena_edge_spawn_pos(center: Vector2, half: Vector2, inset: float = 56.0) -> Vector2:
+	var h: Vector2 = Vector2(max(half.x - inset, 32.0), max(half.y - inset, 32.0))
+	var side: int = randi() % 4
+	match side:
+		0:
+			return center + Vector2(randf_range(-h.x, h.x), -h.y)
+		1:
+			return center + Vector2(randf_range(-h.x, h.x), h.y)
+		2:
+			return center + Vector2(-h.x, randf_range(-h.y, h.y))
+		_:
+			return center + Vector2(h.x, randf_range(-h.y, h.y))
+
 func _on_arena_boss_cleared() -> void:
-	_boss_intermission["state"] = "none"
+	_boss_intermission = {
+		"state": "await_ladder",
+		"door_pos": _player_pos + Vector2(420.0, 26.0),
+		"ladder_pos": _player_pos + Vector2(-420.0, 26.0),
+		"arena_center": _player_pos,
+		"arena_half": BOSS_ARENA_HALF,
+		"last_boss_wave": _wave,
+	}
 	var reward: Dictionary = _award_random_artifact()
 	_boss_artifact_result = reward
 	if reward.get("duplicated", false) as bool and _boss_key_spent_this_run > 0:
 		PurchaseStore.add_keys(account_username, 1)
 		_boss_key_spent_this_run -= 1
-	_wave += 1
-	_start_wave(_wave)
+	# Add artifact visual drop with a short pickup grace period so it is visible.
+	var art: Dictionary = reward.get("artifact", {}) as Dictionary
+	if not art.is_empty():
+		var spawn_dir: Vector2 = Vector2.from_angle(randf() * TAU)
+		var spawn_offset: Vector2 = spawn_dir * randf_range(84.0, 128.0)
+		_artifact_drops.append({
+			"pos": _player_pos + spawn_offset,
+			"life": 25.0,
+			"pickup_delay": 0.85,
+			"artifact": art,
+		})
 
 func _award_random_artifact() -> Dictionary:
 	if account_username.is_empty():
@@ -3082,14 +3898,17 @@ func _has_artifact_in_inventory(artifact: Dictionary) -> bool:
 	if target_name.is_empty():
 		return false
 	for a in ArtifactStore.load_stash(account_username):
-		if (a as Dictionary).get("name", "") as String == target_name:
+		if typeof(a) == TYPE_DICTIONARY and str((a as Dictionary).get("name", "")) == target_name:
 			return true
 	var equipped_all: Dictionary = ArtifactStore.load_equipped(account_username)
 	for char_id in equipped_all.keys():
-		var slots: Dictionary = equipped_all[char_id] as Dictionary
-		for slot in 2:
+		var slot_any = equipped_all.get(char_id, {})
+		if typeof(slot_any) != TYPE_DICTIONARY:
+			continue
+		var slots: Dictionary = slot_any as Dictionary
+		for slot in range(2):
 			var item = slots.get("slot_%d" % slot, null)
-			if item != null and (item as Dictionary).get("name", "") as String == target_name:
+			if item != null and typeof(item) == TYPE_DICTIONARY and str((item as Dictionary).get("name", "")) == target_name:
 				return true
 	return false
 
@@ -3291,17 +4110,19 @@ func _trigger_thunder_god_pulse(radius: float, dmg: float, mark_t: float, chain_
 	if marked.is_empty():
 		return
 	var used: Array[int] = []
-	var start_idx: int = marked[0] as int
+	var start_idx: int = -1
 	var start_dist: float = INF
 	for idx_variant in marked:
 		var idx: int = idx_variant as int
-		if idx >= _enemies.size():
+		if idx < 0 or idx >= _enemies.size():
 			continue
+		if start_idx < 0:
+			start_idx = idx
 		var d: float = (_enemies[idx]["pos"] as Vector2).distance_to(_player_pos)
 		if d < start_dist:
 			start_dist = d
 			start_idx = idx
-	if start_idx >= _enemies.size():
+	if start_idx < 0 or start_idx >= _enemies.size():
 		return
 	used.append(start_idx)
 	var last_pos: Vector2 = _enemies[start_idx]["pos"] as Vector2
@@ -3744,35 +4565,72 @@ func _pick_enemy_floor_mod() -> void:
 
 func _next_boss_type() -> String:
 	if _boss_bag.is_empty():
-		_boss_bag = BOSS_TYPES.duplicate()
+		_boss_bag = WAVE_BOSS_TYPES.duplicate()
 		_boss_bag.shuffle()
 	return _boss_bag.pop_back() as String
 
+func _next_portal_boss_type() -> String:
+	if _portal_boss_bag.is_empty():
+		_portal_boss_bag = PORTAL_BOSS_TYPES.duplicate()
+		_portal_boss_bag.shuffle()
+	return _portal_boss_bag.pop_back() as String
+
+func _is_boss_kind(kind: String) -> bool:
+	return kind.ends_with("_boss") or PORTAL_BOSS_TYPES.has(kind)
+
 func _make_enemy_data(kind: String, ws: float) -> Dictionary:
+	var boss_progress: Dictionary = _boss_progression_multiplier()
+	var boss_hp_mult: float = float(boss_progress.get("hp", 1.0))
+	var boss_dmg_mult: float = float(boss_progress.get("dmg", 1.0))
+	var boss_spd_mult: float = float(boss_progress.get("spd", 1.0))
 	match kind:
 		"teleporter_boss":
 			return {
 				"kind": "teleporter_boss",
-				"hp_mult": 14.0 * ws, "spd_fixed": 130.0, "dmg_mult": 1.5 * ws,
+				"hp_mult": 14.0 * ws * boss_hp_mult, "spd_fixed": 130.0 * boss_spd_mult, "dmg_mult": 1.5 * ws * boss_dmg_mult,
 				"r": 62.0, "col": Color(0.55, 0.10, 0.82)
 			}
 		"shield_boss":
 			return {
 				"kind": "shield_boss",
-				"hp_mult": 30.0 * ws, "spd_fixed": 75.0, "dmg_mult": 2.0 * ws,
+				"hp_mult": 30.0 * ws * boss_hp_mult, "spd_fixed": 75.0 * boss_spd_mult, "dmg_mult": 2.0 * ws * boss_dmg_mult,
 				"r": 78.0, "col": Color(0.20, 0.55, 0.90)
 			}
 		"shooter_boss":
 			return {
 				"kind": "shooter_boss",
-				"hp_mult": 20.0 * ws, "spd_fixed": 60.0, "dmg_mult": 1.2 * ws,
+				"hp_mult": 20.0 * ws * boss_hp_mult, "spd_fixed": 60.0 * boss_spd_mult, "dmg_mult": 1.2 * ws * boss_dmg_mult,
 				"r": 68.0, "col": Color(0.85, 0.55, 0.05)
 			}
 		"lava_boss":
 			return {
 				"kind": "lava_boss",
-				"hp_mult": 35.0 * ws, "spd_fixed": 50.0, "dmg_mult": 1.8 * ws,
+				"hp_mult": 35.0 * ws * boss_hp_mult, "spd_fixed": 50.0 * boss_spd_mult, "dmg_mult": 1.8 * ws * boss_dmg_mult,
 				"r": 88.0, "col": Color(0.90, 0.25, 0.02)
+			}
+		"abyss_gate_warden":
+			return {
+				"kind": "abyss_gate_warden",
+				"hp_mult": 38.0 * ws * boss_hp_mult, "spd_fixed": 77.0 * boss_spd_mult, "dmg_mult": 1.9 * ws * boss_dmg_mult,
+				"r": 86.0, "col": Color(0.20, 0.85, 0.95)
+			}
+		"prism_triarch":
+			return {
+				"kind": "prism_triarch",
+				"hp_mult": 38.0 * ws * boss_hp_mult, "spd_fixed": 154.0 * boss_spd_mult, "dmg_mult": 1.6 * ws * boss_dmg_mult,
+				"r": 64.0, "col": Color(0.85, 0.20, 0.90)
+			}
+		"blight_vine_tyrant":
+			return {
+				"kind": "blight_vine_tyrant",
+				"hp_mult": 38.0 * ws * boss_hp_mult, "spd_fixed": 98.0 * boss_spd_mult, "dmg_mult": 1.7 * ws * boss_dmg_mult,
+				"r": 80.0, "col": Color(0.30, 0.85, 0.25)
+			}
+		"thunderforge_behemoth":
+			return {
+				"kind": "thunderforge_behemoth",
+				"hp_mult": 38.0 * ws * boss_hp_mult, "spd_fixed": 63.0 * boss_spd_mult, "dmg_mult": 2.1 * ws * boss_dmg_mult,
+				"r": 92.0, "col": Color(0.95, 0.75, 0.20)
 			}
 		# ── Normal subtypes ───────────────────────────────────────────────────
 		"normal_tank":  # Slow, bulky, high damage
@@ -3802,6 +4660,8 @@ func _spawn_enemy_from(data: Dictionary) -> void:
 	var sr: float     = max(view.x, view.y) * 0.62 + 60.0
 	var angle: float  = randf() * TAU
 	var pos: Vector2  = _player_pos + Vector2(cos(angle), sin(angle)) * sr
+	if data.has("spawn_pos") and data["spawn_pos"] is Vector2:
+		pos = data["spawn_pos"] as Vector2
 	var base_hp: float  = (18.0 + float(_level) * 5.0) * (data["hp_mult"] as float)
 	base_hp *= 1.0 + _ring_bonus("enemy_hp_mul")
 	var base_spd: float
@@ -3817,7 +4677,7 @@ func _spawn_enemy_from(data: Dictionary) -> void:
 	# Apply the current floor affix to non-boss enemies.
 	var assigned_mod: String = ""
 	var ekind_spawn: String = data["kind"] as String
-	if _wave >= 10 and not _active_enemy_mod.is_empty() and not ekind_spawn.ends_with("_boss"):
+	if _wave >= 10 and not _active_enemy_mod.is_empty() and not _is_boss_kind(ekind_spawn):
 		assigned_mod = _active_enemy_mod
 		match assigned_mod:
 			"fast":      base_spd *= 1.60
@@ -3843,16 +4703,14 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 		return
 	var e: Dictionary = _enemies[idx]
 	var ekind: String = e.get("kind", "normal") as String
-	# Shielded bosses absorb hits; the lava boss also reflects explosive fireballs.
-	if (e["shield_active"] as bool):
-		if ekind == "lava_boss":
-			_reflect_lava_shield(e)
+	# Shielded bosses absorb hits.
+	if (e.get("shield_active", false) as bool):
 		return
 	# Apply crit from ring bonus
 	var final_dmg: float = dmg
 	if (e.get("bleed_t", 0.0) as float) > 0.0:
 		final_dmg *= 1.0 + (e.get("bleed_bonus", 0.25) as float)
-	if ekind.ends_with("_boss"):
+	if _is_boss_kind(ekind):
 		final_dmg *= 1.0 + _ring_bonus("boss_dmg")
 	var crit_chance: float = _ring_bonus("crit_chance")
 	if crit_chance > 0.0 and randf() < crit_chance:
@@ -3865,7 +4723,7 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 		var ep: Vector2   = e["pos"] as Vector2
 		_xp_orbs.append({"pos": ep, "val": _xp_drop()})
 		_kills += 1
-		var is_boss: bool = ekind.ends_with("_boss")
+		var is_boss: bool = _is_boss_kind(ekind)
 		# Potion drop: 25% base + ring bonus, from any boss
 		var potion_rate: float = 0.25 + _ring_bonus("potion_drop_rate")
 		if is_boss and randf() < potion_rate:
@@ -4002,6 +4860,21 @@ func _update_ring_drops(delta: float) -> void:
 			RingStore.add_ring_to_stash(account_username, ring)
 			_rings_obtained.append(ring)
 			_ring_drops.remove_at(i)
+
+func _update_artifact_drops(delta: float) -> void:
+	for i in range(_artifact_drops.size() - 1, -1, -1):
+		var ad: Dictionary = _artifact_drops[i]
+		ad["life"] = (ad["life"] as float) - delta
+		ad["pickup_delay"] = max(float(ad.get("pickup_delay", 0.0)) - delta, 0.0)
+		if (ad["life"] as float) <= 0.0:
+			_artifact_drops.remove_at(i)
+			continue
+		if float(ad.get("pickup_delay", 0.0)) > 0.0:
+			continue
+		if (_player_pos.distance_to(ad["pos"] as Vector2)) < 32.0:
+			var artifact: Dictionary = ad["artifact"] as Dictionary
+			ArtifactStore.ensure_artifact_in_stash(account_username, artifact)
+			_artifact_drops.remove_at(i)
 
 func _update_boss_projs(delta: float) -> void:
 	var vp: Rect2 = get_viewport_rect()
@@ -4199,11 +5072,13 @@ func _draw() -> void:
 		var h_glow = 1.0
 		var h_specs = hs_sk.get("animation_specs", {})
 		if h_specs.size() > 0:
-			var first_spec = h_specs.values()[0]
-			if first_spec is Dictionary:
-				h_rot_speed = float(first_spec.get("rotation_speed", 360.0))
-				h_wobble = float(first_spec.get("wobble_amplitude", 0.5))
-				h_glow = float(first_spec.get("glow_intensity", 1.0))
+			var h_values: Array = h_specs.values()
+			if not h_values.is_empty():
+				var first_spec = h_values[0]
+				if first_spec is Dictionary:
+					h_rot_speed = float(first_spec.get("rotation_speed", 360.0))
+					h_wobble = float(first_spec.get("wobble_amplitude", 0.5))
+					h_glow = float(first_spec.get("glow_intensity", 1.0))
 		
 		# Multiple concentric rings with varying speeds for depth
 		for ring_layer in range(1, 4):
@@ -4281,11 +5156,13 @@ func _draw() -> void:
 		var k_glow = 1.0
 		var k_specs = ks_sk.get("animation_specs", {})
 		if k_specs.size() > 0:
-			var first_spec = k_specs.values()[0]
-			if first_spec is Dictionary:
-				k_rot_speed = float(first_spec.get("rotation_speed", 900.0))
-				k_wobble = float(first_spec.get("wobble_amplitude", 0.8))
-				k_glow = float(first_spec.get("glow_intensity", 1.0))
+			var k_values: Array = k_specs.values()
+			if not k_values.is_empty():
+				var first_spec = k_values[0]
+				if first_spec is Dictionary:
+					k_rot_speed = float(first_spec.get("rotation_speed", 900.0))
+					k_wobble = float(first_spec.get("wobble_amplitude", 0.8))
+					k_glow = float(first_spec.get("glow_intensity", 1.0))
 		
 		# Core spinning vortex - layered rings at different speeds
 		for layer in range(1, 3):
@@ -4337,11 +5214,17 @@ func _draw() -> void:
 		var wr: float    = w["r"] as float
 		var wp: Vector2  = w["pos"] as Vector2
 		var wkind: String = w.get("kind", "wave") as String
-		draw_circle(wp, wr, Color(0.72, 0.78, 1.0, lf * 0.14))
-		if wkind == "arc_lightning":
-			draw_circle(wp, max(12.0, wr * 0.18), Color(1.0, 0.98, 0.50, lf * 0.78))
-		if wkind == "crystal_prism":
-			draw_circle(wp, max(10.0, wr * 0.15), Color(0.72, 0.96, 1.0, lf * 0.78))
+		
+		# Belly bounce uses orange color
+		if wkind == "belly_bounce":
+			draw_circle(wp, wr, Color(1.0, 0.65, 0.15, lf * 0.18))
+			draw_circle(wp, max(15.0, wr * 0.22), Color(1.0, 0.80, 0.20, lf * 0.65))
+		else:
+			draw_circle(wp, wr, Color(0.72, 0.78, 1.0, lf * 0.14))
+			if wkind == "arc_lightning":
+				draw_circle(wp, max(12.0, wr * 0.18), Color(1.0, 0.98, 0.50, lf * 0.78))
+			if wkind == "crystal_prism":
+				draw_circle(wp, max(10.0, wr * 0.15), Color(0.72, 0.96, 1.0, lf * 0.78))
 		continue
 		
 		if wkind == "elec_wave":
@@ -4353,9 +5236,11 @@ func _draw() -> void:
 				ewlv = ew_sk["level"] as int
 				var ew_specs = ew_sk.get("animation_specs", {})
 				if ew_specs.size() > 0:
-					var ew_spec = ew_specs.values()[0]
-					if ew_spec is Dictionary and "glow_intensity" in ew_spec:
-						ew_glow = float(ew_spec["glow_intensity"])
+					var ew_values: Array = ew_specs.values()
+					if not ew_values.is_empty():
+						var ew_spec = ew_values[0]
+						if ew_spec is Dictionary and "glow_intensity" in ew_spec:
+							ew_glow = float(ew_spec["glow_intensity"])
 			
 			# Multiple expanding arcs for layered effect
 			for layer in range(1, 3):
@@ -4383,10 +5268,12 @@ func _draw() -> void:
 				wlv = w_sk["level"] as int
 				var w_specs = w_sk.get("animation_specs", {})
 				if w_specs.size() > 0:
-					var w_spec = w_specs.values()[0]
-					if w_spec is Dictionary:
-						w_glow = float(w_spec.get("glow_intensity", 1.0))
-						w_wobble = float(w_spec.get("wobble_amplitude", 0.5))
+					var w_values: Array = w_specs.values()
+					if not w_values.is_empty():
+						var w_spec = w_values[0]
+						if w_spec is Dictionary:
+							w_glow = float(w_spec.get("glow_intensity", 1.0))
+							w_wobble = float(w_spec.get("wobble_amplitude", 0.5))
 			if wkind == "mana_push":
 				# Blue push ring — pure knockback visual
 				draw_circle(wp, wr * 0.55, Color(0.25, 0.52, 1.0, lf * 0.16))
@@ -4606,11 +5493,12 @@ func _draw() -> void:
 		var sc_bob: float  = sin(_elapsed * 3.2 + scp.x * 0.01) * 5.0
 		var sc_pulse: float = 0.55 + 0.45 * sin(_elapsed * 4.0)
 		var scdp: Vector2  = scp + Vector2(0.0, sc_bob - 4.0)
+		var is_assassin_clone: bool = _char_id == "capy_assassin" and _player_tex != null
 		# Outer aura glow (only when not fading out)
-		if sc_life > 0.3:
+		if sc_life > 0.3 and not is_assassin_clone:
 			draw_circle(scdp, 46.0 * sc_pulse, Color(0.28, 0.08, 0.52, 0.16))
 			draw_arc(scdp, 42.0, 0.0, TAU, 32, Color(0.54, 0.24, 0.92, 0.55 * sc_pulse), 2.8)
-		if _char_id == "capy_assassin" and _player_tex != null:
+		if is_assassin_clone:
 			draw_set_transform(scdp, 0.0, Vector2(float(sc.get("facing_x", 1) as int), 1.0))
 			draw_texture_rect(_player_tex, Rect2(Vector2(-PLAYER_SPRITE_SIZE * 0.5, -PLAYER_SPRITE_SIZE * 0.5), Vector2(PLAYER_SPRITE_SIZE, PLAYER_SPRITE_SIZE)), false, Color(0.70, 0.42, 1.0, 0.72 * sc_life))
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -4620,18 +5508,19 @@ func _draw() -> void:
 			draw_circle(scdp, 20.0, Color(0.32, 0.16, 0.54, 0.58))
 			draw_circle(scdp + Vector2(0.0, -14.0), 14.0, Color(0.22, 0.10, 0.40, 0.72))
 			draw_circle(scdp + Vector2(0.0, -14.0), 10.0, Color(0.38, 0.20, 0.60, 0.50))
-		# Glowing eyes
-		var sc_fx: int = sc.get("facing_x", 1) as int
-		var eye_ox: float = 4.5 * float(sc_fx)
-		draw_circle(scdp + Vector2(eye_ox - 3.5, -16.0), 3.2, Color(0.68, 0.36, 1.0, 0.92))
-		draw_circle(scdp + Vector2(eye_ox + 3.5, -16.0), 3.2, Color(0.68, 0.36, 1.0, 0.92))
-		draw_circle(scdp + Vector2(eye_ox - 3.5, -16.0), 1.4, Color(1.0, 0.92, 1.0, 0.98))
-		draw_circle(scdp + Vector2(eye_ox + 3.5, -16.0), 1.4, Color(1.0, 0.92, 1.0, 0.98))
-		# Orbiting dark energy particles
-		for p in 5:
-			var pa: float = _elapsed * 3.8 + float(p) * TAU / 5.0
-			var pr: float = 36.0 + sin(_elapsed * 2.0 + float(p)) * 5.0
-			draw_circle(scdp + Vector2(cos(pa), sin(pa)) * pr, 4.2, Color(0.52, 0.20, 0.86, 0.80))
+		if not is_assassin_clone:
+			# Glowing eyes
+			var sc_fx: int = sc.get("facing_x", 1) as int
+			var eye_ox: float = 4.5 * float(sc_fx)
+			draw_circle(scdp + Vector2(eye_ox - 3.5, -16.0), 3.2, Color(0.68, 0.36, 1.0, 0.92))
+			draw_circle(scdp + Vector2(eye_ox + 3.5, -16.0), 3.2, Color(0.68, 0.36, 1.0, 0.92))
+			draw_circle(scdp + Vector2(eye_ox - 3.5, -16.0), 1.4, Color(1.0, 0.92, 1.0, 0.98))
+			draw_circle(scdp + Vector2(eye_ox + 3.5, -16.0), 1.4, Color(1.0, 0.92, 1.0, 0.98))
+			# Orbiting dark energy particles
+			for p in 5:
+				var pa: float = _elapsed * 3.8 + float(p) * TAU / 5.0
+				var pr: float = 36.0 + sin(_elapsed * 2.0 + float(p)) * 5.0
+				draw_circle(scdp + Vector2(cos(pa), sin(pa)) * pr, 4.2, Color(0.52, 0.20, 0.86, 0.80))
 		# HP bar (shown only once damaged)
 		if sc_hp < 0.99:
 			var bar_w: float = 52.0
@@ -4639,9 +5528,7 @@ func _draw() -> void:
 			var bar_y: float = scdp.y + 38.0
 			draw_rect(Rect2(bar_x, bar_y, bar_w, 5.0), Color(0.12, 0.06, 0.20, 0.82))
 			draw_rect(Rect2(bar_x, bar_y, bar_w * sc_hp, 5.0), Color(0.60, 0.28, 0.92, 0.92))
-		# Fade-out flicker when nearly expired
-		if sc_life < 0.25:
-			draw_circle(scdp, 32.0, Color(0.28, 0.08, 0.48, (0.25 - sc_life) / 0.25 * 0.50))
+		# Keep assassin clone fade clean (no extra fade circles).
 
 	# Enemies
 	for e in _enemies:
@@ -4649,14 +5536,14 @@ func _draw() -> void:
 		var er: float      = (e["r"] as float) * ENEMY_DRAW_SCALE
 		var ec: Color      = e["col"] as Color
 		var ekind: String  = e.get("kind", "normal") as String
-		var efrozen: bool  = (e["iframes"] as float) > 0.0 and _has_skill("ice_orb")
+		var efrozen: bool  = (e.get("iframes", 0.0) as float) > 0.0 and _has_skill("ice_orb")
 		var enraged: bool  = (e["alive_t"] as float) >= 8.0
 		var marked: bool   = (e.get("tg_mark_t", 0.0) as float) > 0.0
 		var poisoned: bool = (e.get("poison_t", 0.0) as float) > 0.0
 		# Walk animation — normals bob; bosses stay planted
 		var e_alive_t: float = e["alive_t"] as float
 		var e_facing_x: int  = e.get("facing_x", 1) as int
-		var e_is_boss: bool  = ekind.ends_with("_boss")
+		var e_is_boss: bool  = _is_boss_kind(ekind)
 		var e_walk: float    = e_alive_t * 9.0
 		var e_bob: float     = 0.0 if e_is_boss else sin(e_walk) * 2.5
 		var edp: Vector2     = ep + Vector2(0.0, e_bob)
@@ -4694,6 +5581,20 @@ func _draw() -> void:
 		if poisoned:
 			draw_circle(edp, er + 4.0, Color(0.34, 1.0, 0.35, 0.14))
 			draw_circle(edp, er + 6.0, Color(0.52, 1.0, 0.40, 0.12))
+		var beetle_t: float = e.get("beetle_t", 0.0) as float
+		if beetle_t > 0.0:
+			var beetle_alpha: float = clamp(beetle_t / 3.0, 0.35, 1.0)
+			draw_circle(edp, er + 8.0, Color(0.28, 0.90, 0.20, 0.10 * beetle_alpha))
+			for beetle_i in 3:
+				var orbit_phase: float = _elapsed * (6.0 + float(beetle_i) * 0.8) + float(beetle_i) * TAU / 3.0
+				var orbit_radius: float = er * 0.58 + 6.0 + float(beetle_i) * 4.0
+				var beetle_pos: Vector2 = edp + Vector2(cos(orbit_phase), sin(orbit_phase)) * orbit_radius + Vector2(0.0, -er * 0.12)
+				var wing_flap: float = 0.6 + 0.4 * sin(_elapsed * 20.0 + float(beetle_i) * 1.7)
+				draw_circle(beetle_pos, 4.6, Color(0.14, 0.30, 0.08, 0.92 * beetle_alpha))
+				draw_circle(beetle_pos + Vector2(0.0, -1.8), 2.8, Color(0.42, 1.0, 0.24, 0.95 * beetle_alpha))
+				draw_circle(beetle_pos + Vector2(-3.2 * wing_flap, -0.6), 1.8, Color(0.72, 1.0, 0.48, 0.72 * beetle_alpha))
+				draw_circle(beetle_pos + Vector2(3.2 * wing_flap, -0.6), 1.8, Color(0.72, 1.0, 0.48, 0.72 * beetle_alpha))
+				draw_arc(beetle_pos, 6.2, 0.0, TAU, 10, Color(0.68, 0.98, 0.30, 0.42 * beetle_alpha), 1.0)
 		var trap_vine_t: float = e.get("trap_vine_t", 0.0) as float
 		if trap_vine_t > 0.0:
 			var vine_alpha: float = clamp(trap_vine_t / 2.5, 0.25, 1.0)
@@ -4726,46 +5627,65 @@ func _draw() -> void:
 				draw_circle(Vector2(dx, dy), (1.5 + (1.0 - dp) * 1.8) * blt, Color(0.86, 0.06, 0.14, blt * (1.0 - dp)))
 		# Boss visual indicators
 		match ekind:
-			"teleporter_boss":
-				# Purple trail arcs (teleport aura)
-				draw_arc(edp, er + 5.0, 0.0, TAU, 24, Color(0.70, 0.15, 1.0, 0.75), 3.0)
-				var ta: float = _elapsed * 4.0
-				for ti in 3:
-					var tang: float = ta + float(ti) * TAU / 3.0
-					draw_circle(edp + Vector2(cos(tang), sin(tang)) * (er + 10.0), 5.0, Color(0.80, 0.30, 1.0, 0.70))
-				_draw_boss_name(edp, er, "Xylar the Rift Walker", Color(0.82, 0.48, 1.0))
-			"shield_boss":
+			"abyss_gate_warden":
+				# Cyan cracks/aura
+				draw_arc(edp, er + 5.0, 0.0, TAU, 28, Color(0.20, 0.85, 0.95, 0.75), 3.0)
+				for ti in 4:
+					var tang: float = float(ti) / 4.0 * TAU + _elapsed * 2.8
+					draw_circle(edp + Vector2(cos(tang), sin(tang)) * (er + 8.0), 4.5, Color(0.30, 0.92, 1.0, 0.65))
+				_draw_boss_name(edp, er, "Abyss Gate Warden", Color(0.28, 0.90, 1.0))
+			"prism_triarch":
 				var shield_on: bool = e["shield_active"] as bool
 				if shield_on:
-					draw_arc(edp, er + 8.0, 0.0, TAU, 32, Color(0.90, 0.90, 1.0, 0.90), 5.0)
-					draw_circle(edp, er + 8.0, Color(0.80, 0.88, 1.0, 0.18))
+					draw_arc(edp, er + 7.0, 0.0, TAU, 36, Color(0.90, 0.50, 1.0, 0.88), 4.5)
+					draw_circle(edp, er + 7.0, Color(0.85, 0.45, 1.0, 0.16))
 				else:
-					draw_arc(edp, er + 5.0, 0.0, TAU, 24, Color(0.20, 0.55, 0.95, 0.65), 2.5)
-				_draw_boss_name(edp, er, "Zoran the Unbreakable Sentinel", Color(0.64, 0.86, 1.0))
+					draw_arc(edp, er + 5.0, 0.0, TAU, 30, Color(0.80, 0.30, 0.95, 0.70), 2.5)
+				_draw_boss_name(edp, er, "Prism Triarch", Color(0.88, 0.50, 1.0))
+			"blight_vine_tyrant":
+				# Green toxic aura
+				draw_arc(edp, er + 5.0, 0.0, TAU, 24, Color(0.30, 0.85, 0.25, 0.70), 2.8)
+				for ti in 5:
+					var tang: float = float(ti) / 5.0 * TAU + _elapsed * 3.2
+					draw_circle(edp + Vector2(cos(tang), sin(tang)) * (er + 9.0), 5.0, Color(0.45, 0.95, 0.32, 0.68))
+				_draw_boss_name(edp, er, "Blight Vine Tyrant", Color(0.40, 0.92, 0.30))
+			"thunderforge_behemoth":
+				# Yellow/gold electric aura
+				draw_arc(edp, er + 6.0, 0.0, TAU, 32, Color(0.95, 0.75, 0.20, 0.80), 4.0)
+				for ti in 6:
+					var tang: float = float(ti) / 6.0 * TAU + _elapsed * 3.5
+					draw_circle(edp + Vector2(cos(tang), sin(tang)) * (er + 11.0), 5.5, Color(1.0, 0.90, 0.30, 0.72))
+				_draw_boss_name(edp, er, "Thunderforge Behemoth", Color(1.0, 0.85, 0.25))
+			"teleporter_boss":
+				# Purple/magenta teleport aura
+				draw_arc(edp, er + 4.0, 0.0, TAU, 26, Color(0.85, 0.35, 0.95, 0.72), 2.8)
+				for ti in 4:
+					var tang: float = float(ti) / 4.0 * TAU + _elapsed * 4.2
+					draw_circle(edp + Vector2(cos(tang), sin(tang)) * (er + 6.0), 3.5, Color(0.95, 0.50, 1.0, 0.60))
+				_draw_boss_name(edp, er, "Teleporter Boss", Color(0.90, 0.50, 1.0))
+			"shield_boss":
+				# Blue shield indicator
+				var shield_active: bool = e.get("shield_active", false) as bool
+				if shield_active:
+					draw_arc(edp, er + 8.0, 0.0, TAU, 40, Color(0.18, 0.72, 0.98, 0.95), 5.0)
+					draw_circle(edp, er + 8.0, Color(0.28, 0.82, 1.0, 0.18))
+				else:
+					draw_arc(edp, er + 4.0, 0.0, TAU, 24, Color(0.18, 0.60, 0.88, 0.60), 2.0)
+				_draw_boss_name(edp, er, "Shield Boss", Color(0.28, 0.85, 1.0))
 			"shooter_boss":
-				# Orange aim lines toward player
-				draw_arc(edp, er + 5.0, 0.0, TAU, 24, Color(1.0, 0.60, 0.05, 0.70), 2.5)
-				var aim_dir: Vector2 = (_player_pos - edp).normalized()
-				draw_line(edp, edp + aim_dir * (er + 20.0), Color(1.0, 0.50, 0.02, 0.55), 2.5)
-				_draw_boss_name(edp, er, "Raze the Scatter-Shot Overlord", Color(1.0, 0.66, 0.16))
+				# Orange/fire aura with projectile indicators
+				draw_arc(edp, er + 5.0, 0.0, TAU, 28, Color(1.0, 0.55, 0.10, 0.75), 3.2)
+				for ti in 5:
+					var tang: float = float(ti) / 5.0 * TAU + _elapsed * 3.8
+					draw_circle(edp + Vector2(cos(tang), sin(tang)) * (er + 8.0), 4.0, Color(1.0, 0.68, 0.22, 0.68))
+				_draw_boss_name(edp, er, "Shooter Boss", Color(1.0, 0.72, 0.25))
 			"lava_boss":
-				var lava_state: String = e.get("lava_state", "idle") as String
-				if lava_state == "charge":
-					draw_circle(edp, er + 20.0, Color(1.0, 0.04, 0.01, 0.22 + 0.08 * sin(_elapsed * 24.0)))
-					draw_arc(edp, er + 14.0, 0.0, TAU, 32, Color(1.0, 0.06, 0.02, 0.96), 6.0)
-				elif lava_state == "shield":
-					draw_circle(edp, er + 14.0, Color(0.34, 0.16, 0.08, 0.38))
-					draw_arc(edp, er + 14.0, 0.0, TAU, 36, Color(0.45, 0.23, 0.10, 0.96), 8.0)
-					for si in 9:
-						var sa2: float = float(si) / 9.0 * TAU + _elapsed * 0.35
-						draw_circle(edp + Vector2(cos(sa2), sin(sa2)) * (er + 14.0), 7.0, Color(1.0, 0.32, 0.04, 0.86))
-				else:
-					draw_arc(edp, er + 6.0, 0.0, TAU, 28, Color(1.0, 0.20, 0.02, 0.80), 4.0)
-				var la: float = _elapsed * 2.5
-				for li in 4:
-					var lang: float = la + float(li) * TAU / 4.0
-					draw_circle(edp + Vector2(cos(lang), sin(lang)) * (er + 12.0), 6.0, Color(1.0, 0.40, 0.02, 0.75))
-				_draw_boss_name(edp, er, "Ignis the Magma Titan", Color(1.0, 0.34, 0.08))
+				# Red fire aura
+				draw_arc(edp, er + 5.0, 0.0, TAU, 24, Color(0.95, 0.22, 0.08, 0.78), 3.5)
+				for ti in 5:
+					var tang: float = float(ti) / 5.0 * TAU + _elapsed * 3.6
+					draw_circle(edp + Vector2(cos(tang), sin(tang)) * (er + 7.0), 4.5, Color(1.0, 0.42, 0.12, 0.72))
+				_draw_boss_name(edp, er, "Lava Boss", Color(1.0, 0.55, 0.20))
 			_:
 				# Eye (fallback for any future boss or unknown kind)
 				if not e_has_tex:
@@ -4774,18 +5694,18 @@ func _draw() -> void:
 		var emhp: float = e["max_hp"] as float
 		var bw: float = er * 2.6
 		var bx: float = edp.x - bw * 0.5
-		var by: float = edp.y - er - 12.0
-		draw_rect(Rect2(bx, by, bw, 6), Color(0.15, 0.06, 0.06, 0.85))
+		var by: float = edp.y - er - 18.0
+		draw_rect(Rect2(bx, by, bw, 8), Color(0.15, 0.06, 0.06, 0.85))
 		var bar_col: Color
 		match ekind:
-			"teleporter_boss": bar_col = Color(0.70, 0.25, 1.0)
-			"shield_boss":     bar_col = Color(0.35, 0.65, 1.0)
-			"shooter_boss":    bar_col = Color(1.0, 0.55, 0.05)
-			"lava_boss":       bar_col = Color(1.0, 0.22, 0.02)
-			"normal_tank":     bar_col = Color(0.88, 0.55, 0.12)
-			"normal_fast":     bar_col = Color(0.18, 0.72, 0.98)
-			_:                 bar_col = Color(0.88, 0.15, 0.15)
-		draw_rect(Rect2(bx, by, bw * clamp(ehp / emhp, 0.0, 1.0), 6), bar_col)
+			"abyss_gate_warden":    bar_col = Color(0.28, 0.90, 1.0)
+			"prism_triarch":        bar_col = Color(0.88, 0.50, 1.0)
+			"blight_vine_tyrant":   bar_col = Color(0.40, 0.92, 0.30)
+			"thunderforge_behemoth": bar_col = Color(1.0, 0.85, 0.25)
+			"normal_tank":          bar_col = Color(0.88, 0.55, 0.12)
+			"normal_fast":          bar_col = Color(0.18, 0.72, 0.98)
+			_:                      bar_col = Color(0.88, 0.15, 0.15)
+		draw_rect(Rect2(bx, by, bw * clamp(ehp / emhp, 0.0, 1.0), 8), bar_col)
 		if poisoned:
 			var pi_c: Vector2 = Vector2(edp.x, by - 10.0)
 			draw_circle(pi_c, 6.0, Color(0.20, 0.78, 0.22, 0.95))
@@ -4837,34 +5757,133 @@ func _draw() -> void:
 			var bubble_color: Color = Color(1.0, 0.48, 0.18, lplf * 0.78) if is_mortar_pool else Color(1.0, 0.90, 0.20, lplf * 0.80)
 			draw_circle(lpp + Vector2(cos(ba), sin(ba)) * lpr * 0.5, 5.0, bubble_color)
 
-	# Shooter boss mortar warnings
+	# Mortar / boss skill strike warnings
 	for strike in _mortar_strikes:
 		var target: Vector2 = strike["pos"] as Vector2
-		var launch: Vector2 = strike["launch"] as Vector2
 		var life_left: float = strike["life"] as float
 		var max_life: float = strike["max_life"] as float
 		var progress: float = clamp(1.0 - life_left / max_life, 0.0, 1.0)
 		var radius: float = strike["r"] as float
 		var warning_alpha: float = 0.35 + 0.35 * sin(_elapsed * 16.0)
-		draw_circle(target, radius, Color(1.0, 0.05, 0.02, 0.14 + warning_alpha * 0.20))
-		draw_arc(target, radius, 0.0, TAU, 36, Color(1.0, 0.10, 0.04, 0.88), 3.0)
-		draw_arc(target, radius * progress, 0.0, TAU, 28, Color(1.0, 0.55, 0.14, 0.90), 2.0)
-		var projectile_pos: Vector2 = launch.lerp(target, progress) + Vector2(0.0, -sin(progress * PI) * 220.0 - 35.0 * (1.0 - progress))
-		draw_circle(projectile_pos, 11.0, Color(1.0, 0.18, 0.04, 0.88))
-		draw_circle(projectile_pos, 6.0, Color(1.0, 0.78, 0.24, 0.95))
+		var strike_kind: String = strike.get("kind", "shooter") as String
+		var warn_col: Color
+		var arc_col: Color
+		match strike_kind:
+			"abyss_pulse":
+				warn_col = Color(0.20, 0.85, 0.95, 0.14 + warning_alpha * 0.20)
+				arc_col  = Color(0.28, 0.90, 1.0, 0.88)
+			"blight_root":
+				warn_col = Color(0.30, 0.85, 0.25, 0.14 + warning_alpha * 0.20)
+				arc_col  = Color(0.40, 0.92, 0.30, 0.88)
+			"lightning_strike":
+				warn_col = Color(1.0, 0.85, 0.20, 0.14 + warning_alpha * 0.25)
+				arc_col  = Color(1.0, 0.90, 0.30, 0.90)
+			_:
+				warn_col = Color(1.0, 0.05, 0.02, 0.14 + warning_alpha * 0.20)
+				arc_col  = Color(1.0, 0.10, 0.04, 0.88)
+		draw_circle(target, radius, warn_col)
+		draw_arc(target, radius, 0.0, TAU, 36, arc_col, 3.0)
+		draw_arc(target, radius * progress, 0.0, TAU, 28, arc_col.lightened(0.2), 2.0)
+		# Only shooter-style strikes carry a launch point for the in-flight projectile visual
+		if strike.has("launch"):
+			var launch: Vector2 = strike["launch"] as Vector2
+			var projectile_pos: Vector2 = launch.lerp(target, progress) + Vector2(0.0, -sin(progress * PI) * 220.0 - 35.0 * (1.0 - progress))
+			draw_circle(projectile_pos, 11.0, Color(1.0, 0.18, 0.04, 0.88))
+			draw_circle(projectile_pos, 6.0, Color(1.0, 0.78, 0.24, 0.95))
 
 	# Boss projectiles
 	for bproj in _boss_projs:
 		var bpp: Vector2 = bproj["pos"] as Vector2
 		var proj_kind: String = bproj.get("kind", "straight") as String
 		var outer_col: Color = Color(1.0, 0.08, 0.02, 0.92) if proj_kind == "lava_reflect" else Color(1.0, 0.25, 0.05, 0.88) if proj_kind == "homing" else Color(1.0, 0.55, 0.05, 0.85)
-		draw_circle(bpp, 12.0, outer_col)
-		draw_circle(bpp, 7.0, Color(1.0, 0.90, 0.30))
-		draw_arc(bpp, 14.0, 0.0, TAU, 16, Color(1.0, 0.35, 0.02, 0.55), 2.0)
+		
+		if proj_kind == "prism_beam":
+			draw_circle(bpp, 8.0, Color(0.85, 0.50, 1.0, 0.88))
+			draw_circle(bpp, 4.0, Color(1.0, 0.85, 1.0, 0.95))
+			draw_arc(bpp, 10.0, 0.0, TAU, 12, Color(0.70, 0.30, 1.0, 0.65), 1.5)
+		elif proj_kind == "thorn":
+			draw_circle(bpp, 9.0, Color(0.40, 0.85, 0.25, 0.85))
+			draw_circle(bpp, 5.0, Color(0.70, 1.0, 0.40, 0.90))
+			draw_arc(bpp, 11.0, 0.0, TAU, 14, Color(0.30, 0.70, 0.20, 0.60), 1.8)
+		else:
+			draw_circle(bpp, 12.0, outer_col)
+			draw_circle(bpp, 7.0, Color(1.0, 0.90, 0.30))
+			draw_arc(bpp, 14.0, 0.0, TAU, 16, Color(1.0, 0.35, 0.02, 0.55), 2.0)
+		
 		if proj_kind == "lava_reflect":
 			var target: Vector2 = bproj["target"] as Vector2
 			draw_circle(target, bproj.get("explode_r", 58.0) as float, Color(1.0, 0.10, 0.02, 0.12 + 0.10 * sin(_elapsed * 16.0)))
 			draw_arc(target, bproj.get("explode_r", 58.0) as float, 0.0, TAU, 28, Color(1.0, 0.22, 0.04, 0.72), 2.5)
+
+	# Boss chains (Abyss Warden)
+	for chain in _boss_chains:
+		var boss_p: Vector2 = chain.get("boss_pos", Vector2.ZERO) as Vector2
+		var direction: Vector2 = chain.get("direction", Vector2.RIGHT) as Vector2
+		var length: float = chain.get("length", 120.0) as float
+		var state: String = chain.get("state", "extend") as String
+		var state_t: float = chain.get("state_t", 0.0) as float
+		var current_length: float = length if state == "retract" else length * (state_t / 0.8)
+		var end_pos: Vector2 = boss_p + direction * current_length
+		var chain_col: Color = Color(0.30, 0.92, 1.0, 0.88) if chain.get("corrupted", false) else Color(0.50, 0.65, 1.0, 0.75)
+		draw_line(boss_p, end_pos, chain_col, 4.0)
+		draw_circle(end_pos, 6.0, Color(0.70, 1.0, 1.0, 0.95))
+
+	# Prism zones (Prism Triarch)
+	for zone in _prism_zones:
+		var state: String = zone.get("state", "forming") as String
+		if state == "forming":
+			var nodes: Array = zone.get("nodes", []) as Array
+			if nodes.size() >= 3:
+				for i in nodes.size():
+					var n1: Vector2 = nodes[i] as Vector2
+					var n2: Vector2 = nodes[(i + 1) % nodes.size()] as Vector2
+					draw_line(n1, n2, Color(0.85, 0.50, 1.0, 0.80), 3.0)
+				var alpha: float = 0.20 + 0.15 * sin(_elapsed * 4.0)
+				draw_circle(zone.get("boss_pos", Vector2.ZERO) as Vector2, 75.0, Color(0.70, 0.30, 1.0, alpha))
+		elif state == "collapse":
+			var state_t: float = zone.get("state_t", 0.0) as float
+			var collapse_dur: float = zone.get("collapse_duration", 2.5) as float
+			var progress: float = state_t / collapse_dur
+			var boss_p: Vector2 = zone.get("boss_pos", Vector2.ZERO) as Vector2
+			draw_circle(boss_p, 100.0 + progress * 150.0, Color(1.0, 0.20, 0.80, (1.0 - progress) * 0.60))
+			draw_arc(boss_p, 100.0 + progress * 150.0, 0.0, TAU, 32, Color(0.85, 0.20, 1.0, (1.0 - progress) * 0.90), 3.0)
+
+	# Venom pods (Blight Vine Tyrant)
+	for pod in _venom_pods:
+		var pp: Vector2 = pod["pos"] as Vector2
+		var life_ratio: float = (pod["life"] as float) / (pod["max_life"] as float)
+		var pulse: float = 0.8 + 0.2 * sin(_elapsed * 6.0)
+		draw_circle(pp, 9.0 * pulse, Color(0.40, 0.95, 0.30, 0.85))
+		draw_circle(pp, 5.0 * pulse, Color(0.70, 1.0, 0.45, 0.92))
+		draw_arc(pp, 11.0 * pulse, 0.0, TAU, 12, Color(0.30, 0.80, 0.20, 0.70), 1.5)
+
+	# Lightning markers (Thunderforge Behemoth)
+	for marker in _lightning_markers:
+		var mp: Vector2 = marker.get("pos", Vector2.ZERO) as Vector2
+		var life_ratio: float = (marker["life"] as float) / (marker.get("max_life", 4.0) as float)
+		var is_cataclysm: bool = marker.get("cataclysm", false)
+		if is_cataclysm:
+			var phase: int = marker.get("phase", 0) as int
+			var phase_radius: float = 50.0 + float(phase) * 30.0
+			var warning: float = 0.40 + 0.40 * sin(_elapsed * 12.0)
+			draw_circle(mp, phase_radius, Color(1.0, 0.85, 0.20, 0.15 + warning * 0.20))
+			draw_arc(mp, phase_radius, 0.0, TAU, 24, Color(1.0, 0.90, 0.30, 0.80), 2.5)
+		else:
+			var orbit_r: float = marker.get("orbit_r", 200.0) as float
+			draw_circle(mp, 8.0, Color(1.0, 0.85, 0.20, 0.90))
+			draw_circle(mp, 4.0, Color(1.0, 1.0, 0.50, 0.95))
+			draw_arc(mp, 10.0, 0.0, TAU, 16, Color(1.0, 0.70, 0.10, 0.70 * life_ratio), 1.5)
+
+	# Thorn patches (Blight Vine Tyrant)
+	for patch in _thorn_patches:
+		var pp: Vector2 = patch.get("pos", Vector2.ZERO) as Vector2
+		var pr: float = patch.get("r", 35.0) as float
+		var life_ratio: float = (patch["life"] as float) / (patch.get("max_life", 3.0) as float)
+		draw_circle(pp, pr, Color(0.40, 0.95, 0.30, 0.25 + 0.15 * sin(_elapsed * 5.0)))
+		draw_arc(pp, pr, 0.0, TAU, 20, Color(0.30, 0.80, 0.20, 0.75 * life_ratio), 2.0)
+		for ti in 5:
+			var ta: float = float(ti) / 5.0 * TAU + _elapsed * 2.0
+			draw_circle(pp + Vector2(cos(ta), sin(ta)) * pr * 0.7, 3.5, Color(0.70, 1.0, 0.40, 0.80))
 
 	# Potions
 	for p in _potions:
@@ -4873,7 +5892,7 @@ func _draw() -> void:
 		draw_circle(pp, 14.0 * pulse, Color(0.15, 0.80, 0.25, 0.30))
 		draw_circle(pp, 10.0 * pulse, Color(0.25, 0.95, 0.40))
 		draw_circle(pp, 5.0 * pulse, Color(0.70, 1.0, 0.72, 0.90))
-		draw_string(ThemeDB.fallback_font, pp + Vector2(-8, -18), "+HP", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.30, 1.0, 0.45))
+		draw_string(ThemeDB.fallback_font, pp + Vector2(-8, -18), "+HP", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.30, 1.0, 0.45))
 
 	# Ring drops
 	for rd in _ring_drops:
@@ -4882,7 +5901,17 @@ func _draw() -> void:
 		var rpulse: float = 0.80 + sin(_elapsed * 4.0) * 0.20
 		draw_arc(rp, 14.0 * rpulse, 0.0, TAU, 24, Color(0.98, 0.82, 0.15, 0.90), 3.5)
 		draw_arc(rp, 8.0 * rpulse, 0.0, TAU, 16, Color(1.0, 0.95, 0.55, 0.55), 2.0)
-		draw_string(ThemeDB.fallback_font, rp + Vector2(-10, -22), "\u25c6 Ring", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1.0, 0.88, 0.25))
+		draw_string(ThemeDB.fallback_font, rp + Vector2(-12, -28), "\u25c6 Ring", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1.0, 0.88, 0.25))
+
+	# Artifact drops
+	for ad in _artifact_drops:
+		var ap: Vector2 = ad["pos"] as Vector2
+		var artifact: Dictionary = ad["artifact"] as Dictionary
+		var apulse: float = 0.80 + sin(_elapsed * 3.5) * 0.20
+		draw_arc(ap, 14.0 * apulse, 0.0, TAU, 24, Color(0.98, 0.82, 0.15, 0.90), 3.5)
+		draw_arc(ap, 8.0 * apulse, 0.0, TAU, 16, Color(1.0, 0.95, 0.55, 0.55), 2.0)
+		var artifact_label_pos: Vector2 = Vector2(ap.x - 56.0, ap.y - 28.0)
+		draw_string(ThemeDB.fallback_font, artifact_label_pos, "\u25c6 Artifact", HORIZONTAL_ALIGNMENT_CENTER, 112.0, 18, Color(1.0, 0.88, 0.25))
 
 	# AOE flashes (drawn after enemies for dramatic screen overlay)
 	for fl in _aoe_flashes:
@@ -4898,8 +5927,6 @@ func _draw() -> void:
 			var p3: Vector2 = fpos + cdir.rotated(ca * 0.5) * cr
 			draw_colored_polygon(PackedVector2Array([p1, p2, p3]), Color(1.0, 0.66, 0.24, flf * 0.26))
 			continue
-		draw_circle(fpos, 120.0 + 180.0 * flf, Color(0.85, 0.85, 0.95, flf * 0.16))
-		continue
 		if fkind == "blizzard":
 			draw_circle(_player_pos, 2400.0, Color(0.75, 0.92, 1.0, flf * 0.28))
 			draw_arc(_player_pos, 1800.0, 0.0, TAU, 64, Color(0.55, 0.82, 1.0, flf * 0.45), 9.0 * flf)
@@ -5022,20 +6049,86 @@ func _draw() -> void:
 			for leaf in 4:
 				var la: float = float(leaf) / 4.0 * TAU + _elapsed * 1.2
 				draw_circle(fpos + Vector2(cos(la), sin(la)) * (110.0 + float(leaf) * 6.0), 10.0 * flf, Color(0.28, 0.88, 0.38, flf * 0.75))
-		elif fkind == "capy_charge":
-			for dash in 9:
-				var da: float = float(dash) / 9.0 * TAU + _elapsed * 1.0
-				draw_arc(fpos, 220.0 + float(dash) * 6.0, da, da + 0.14, 12, Color(0.76, 0.56, 0.28, flf * 0.55), 3.2)
-		elif fkind == "stampede":
-			draw_circle(fpos, 280.0 * flf + 60.0, Color(0.42, 0.26, 0.12, flf * 0.18))
-			for hoof in 10:
-				var hoa: float = float(hoof) / 10.0 * TAU + _elapsed * 0.75
-				draw_arc(fpos, 250.0 + float(hoof) * 4.0, hoa, hoa + 0.10, 10, Color(0.58, 0.34, 0.16, flf * 0.65), 4.0)
+
+		elif fkind == "meatball_barrage":
+			draw_circle(fpos, 240.0 * flf + 80.0, Color(0.74, 0.48, 0.24, flf * 0.30))
+			draw_arc(fpos, 180.0 + flf * 90.0, 0.0, TAU, 32, Color(0.90, 0.62, 0.32, flf * 0.70), 4.0)
+			for mb in 12:
+				var mba: float = float(mb) / 12.0 * TAU + _elapsed * 2.2
+				var mbp: Vector2 = fpos + Vector2(cos(mba), sin(mba)) * (100.0 + flf * 140.0)
+				draw_circle(mbp, 8.0, Color(0.96, 0.70, 0.34, flf * 0.85))
+			draw_arc(fpos, 320.0 + flf * 140.0, 0.0, TAU, 48, Color(0.88, 0.60, 0.28, flf * 0.45), 2.0)
+		elif fkind == "meatball_barrage":
+			draw_circle(fpos, 240.0 * flf + 80.0, Color(0.74, 0.48, 0.24, flf * 0.30))
+			draw_arc(fpos, 180.0 + flf * 90.0, 0.0, TAU, 32, Color(0.90, 0.62, 0.32, flf * 0.70), 4.0)
+			for mb in 12:
+				var mba: float = float(mb) / 12.0 * TAU + _elapsed * 2.2
+				var mbp: Vector2 = fpos + Vector2(cos(mba), sin(mba)) * (100.0 + flf * 140.0)
+				draw_circle(mbp, 8.0, Color(0.96, 0.70, 0.34, flf * 0.85))
+			draw_arc(fpos, 320.0 + flf * 140.0, 0.0, TAU, 48, Color(0.88, 0.60, 0.28, flf * 0.45), 2.0)
 		elif fkind == "master_kitchen":
-			draw_circle(fpos, 320.0 * flf + 50.0, Color(1.0, 0.64, 0.20, flf * 0.18))
-			for utensil in 8:
-				var ua: float = float(utensil) / 8.0 * TAU + _elapsed * 1.5
-				draw_arc(fpos, 180.0 + float(utensil) * 10.0, ua, ua + 0.20, 12, Color(1.0, 0.78, 0.34, flf * 0.70), 2.4)
+			var from_pos: Vector2 = fl.get("from_pos", fpos) as Vector2
+			var to_pos: Vector2 = fl.get("to_pos", fpos + (fl.get("dir", Vector2.RIGHT) as Vector2) * (fl.get("r", 240.0) as float)) as Vector2
+			var t: float = clamp(1.0 - flf, 0.0, 1.0)
+			var head: Vector2 = from_pos.lerp(to_pos, t)
+			var dirk: Vector2 = (to_pos - from_pos).normalized()
+			if dirk.length_squared() < 0.0001:
+				dirk = Vector2.RIGHT
+			var perp: Vector2 = Vector2(-dirk.y, dirk.x)
+			var utensil: String = fl.get("utensil", "knife") as String
+			var streak_col: Color = Color(1.0, 0.78, 0.34, flf * 0.64)
+			if utensil == "knife":
+				streak_col = Color(0.92, 0.95, 1.0, flf * 0.68)
+			elif utensil == "spoon" or utensil == "soup" or utensil == "shoup":
+				streak_col = Color(0.98, 0.88, 0.56, flf * 0.68)
+			elif utensil == "spatula" or utensil == "board":
+				streak_col = Color(0.80, 0.56, 0.28, flf * 0.68)
+			elif utensil == "hat":
+				streak_col = Color(0.98, 0.96, 0.86, flf * 0.68)
+			elif utensil == "fork" or utensil == "grater":
+				streak_col = Color(0.88, 0.92, 1.0, flf * 0.68)
+			elif utensil == "hotdog" or utensil == "meatball" or utensil == "pizza":
+				streak_col = Color(1.0, 0.60, 0.24, flf * 0.70)
+			draw_line(head - dirk * 46.0 * flf, head, streak_col, 3.2)
+			if utensil == "knife":
+				draw_line(head - dirk * 18.0, head + dirk * 9.0, Color(0.88, 0.92, 0.98, flf * 0.94), 3.2)
+				draw_line(head - dirk * 18.0 - perp * 3.0, head - dirk * 18.0 + perp * 3.0, Color(0.56, 0.34, 0.16, flf * 0.90), 2.2)
+			elif utensil == "spoon" or utensil == "soup" or utensil == "shoup":
+				draw_line(head - dirk * 20.0, head, Color(0.90, 0.90, 0.96, flf * 0.90), 2.6)
+				draw_circle(head + dirk * 4.0, 6.0, Color(1.0, 0.78, 0.38, flf * 0.92))
+			elif utensil == "spatula":
+				draw_line(head - dirk * 24.0, head - dirk * 2.0, Color(0.64, 0.42, 0.20, flf * 0.90), 2.4)
+				draw_colored_polygon(PackedVector2Array([head + perp * 7.0, head - perp * 7.0, head - dirk * 16.0 - perp * 7.0, head - dirk * 16.0 + perp * 7.0]), Color(0.82, 0.84, 0.90, flf * 0.90))
+			elif utensil == "board":
+				draw_colored_polygon(PackedVector2Array([head + dirk * 9.0 + perp * 8.0, head + dirk * 9.0 - perp * 8.0, head - dirk * 13.0 - perp * 8.0, head - dirk * 13.0 + perp * 8.0]), Color(0.74, 0.50, 0.28, flf * 0.92))
+			elif utensil == "hat":
+				draw_arc(head, 8.0, PI, TAU, 14, Color(1.0, 1.0, 1.0, flf * 0.92), 2.6)
+				draw_line(head - perp * 10.0, head + perp * 10.0, Color(0.98, 0.92, 0.84, flf * 0.92), 2.2)
+			elif utensil == "fork":
+				draw_line(head - dirk * 24.0, head + dirk * 4.0, Color(0.90, 0.92, 0.98, flf * 0.92), 2.2)
+				for pr in 3:
+					var ofs: float = (float(pr) - 1.0) * 3.4
+					draw_line(head + perp * ofs, head + dirk * 9.0 + perp * ofs, Color(0.90, 0.92, 0.98, flf * 0.92), 1.6)
+			elif utensil == "grater":
+				draw_colored_polygon(PackedVector2Array([head + dirk * 8.0 + perp * 7.0, head + dirk * 8.0 - perp * 7.0, head - dirk * 10.0 - perp * 7.0, head - dirk * 10.0 + perp * 7.0]), Color(0.78, 0.82, 0.90, flf * 0.90))
+				for gh in 4:
+					var ghp: Vector2 = head - dirk * (7.0 - float(gh) * 4.0)
+					draw_circle(ghp + perp * 2.6, 1.2, Color(0.56, 0.62, 0.74, flf * 0.92))
+					draw_circle(ghp - perp * 2.6, 1.2, Color(0.56, 0.62, 0.74, flf * 0.92))
+			elif utensil == "whisk":
+				draw_line(head - dirk * 24.0, head - dirk * 4.0, Color(0.72, 0.54, 0.28, flf * 0.90), 2.4)
+				draw_arc(head + dirk * 1.0, 6.0, 0.0, TAU, 18, Color(0.92, 0.94, 1.0, flf * 0.90), 1.2)
+				draw_arc(head + dirk * 1.0, 4.0, 0.0, TAU, 14, Color(0.92, 0.94, 1.0, flf * 0.90), 1.2)
+			elif utensil == "hotdog":
+				draw_colored_polygon(PackedVector2Array([head + dirk * 10.0 + perp * 5.0, head + dirk * 10.0 - perp * 5.0, head - dirk * 10.0 - perp * 5.0, head - dirk * 10.0 + perp * 5.0]), Color(0.96, 0.72, 0.36, flf * 0.90))
+				draw_line(head - dirk * 9.0, head + dirk * 9.0, Color(0.84, 0.22, 0.16, flf * 0.95), 2.2)
+			elif utensil == "meatball":
+				draw_circle(head, 6.5, Color(0.66, 0.26, 0.16, flf * 0.94))
+				draw_circle(head + dirk * 2.0, 2.0, Color(0.92, 0.68, 0.42, flf * 0.70))
+			elif utensil == "pizza":
+				draw_colored_polygon(PackedVector2Array([head + dirk * 10.0, head - dirk * 7.0 + perp * 7.0, head - dirk * 7.0 - perp * 7.0]), Color(1.0, 0.78, 0.38, flf * 0.92))
+				draw_arc(head + dirk * 8.0, 4.2, -0.9, 0.9, 8, Color(0.86, 0.26, 0.16, flf * 0.95), 1.6)
+			draw_circle(head, 2.2, Color(1.0, 0.96, 0.78, flf * 0.92))
 		elif fkind == "phantom_hunt":
 			for arw in 18:
 				var pa: float = float(arw) / 18.0 * TAU + _elapsed * 2.1
@@ -5076,6 +6169,14 @@ func _draw() -> void:
 			for flame in 16:
 				var fa: float = float(flame) / 16.0 * TAU + _elapsed * 2.4
 				draw_circle(fpos + Vector2(cos(fa), sin(fa)) * (120.0 + float(flame) * 9.0), 5.0 * flf, Color(1.0, 0.62, 0.12, flf * 0.80))
+		elif fkind == "meatball_barrage":
+			draw_circle(fpos, 240.0 * flf + 80.0, Color(0.74, 0.48, 0.24, flf * 0.30))
+			draw_arc(fpos, 180.0 + flf * 90.0, 0.0, TAU, 32, Color(0.90, 0.62, 0.32, flf * 0.70), 4.0)
+			for mb in 12:
+				var mba: float = float(mb) / 12.0 * TAU + _elapsed * 2.2
+				var mbp: Vector2 = fpos + Vector2(cos(mba), sin(mba)) * (100.0 + flf * 140.0)
+				draw_circle(mbp, 8.0, Color(0.96, 0.70, 0.34, flf * 0.85))
+			draw_arc(fpos, 320.0 + flf * 140.0, 0.0, TAU, 48, Color(0.88, 0.60, 0.28, flf * 0.45), 2.0)
 		elif fkind == "master_kitchen":
 			draw_circle(fpos, 320.0 * flf + 50.0, Color(1.0, 0.64, 0.20, flf * 0.18))
 			for utensil in 8:
@@ -5117,6 +6218,95 @@ func _draw() -> void:
 			for flame in 16:
 				var fa: float = float(flame) / 16.0 * TAU + _elapsed * 2.4
 				draw_circle(fpos + Vector2(cos(fa), sin(fa)) * (120.0 + float(flame) * 9.0), 5.0 * flf, Color(1.0, 0.62, 0.12, flf * 0.80))
+
+	# ── Draw Capy Charge shadow rushes ────────────────────────────────────────
+	for rush in _capy_charge_rushes:
+		var rush_pos: Vector2 = (rush["pos"] as Vector2)
+		var rush_life: float = (rush["life"] as float) / (rush["max_life"] as float)
+		var rush_alpha: float = rush_life * 0.85
+		# Shadow capy body
+		draw_circle(rush_pos, 32.0, Color(0.88, 0.70, 0.44, rush_alpha * 0.7))
+		# Trail effect
+		for trail_i in 3:
+			var trail_offset: float = float(trail_i) * 40.0
+			var trail_pos: Vector2 = rush_pos - (rush["dir"] as Vector2) * trail_offset
+			draw_circle(trail_pos, 24.0 - trail_i * 6.0, Color(0.98, 0.82, 0.50, rush_alpha * 0.4))
+		# Impact rings
+		var ring_r: float = 60.0 + sin(_elapsed * 12.0) * 20.0
+		draw_arc(rush_pos, ring_r, 0.0, TAU, 16, Color(0.76, 0.56, 0.28, rush_alpha * 0.6), 3.0)
+
+	# ── Draw Stampede centipedes (realistic millipede creatures) ────────────────────────────────────
+	for centipede in _stampedes:
+		var cent_pos: Vector2 = (centipede["pos"] as Vector2)
+		var cent_life: float = (centipede["life"] as float) / (centipede["max_life"] as float)
+		var cent_alpha: float = cent_life * 0.90
+		
+		# Calculate movement direction
+		var start_pos: Vector2 = centipede.get("start_pos", _player_pos) as Vector2
+		var cent_dir: Vector2 = (cent_pos - start_pos).normalized()
+		if cent_dir.length_squared() < 0.01:
+			var spawn_angle: float = centipede.get("spawn_angle", 0.0) as float
+			cent_dir = Vector2(cos(spawn_angle), sin(spawn_angle))
+		
+		# Draw body as thick, segmented creature (wide segments, not thin tail)
+		var num_segments: int = 10
+		var segment_spacing: float = 16.0
+		var max_width: float = 28.0
+		
+		# Draw segments from back to front (so head appears on top)
+		for seg in range(num_segments - 1, -1, -1):
+			var seg_offset: float = float(seg) * segment_spacing
+			var seg_pos: Vector2 = cent_pos - cent_dir * seg_offset
+			
+			# Segment gets smaller toward tail
+			var seg_ratio: float = float(seg) / float(num_segments)
+			var seg_alpha: float = cent_alpha * (0.9 - seg_ratio * 0.4)
+			var seg_width: float = max_width * (1.0 - seg_ratio * 0.5)
+			
+			# Draw thick segment (main body)
+			draw_circle(seg_pos, seg_width * 0.55, Color(0.85, 0.18, 0.12, seg_alpha))
+			
+			# Segment ridges for texture
+			if seg % 2 == 0:
+				draw_circle(seg_pos, seg_width * 0.35, Color(1.0, 0.25, 0.15, seg_alpha * 0.6))
+			
+			# Many legs - perpendicular to body, every segment
+			var leg_count: int = 4
+			for leg_i in range(leg_count):
+				var leg_angle_offset: float = PI / float(leg_count + 1) * float(leg_i + 1)
+				
+				# Left side legs
+				var leg_angle_l: float = cent_dir.angle() + PI/2.0 + leg_angle_offset
+				var leg_length: float = 18.0 + float(leg_i) * 2.0
+				var left_leg: Vector2 = seg_pos + Vector2(cos(leg_angle_l), sin(leg_angle_l)) * leg_length
+				draw_line(seg_pos, left_leg, Color(0.80, 0.12, 0.08, seg_alpha * 0.8), 2.8)
+				draw_circle(left_leg, 2.5, Color(0.95, 0.15, 0.10, seg_alpha * 0.9))
+				
+				# Right side legs  
+				var leg_angle_r: float = cent_dir.angle() - PI/2.0 - leg_angle_offset
+				var right_leg: Vector2 = seg_pos + Vector2(cos(leg_angle_r), sin(leg_angle_r)) * leg_length
+				draw_line(seg_pos, right_leg, Color(0.80, 0.12, 0.08, seg_alpha * 0.8), 2.8)
+				draw_circle(right_leg, 2.5, Color(0.95, 0.15, 0.10, seg_alpha * 0.9))
+		
+		# Head - large, rounded, distinctive
+		draw_circle(cent_pos, 22.0, Color(1.0, 0.22, 0.16, cent_alpha))
+		draw_circle(cent_pos, 20.0, Color(1.0, 0.28, 0.20, cent_alpha * 0.8))
+		
+		# Antennae
+		var antenna_l: Vector2 = cent_pos + Vector2(cos(cent_dir.angle() + 0.3), sin(cent_dir.angle() + 0.3)) * 28.0
+		var antenna_r: Vector2 = cent_pos + Vector2(cos(cent_dir.angle() - 0.3), sin(cent_dir.angle() - 0.3)) * 28.0
+		draw_line(cent_pos, antenna_l, Color(0.90, 0.25, 0.15, cent_alpha * 0.7), 2.0)
+		draw_line(cent_pos, antenna_r, Color(0.90, 0.25, 0.15, cent_alpha * 0.7), 2.0)
+		draw_circle(antenna_l, 3.0, Color(1.0, 0.30, 0.20, cent_alpha * 0.8))
+		draw_circle(antenna_r, 3.0, Color(1.0, 0.30, 0.20, cent_alpha * 0.8))
+		
+		# Eyes
+		var eye_dist: float = 12.0
+		var eye_side: float = 7.0
+		var left_eye: Vector2 = cent_pos + Vector2(cos(cent_dir.angle()), sin(cent_dir.angle())) * eye_dist + Vector2(cos(cent_dir.angle() + PI/2.0), sin(cent_dir.angle() + PI/2.0)) * eye_side
+		var right_eye: Vector2 = cent_pos + Vector2(cos(cent_dir.angle()), sin(cent_dir.angle())) * eye_dist - Vector2(cos(cent_dir.angle() + PI/2.0), sin(cent_dir.angle() + PI/2.0)) * eye_side
+		draw_circle(left_eye, 3.5, Color(0.15, 0.15, 0.15, cent_alpha * 0.9))
+		draw_circle(right_eye, 3.5, Color(0.15, 0.15, 0.15, cent_alpha * 0.9))
 
 	# Orbs
 	if _has_skill("orb"):
@@ -5182,22 +6372,22 @@ func _draw() -> void:
 		var perp: Vector2 = Vector2(-bv.y, bv.x)
 		var bkind: String = b.get("kind", "bolt") as String
 		if bkind == "arcane_missile":
-			draw_arc(bp, 14.0, 0.0, TAU, 24, Color(0.46, 0.12, 0.92, 0.65), 2.2)
-			draw_circle(bp, 7.0, Color(0.90, 0.70, 1.0, 0.78))
+			draw_arc(bp, 14.0, 0.0, TAU, 24, Color(0.68, 0.20, 1.0, 0.80), 2.2)
+			draw_circle(bp, 7.0, Color(0.82, 0.40, 1.0, 0.88))
 			for mi in 3:
 				var ma: float = _elapsed * 12.0 + float(mi) * TAU / 3.0
-				draw_circle(bp + Vector2(cos(ma), sin(ma)) * 8.0, 1.5, Color(0.96, 0.88, 1.0, 0.78))
+				draw_circle(bp + Vector2(cos(ma), sin(ma)) * 8.0, 1.5, Color(0.90, 0.60, 1.0, 0.90))
 		elif bkind == "ricochet_arrow":
-			var arrow_len_r: float = 30.0
-			var tail_r: Vector2 = bp - bv * arrow_len_r
-			draw_line(tail_r, bp, Color(0.08, 0.08, 0.08, 0.86), 3.0)
-			draw_line(tail_r, bp, Color(0.26, 0.26, 0.26, 0.78), 1.5)
-			var rleft: Vector2 = bp + perp * 5.5
-			var rright: Vector2 = bp - perp * 5.5
-			var rtip: Vector2 = bp + bv * 9.0
-			draw_colored_polygon(PackedVector2Array([rleft, rright, rtip]), Color(0.08, 0.08, 0.08, 0.98))
-			draw_line(tail_r, tail_r + perp * 7.0, Color(0.22, 0.22, 0.22, 0.68), 2.0)
-			draw_line(tail_r, tail_r - perp * 7.0, Color(0.22, 0.22, 0.22, 0.68), 2.0)
+			# Bomb-shaped ricochet arrow with fuse spark
+			draw_circle(bp, 8.0, Color(0.12, 0.12, 0.12, 0.96))
+			draw_circle(bp + Vector2(-2.0, -2.0), 2.0, Color(0.42, 0.42, 0.42, 0.80))
+			var fuse_base: Vector2 = bp - bv * 6.0 + perp * 5.0
+			var fuse_tip: Vector2 = fuse_base - bv * 7.0 + perp * 2.0
+			draw_line(fuse_base, fuse_tip, Color(0.60, 0.45, 0.20, 0.95), 1.8)
+			var spark_a: float = _elapsed * 18.0
+			draw_circle(fuse_tip + Vector2(cos(spark_a), sin(spark_a)) * 1.8, 2.2, Color(1.0, 0.74, 0.22, 0.95))
+			draw_circle(fuse_tip, 1.3, Color(1.0, 0.94, 0.62, 0.98))
+			draw_arc(bp, 11.0, 0.0, TAU, 16, Color(0.95, 0.62, 0.18, 0.48), 1.4)
 		elif bkind == "shadow_dagger":
 			draw_circle(bp, 7.0, Color(0.24, 0.10, 0.42, 0.92))
 			draw_arc(bp, 12.0, 0.0, TAU, 20, Color(0.66, 0.50, 1.0, 0.50), 1.8)
@@ -5285,23 +6475,35 @@ func _draw() -> void:
 			draw_line(bp - bv * 12.0 - perp * 6.0, bp + bv * 4.0, Color(0.96, 0.90, 0.74, 0.72), 1.4)
 			draw_circle(bp + bv * 8.0, 2.2, Color(1.0, 0.96, 0.88, 0.90))
 		elif bkind == "phantom_hunt":
-			draw_line(bp - bv * 17.0, bp + bv * 10.0, Color(0.94, 0.94, 0.98, 0.92), 3.0)
-			draw_line(bp - bv * 17.0, bp + bv * 10.0, Color(1.0, 1.0, 1.0, 0.72), 1.4)
-			var ph_left: Vector2 = bp + perp * 5.0
-			var ph_right: Vector2 = bp - perp * 5.0
-			var ph_tip: Vector2 = bp + bv * 12.0
-			draw_colored_polygon(PackedVector2Array([ph_left, ph_right, ph_tip]), Color(1.0, 1.0, 1.0, 0.96))
-			draw_arc(bp, 10.0, 0.0, TAU, 18, Color(0.88, 0.92, 1.0, 0.38), 1.4)
+			# Brighter white phantom arrow with glow
+			draw_line(bp - bv * 18.0, bp + bv * 12.0, Color(0.98, 0.98, 1.0, 0.95), 3.5)
+			draw_line(bp - bv * 18.0, bp + bv * 12.0, Color(1.0, 1.0, 1.0, 0.85), 1.8)
+			var ph_left: Vector2 = bp + perp * 6.0
+			var ph_right: Vector2 = bp - perp * 6.0
+			var ph_tip: Vector2 = bp + bv * 14.0
+			draw_colored_polygon(PackedVector2Array([ph_left, ph_right, ph_tip]), Color(1.0, 1.0, 1.0, 0.98))
+			draw_arc(bp, 12.0, 0.0, TAU, 20, Color(0.92, 0.96, 1.0, 0.48), 1.8)
+			draw_circle(bp, 5.0, Color(1.0, 1.0, 1.0, 0.25))
+		elif bkind == "phantom_homing":
+			# White hunting orbs that chase enemies
+			draw_circle(bp, 8.0, Color(1.0, 1.0, 1.0, 0.92))
+			draw_circle(bp, 4.5, Color(1.0, 1.0, 1.0, 0.98))
+			draw_arc(bp, 9.0, 0.0, TAU, 16, Color(0.85, 0.90, 1.0, 0.60), 1.2)
+			for glow_i in 3:
+				var ga: float = _elapsed * 12.0 + float(glow_i) * TAU / 3.0
+				draw_circle(bp + Vector2(cos(ga), sin(ga)) * 6.0, 2.0, Color(0.95, 0.98, 1.0, 0.55))
 		elif bkind == "trap_arrow":
-			draw_line(bp - bv * 16.0, bp + bv * 10.0, Color(0.30, 0.42, 0.18, 0.88), 3.2)
-			draw_line(bp - bv * 16.0, bp + bv * 10.0, Color(0.64, 0.88, 0.24, 0.68), 1.4)
-			var tv_left: Vector2 = bp + perp * 5.0
-			var tv_right: Vector2 = bp - perp * 5.0
-			var tv_tip: Vector2 = bp + bv * 12.0
-			draw_colored_polygon(PackedVector2Array([tv_left, tv_right, tv_tip]), Color(0.52, 0.96, 0.26, 0.96))
-			for thorn in 4:
-				var ta: float = _elapsed * 8.0 + float(thorn) * TAU / 4.0
-				draw_circle(bp + Vector2(cos(ta), sin(ta)) * 7.0, 1.2, Color(0.70, 1.0, 0.34, 0.66))
+			# Bigger green vine arrow
+			draw_line(bp - bv * 20.0, bp + bv * 12.0, Color(0.25, 0.48, 0.10, 0.92), 4.0)
+			draw_line(bp - bv * 20.0, bp + bv * 12.0, Color(0.68, 0.95, 0.28, 0.75), 1.8)
+			var tv_left: Vector2 = bp + perp * 7.0
+			var tv_right: Vector2 = bp - perp * 7.0
+			var tv_tip: Vector2 = bp + bv * 15.0
+			draw_colored_polygon(PackedVector2Array([tv_left, tv_right, tv_tip]), Color(0.58, 0.98, 0.32, 0.98))
+			for thorn in 5:
+				var ta: float = _elapsed * 7.0 + float(thorn) * TAU / 5.0
+				draw_circle(bp + Vector2(cos(ta), sin(ta)) * 9.0, 1.8, Color(0.75, 1.0, 0.40, 0.72))
+			draw_arc(bp, 11.0, 0.0, TAU, 16, Color(0.60, 0.92, 0.25, 0.45), 1.5)
 		elif bkind.begins_with("tb_"):
 			var tb_style: int = bkind.substr(3).to_int()
 			match tb_style:
@@ -5410,7 +6612,7 @@ func _draw() -> void:
 	var p_bob: float      = sin(p_walk) * 3.0 if p_is_moving else 0.0
 	var p_leg_l: float    = sin(p_walk) * 7.0 if p_is_moving else 0.0
 	var p_leg_r: float    = sin(p_walk + PI) * 7.0 if p_is_moving else 0.0
-	var pdp: Vector2      = _player_pos + Vector2(0.0, p_bob)
+	var pdp: Vector2      = _player_pos + Vector2(0.0, p_bob - _player_jump_vel_y * 0.5)  # Jump offset
 	var p_draw_r: float = PLAYER_DRAW_R
 	# Legs drawn behind body
 	var p_leg_col: Color = _player_tint.darkened(0.28)
@@ -5439,6 +6641,14 @@ func _draw() -> void:
 		var shield_pulse: float = 0.72 + sin(_elapsed * 18.0) * 0.18
 		draw_circle(pdp, p_draw_r + 13.0, Color(0.30, 0.74, 1.0, 0.16 * shield_pulse))
 		draw_arc(pdp, p_draw_r + 15.0, 0.0, TAU, 48, Color(0.54, 0.88, 1.0, 0.82 * shield_pulse), 4.0)
+	# Idle-enrage warning: only when stand-still boost is active
+	if _idle_enemy_speed_boost_active and not _enemies.is_empty():
+		var warn_flash: float = 0.6 + 0.4 * sin(_elapsed * 6.0)
+		var warn_text: String = "WARNING: enemy will enrage and move faster if player stand still for more than 2 seconds"
+		var warn_width: float = 1060.0
+		var warn_pos: Vector2 = pdp + Vector2(-warn_width * 0.5, p_draw_r + 35.0)
+		draw_string(ThemeDB.fallback_font, warn_pos, warn_text, HORIZONTAL_ALIGNMENT_CENTER, warn_width, 22, Color(0.0, 0.0, 0.0, 0.70 * warn_flash))
+		draw_string(ThemeDB.fallback_font, warn_pos + Vector2(0, -2), warn_text, HORIZONTAL_ALIGNMENT_CENTER, warn_width, 22, Color(1.0, 0.12, 0.08, 0.98 * warn_flash))
 
 func _draw_bg() -> void:
 	var view: Vector2 = get_viewport_rect().size
@@ -5530,46 +6740,47 @@ func _draw_bg() -> void:
 
 	# Boss intermission props + arena frame
 	var bi_state: String = _boss_intermission.get("state", "none") as String
-	if bi_state == "await_choice":
+	if bi_state == "await_choice" or bi_state == "await_ladder":
 		var dp: Vector2 = _boss_intermission.get("door_pos", _player_pos) as Vector2
 		var lp: Vector2 = _boss_intermission.get("ladder_pos", _player_pos) as Vector2
-		var view_rect: Rect2 = get_viewport_rect()
-		# Off-screen portal indicator
-		if not view_rect.has_point(dp):
-			var to_portal: Vector2 = (dp - _player_pos).normalized()
-			var edge_pos: Vector2 = _player_pos + to_portal * 250.0
-			edge_pos = Vector2(clamp(edge_pos.x, 0.0, view_rect.size.x), clamp(edge_pos.y, 0.0, view_rect.size.y))
-			draw_circle(edge_pos, 18.0, Color(0.78, 0.52, 1.0, 0.88))
-			draw_circle(edge_pos + Vector2(0.0, -6.0), 12.0, Color(0.98, 0.86, 0.36, 0.90))
-		# Off-screen ladder indicator
+		var view_size: Vector2 = get_viewport_rect().size
+		var view_rect: Rect2 = Rect2(_player_pos - view_size * 0.5, view_size)
 		if not view_rect.has_point(lp):
-			var to_ladder: Vector2 = (lp - _player_pos).normalized()
-			var edge_pos: Vector2 = _player_pos + to_ladder * 250.0
-			edge_pos = Vector2(clamp(edge_pos.x, 0.0, view_rect.size.x), clamp(edge_pos.y, 0.0, view_rect.size.y))
-			draw_line(edge_pos + Vector2(-40.0, -50.0), edge_pos + Vector2(-40.0, 50.0), Color(0.64, 0.50, 0.28, 0.85), 18.0)
-			draw_line(edge_pos + Vector2(40.0, -50.0), edge_pos + Vector2(40.0, 50.0), Color(0.64, 0.50, 0.28, 0.85), 18.0)
-			draw_line(edge_pos + Vector2(-35.0, -45.0), edge_pos + Vector2(35.0, -45.0), Color(0.78, 0.62, 0.36, 0.88), 12.0)
-			draw_line(edge_pos + Vector2(-35.0, 0.0), edge_pos + Vector2(35.0, 0.0), Color(0.78, 0.62, 0.36, 0.88), 12.0)
-			draw_line(edge_pos + Vector2(-35.0, 45.0), edge_pos + Vector2(35.0, 45.0), Color(0.78, 0.62, 0.36, 0.88), 12.0)
-		var pr1: float = 180.0 + sin(_elapsed * 3.8) * 15.0
-		var pr2: float = 120.0 + cos(_elapsed * 4.6) * 10.0
-		draw_circle(dp, pr1, Color(0.42, 0.18, 0.76, 0.34))
-		draw_arc(dp, pr1, 0.0, TAU, 32, Color(0.78, 0.52, 1.0, 0.92), 4.0)
-		draw_arc(dp, pr2, 0.0, TAU, 28, Color(0.48, 0.90, 1.0, 0.84), 3.0)
-		for pi in 9:
-			var pa: float = float(pi) / 9.0 * TAU + _elapsed * 1.6
-			draw_circle(dp + Vector2(cos(pa), sin(pa)) * (pr2 - 20.0), 16.0, Color(0.90, 0.76, 1.0, 0.74))
-		# Key emblem on portal
-		draw_circle(dp + Vector2(0.0, -6.0), 16.0, Color(0.98, 0.86, 0.36, 0.92))
-		draw_circle(dp + Vector2(0.0, -6.0), 8.0, Color(0.46, 0.20, 0.06, 0.96))
-		draw_rect(Rect2(dp + Vector2(8.0, -10.0), Vector2(20.0, 8.0)), Color(0.98, 0.86, 0.36, 0.92), true)
-		draw_rect(Rect2(dp + Vector2(21.0, -10.0), Vector2(4.0, 14.0)), Color(0.98, 0.86, 0.36, 0.92), true)
-		draw_rect(Rect2(dp + Vector2(24.0, -2.0), Vector2(4.0, 6.0)), Color(0.98, 0.86, 0.36, 0.92), true)
-		draw_line(Vector2(lp.x - 70.0, lp.y - 170.0), Vector2(lp.x - 70.0, lp.y + 120.0), Color(0.64, 0.50, 0.28, 0.95), 20.0)
-		draw_line(Vector2(lp.x + 70.0, lp.y - 170.0), Vector2(lp.x + 70.0, lp.y + 120.0), Color(0.64, 0.50, 0.28, 0.95), 20.0)
+			var center_target: Vector2 = (dp + lp) * 0.5
+			if bi_state == "await_ladder":
+				center_target = lp
+			var dir_to_center: Vector2 = (center_target - _player_pos).normalized()
+			var bounds_min: Vector2 = view_rect.position + Vector2(28.0, 28.0)
+			var bounds_max: Vector2 = view_rect.position + view_rect.size - Vector2(28.0, 28.0)
+			var edge_pos: Vector2 = _player_pos + dir_to_center * min(view_size.x, view_size.y) * 0.48
+			edge_pos = Vector2(clamp(edge_pos.x, bounds_min.x, bounds_max.x), clamp(edge_pos.y, bounds_min.y, bounds_max.y))
+			var nrm: Vector2 = dir_to_center
+			var perp: Vector2 = Vector2(-nrm.y, nrm.x)
+			var tip: Vector2 = edge_pos + nrm * 11.0
+			var base_l: Vector2 = edge_pos - nrm * 8.0 + perp * 7.0
+			var base_r: Vector2 = edge_pos - nrm * 8.0 - perp * 7.0
+			draw_colored_polygon(PackedVector2Array([tip, base_l, base_r]), Color(1.0, 0.92, 0.66, 0.96))
+			draw_colored_polygon(PackedVector2Array([tip - nrm * 3.0, base_l - nrm * 2.0, base_r - nrm * 2.0]), Color(0.58, 0.34, 0.10, 0.75))
+		if bi_state == "await_choice":
+			var pr1: float = 90.0 + sin(_elapsed * 3.8) * 7.5
+			var pr2: float = 60.0 + cos(_elapsed * 4.6) * 5.0
+			draw_circle(dp, pr1, Color(0.42, 0.18, 0.76, 0.34))
+			draw_arc(dp, pr1, 0.0, TAU, 32, Color(0.78, 0.52, 1.0, 0.92), 4.0)
+			draw_arc(dp, pr2, 0.0, TAU, 28, Color(0.48, 0.90, 1.0, 0.84), 3.0)
+			for pi in 9:
+				var pa: float = float(pi) / 9.0 * TAU + _elapsed * 1.6
+				draw_circle(dp + Vector2(cos(pa), sin(pa)) * (pr2 - 10.0), 8.0, Color(0.90, 0.76, 1.0, 0.74))
+			# Key emblem on portal
+			draw_circle(dp + Vector2(0.0, -3.0), 8.0, Color(0.98, 0.86, 0.36, 0.92))
+			draw_circle(dp + Vector2(0.0, -3.0), 4.0, Color(0.46, 0.20, 0.06, 0.96))
+			draw_rect(Rect2(dp + Vector2(4.0, -5.0), Vector2(10.0, 4.0)), Color(0.98, 0.86, 0.36, 0.92), true)
+			draw_rect(Rect2(dp + Vector2(10.5, -5.0), Vector2(2.0, 7.0)), Color(0.98, 0.86, 0.36, 0.92), true)
+			draw_rect(Rect2(dp + Vector2(12.0, -1.0), Vector2(2.0, 3.0)), Color(0.98, 0.86, 0.36, 0.92), true)
+		draw_line(Vector2(lp.x - 35.0, lp.y - 85.0), Vector2(lp.x - 35.0, lp.y + 60.0), Color(0.64, 0.50, 0.28, 0.95), 10.0)
+		draw_line(Vector2(lp.x + 35.0, lp.y - 85.0), Vector2(lp.x + 35.0, lp.y + 60.0), Color(0.64, 0.50, 0.28, 0.95), 10.0)
 		for r in 6:
-			var ry: float = lp.y - 140.0 + float(r) * 50.0
-			draw_line(Vector2(lp.x - 60.0, ry), Vector2(lp.x + 60.0, ry), Color(0.78, 0.62, 0.36, 0.90), 12.0)
+			var ry: float = lp.y - 70.0 + float(r) * 25.0
+			draw_line(Vector2(lp.x - 30.0, ry), Vector2(lp.x + 30.0, ry), Color(0.78, 0.62, 0.36, 0.90), 6.0)
 	if bi_state == "arena":
 		var ac: Vector2 = _boss_intermission.get("arena_center", _player_pos) as Vector2
 		var ah: Vector2 = _boss_intermission.get("arena_half", BOSS_ARENA_HALF) as Vector2
@@ -6494,6 +7705,16 @@ func _on_death() -> void:
 	bs.set_border_width_all(2); bs.border_color = Color(0.55, 0.55, 0.75, 0.75)
 	bs.shadow_color = Color(0, 0, 0, 0.38); bs.shadow_size = 7; bs.shadow_offset = Vector2(0, 3)
 	back.add_theme_stylebox_override("normal", bs)
+	var bh := bs.duplicate() as StyleBoxFlat
+	bh.bg_color = Color(0.19, 0.19, 0.30, 0.96)
+	bh.border_color = Color(0.70, 0.70, 0.92, 0.90)
+	bh.shadow_color = Color(0, 0, 0, 0.45)
+	bh.shadow_size = 9
+	var bp := bs.duplicate() as StyleBoxFlat
+	bp.bg_color = Color(0.11, 0.11, 0.18, 0.98)
+	bp.border_color = Color(0.46, 0.46, 0.68, 0.88)
+	back.add_theme_stylebox_override("hover", bh)
+	back.add_theme_stylebox_override("pressed", bp)
 	back.pressed.connect(func() -> void: match_ended.emit("lobby"))
 	layer.add_child(back)
 
@@ -6535,7 +7756,7 @@ func _add_death_ring_rewards(layer: Node, view: Vector2, y: float) -> void:
 	if _rings_obtained.size() > max_rows:
 		var more := Label.new()
 		more.text = "+%d more in stash" % (_rings_obtained.size() - max_rows)
-		more.add_theme_font_size_override("font_size", 60)
+		more.add_theme_font_size_override("font_size", 30)
 		more.add_theme_color_override("font_color", Color(0.72, 0.68, 0.78))
 		more.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		root.add_child(more)
@@ -6565,7 +7786,7 @@ func _add_death_artifact_reward(layer: Node, view: Vector2, y: float) -> void:
 	panel.add_child(root)
 
 	var title := Label.new()
-	title.text = "Boss Artifact"
+	title.text = "Artifact Found"
 	title.add_theme_font_size_override("font_size", 30)
 	title.add_theme_color_override("font_color", Color(0.84, 0.78, 1.0))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -6578,9 +7799,10 @@ func _add_death_artifact_reward(layer: Node, view: Vector2, y: float) -> void:
 	if duplicated:
 		var dup := Label.new()
 		dup.text = "Duplicated artifact - key refunded to stash"
-		dup.add_theme_font_size_override("font_size", 60)
+		dup.add_theme_font_size_override("font_size", 24)
 		dup.add_theme_color_override("font_color", Color(0.70, 0.70, 0.74))
 		dup.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		dup.autowrap_mode = TextServer.AUTOWRAP_WORD
 		root.add_child(dup)
 
 func _make_death_artifact_row(artifact: Dictionary, duplicated: bool) -> Control:
@@ -6598,23 +7820,29 @@ func _make_death_artifact_row(artifact: Dictionary, duplicated: bool) -> Control
 	row.add_theme_stylebox_override("normal", style)
 	row.add_theme_stylebox_override("hover", style)
 	row.add_theme_stylebox_override("pressed", style)
-	row.custom_minimum_size = Vector2(0, 174)
+	row.custom_minimum_size = Vector2(0, 108)
 	row.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	row.focus_mode = Control.FOCUS_NONE
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.icon = ArtifactStore.artifact_icon(artifact)
+	row.expand_icon = true
+	row.add_theme_constant_override("icon_max_width", 56)
+	row.clip_text = true
+	row.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	row.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.text = "[%s]  %s%s" % [
 		rarity.to_upper(),
 		artifact.get("name", "Artifact") as String,
-		"  (Duplicated)" if duplicated else "",
+		"",
 	]
-	row.add_theme_font_size_override("font_size", 66)
+	row.add_theme_font_size_override("font_size", 30)
 	row.add_theme_color_override("font_color", Color(0.68, 0.68, 0.70) if duplicated else rarity_color)
 	if duplicated:
 		row.modulate = Color(0.66, 0.66, 0.66, 1.0)
 	return row
 
 func _make_death_ring_row(ring: Dictionary) -> Control:
-	var rarity: String = ring.get("rarity", "common") as String
+	var rarity: String = ring.get("rarity", "rare") as String
 	var rarity_color: Color = _ring_rarity_color(rarity)
 	var row := Button.new()
 	var style := StyleBoxFlat.new()
@@ -6628,12 +7856,14 @@ func _make_death_ring_row(ring: Dictionary) -> Control:
 	row.add_theme_stylebox_override("normal", style)
 	row.add_theme_stylebox_override("hover", style)
 	row.add_theme_stylebox_override("pressed", style)
-	row.custom_minimum_size = Vector2(0, 174)
+	row.custom_minimum_size = Vector2(0, 108)
 	row.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	row.focus_mode = Control.FOCUS_NONE
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.icon = RingStore.ring_icon(ring)
 	row.expand_icon = true
+	row.add_theme_constant_override("icon_max_width", 56)
+	row.clip_text = true
 	row.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	row.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.text = "[%s]  %s  T%d  (%s)" % [
@@ -6642,7 +7872,7 @@ func _make_death_ring_row(ring: Dictionary) -> Control:
 		int(ring.get("tier", 1)),
 		_format_ring_bonus(ring),
 	]
-	row.add_theme_font_size_override("font_size", 66)
+	row.add_theme_font_size_override("font_size", 30)
 	row.add_theme_color_override("font_color", rarity_color)
 	return row
 
@@ -6773,7 +8003,7 @@ func _update_artifact_runtime(delta: float) -> void:
 			_player_iframes = max(_player_iframes, max(_ring_bonus("blink_iframes"), 0.5))
 
 func _capy_orb_orbit_radius() -> float:
-	return _apply_radius_bonus(ORB_ORBIT_R)
+	return _apply_radius_bonus(ORB_ORBIT_R + 56.0)
 
 func _capy_orb_hit_radius() -> float:
 	return _apply_radius_bonus(ORB_R)

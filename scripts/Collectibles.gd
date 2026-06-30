@@ -205,6 +205,16 @@ func _ring_thumb(data: Dictionary, obtained: bool) -> Control:
 	return tex
 
 func _artifact_thumb(data: Dictionary, obtained: bool) -> Control:
+	if obtained:
+		var art_tex: Texture2D = ArtifactStore.artifact_icon(data)
+		if art_tex != null:
+			var tex := TextureRect.new()
+			tex.texture = art_tex
+			tex.custom_minimum_size = Vector2(60, 60)
+			tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			return tex
+
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(60, 60)
 	var st := StyleBoxFlat.new()

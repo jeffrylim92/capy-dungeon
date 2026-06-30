@@ -199,6 +199,76 @@ static func restore_from_server(username: String, server_per_char: Dictionary) -
 	data[key] = server_per_char
 	_save_all(data)
 
+static func merge_user_local_data(into_username: String, from_username: String) -> void:
+	var into_key := into_username.strip_edges().to_lower()
+	var from_key := from_username.strip_edges().to_lower()
+	if into_key.is_empty() or from_key.is_empty() or into_key == from_key:
+		return
+	var data := _load_all()
+	var from_per_char: Dictionary = data.get(from_key, {}) as Dictionary
+	if not from_per_char.is_empty():
+		var into_per_char: Dictionary = data.get(into_key, {}) as Dictionary
+		for char_id_variant in from_per_char.keys():
+			var char_id: String = String(char_id_variant)
+			var src_entry: Dictionary = from_per_char.get(char_id, {}) as Dictionary
+			var dst_entry: Dictionary = into_per_char.get(char_id, _blank_entry()) as Dictionary
+			for default_key in _blank_entry().keys():
+				if not dst_entry.has(default_key):
+					dst_entry[default_key] = _blank_entry()[default_key]
+			dst_entry["matches"] = int(dst_entry.get("matches", 0)) + int(src_entry.get("matches", 0))
+			dst_entry["wins"] = int(dst_entry.get("wins", 0)) + int(src_entry.get("wins", 0))
+			dst_entry["losses"] = int(dst_entry.get("losses", 0)) + int(src_entry.get("losses", 0))
+			dst_entry["draws"] = int(dst_entry.get("draws", 0)) + int(src_entry.get("draws", 0))
+			dst_entry["best_combo"] = maxi(int(dst_entry.get("best_combo", 0)), int(src_entry.get("best_combo", 0)))
+			var dst_fast: float = float(dst_entry.get("fastest_win_seconds", 0.0))
+			var src_fast: float = float(src_entry.get("fastest_win_seconds", 0.0))
+			if dst_fast <= 0.0:
+				dst_entry["fastest_win_seconds"] = src_fast
+			elif src_fast > 0.0:
+				dst_entry["fastest_win_seconds"] = min(dst_fast, src_fast)
+			dst_entry["finishers_unleashed"] = int(dst_entry.get("finishers_unleashed", 0)) + int(src_entry.get("finishers_unleashed", 0))
+			dst_entry["total_play_time_seconds"] = float(dst_entry.get("total_play_time_seconds", 0.0)) + float(src_entry.get("total_play_time_seconds", 0.0))
+			dst_entry["total_kills"] = int(dst_entry.get("total_kills", 0)) + int(src_entry.get("total_kills", 0))
+			dst_entry["best_survive_seconds"] = max(float(dst_entry.get("best_survive_seconds", 0.0)), float(src_entry.get("best_survive_seconds", 0.0)))
+			dst_entry["survive_5min_count"] = int(dst_entry.get("survive_5min_count", 0)) + int(src_entry.get("survive_5min_count", 0))
+			var dst_played: String = String(dst_entry.get("last_played_at", ""))
+			var src_played: String = String(src_entry.get("last_played_at", ""))
+			if src_played > dst_played:
+				dst_entry["last_played_at"] = src_played
+			into_per_char[char_id] = dst_entry
+		data[into_key] = into_per_char
+		data.erase(from_key)
+		_save_all(data)
+	_merge_match_record_files(into_key, from_key)
+
+static func _merge_match_record_files(into_key: String, from_key: String) -> void:
+	var into_path: String = "user://match_records_%s.json" % into_key
+	var from_path: String = "user://match_records_%s.json" % from_key
+	if into_path == from_path or not FileAccess.file_exists(from_path):
+		return
+	var records: Array = []
+	for path in [into_path, from_path]:
+		if not FileAccess.file_exists(path):
+			continue
+		var f := FileAccess.open(path, FileAccess.READ)
+		if f == null:
+			continue
+		var parsed: Variant = JSON.parse_string(f.get_as_text())
+		f.close()
+		if parsed is Array:
+			for entry in parsed as Array:
+				records.append(entry)
+	records.sort_custom(func(a: Variant, b: Variant) -> bool:
+		return int((a as Dictionary).get("ts", 0)) < int((b as Dictionary).get("ts", 0))
+	)
+	while records.size() > 200:
+		records.remove_at(0)
+	var wf := FileAccess.open(into_path, FileAccess.WRITE)
+	if wf != null:
+		wf.store_string(JSON.stringify(records, "\t"))
+		wf.close()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(from_path))
+
 static func is_brown_unlocked(username: String) -> bool:
 	if AdminStore.is_admin(username):
 		return true

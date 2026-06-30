@@ -34,8 +34,41 @@ const RARITY_COLORS: Dictionary = {
 	"legendary": Color(1.0, 0.62, 0.12),
 }
 
+const ARTIFACT_ICON_DIRS: Array[String] = [
+	"res://assets/artifacts/",
+	"res://assets/artifatcs/",
+]
+
 static var _stash_cache: Dictionary = {}  # username -> Array[Dictionary]
 const _SHARED_EQUIPPED_KEY: String = "__shared__"
+
+static func artifact_icon_path(artifact: Dictionary) -> String:
+	var explicit_path: String = String(artifact.get("icon", ""))
+	if not explicit_path.is_empty() and ResourceLoader.exists(explicit_path):
+		return explicit_path
+
+	var raw_id: String = String(artifact.get("id", ""))
+	if raw_id.is_empty():
+		return ""
+	var base_id: String = raw_id
+	var last_underscore: int = raw_id.rfind("_")
+	if last_underscore > 0:
+		var suffix: String = raw_id.substr(last_underscore + 1)
+		if suffix.is_valid_int():
+			base_id = raw_id.substr(0, last_underscore)
+
+	for dir_path in ARTIFACT_ICON_DIRS:
+		for ext in ["png", "webp"]:
+			var path: String = "%s%s.%s" % [dir_path, base_id, ext]
+			if ResourceLoader.exists(path):
+				return path
+	return ""
+
+static func artifact_icon(artifact: Dictionary) -> Texture2D:
+	var path: String = artifact_icon_path(artifact)
+	if path.is_empty():
+		return null
+	return load(path) as Texture2D
 
 static func _stash_path(username: String) -> String:
 	return "user://artifacts_%s.json" % username.strip_edges().to_lower()
