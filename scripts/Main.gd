@@ -12,6 +12,7 @@ const HISTORY_SCENE := preload("res://scenes/History.tscn")
 const COLLECTIBLES_SCENE := preload("res://scenes/Collectibles.tscn")
 
 const HEALTHCHECK_URL: String = "https://capy-dungeon.onrender.com/health"
+const INTERNET_FALLBACK_URL: String = "https://www.google.com/generate_204"
 const ANDROID_VERSION_CHECK_URL: String = "https://capy-dungeon.onrender.com/app/version/android"
 const PLAY_STORE_URL_ANDROID: String = "https://play.google.com/store/apps/details?id=com.capydungeon.game"
 
@@ -49,11 +50,25 @@ func _ready() -> void:
 	SettingsStore.apply.call_deferred(get_tree())
 	_setup_music()
 	_build_blocking_gate_ui()
-	_begin_startup_checks()
+	if _should_enforce_online_gate():
+		_begin_startup_checks()
+	else:
+		_startup_gate_passed = true
+		_show_login()
 	# Handle cold-start via capydungeon:// deep link (app launched by URL scheme)
 	if OS.get_name() == "Android":
 		call_deferred("_check_launch_deep_link")
 	_setup_runtime_network_timer()
+	if _runtime_net_timer != null and _runtime_net_timer.is_stopped() and _should_enforce_online_gate():
+		_runtime_net_timer.start()
+
+func _should_enforce_online_gate() -> bool:
+	# Keep strict gating for Android release behavior, but do not block local debug runs.
+	if OS.get_name() != "Android":
+		return false
+	if OS.is_debug_build():
+		return false
+	return true
 
 func _check_launch_deep_link() -> void:
 	var url := _read_android_deep_link()
@@ -207,7 +222,7 @@ func _cloud_username_for(account: Dictionary) -> String:
 func _build_blocking_gate_ui() -> void:
 	if _gate_layer != null:
 		return
-	var view := get_viewport_rect().size
+	var view: Vector2 = get_viewport().get_visible_rect().size
 	_gate_layer = CanvasLayer.new()
 	_gate_layer.layer = 200
 	_gate_layer.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
@@ -381,18 +396,30 @@ func _on_runtime_network_tick() -> void:
 	)
 
 func _check_online(callback: Callable) -> void:
+	var urls: Array[String] = [HEALTHCHECK_URL, INTERNET_FALLBACK_URL]
+	_check_online_urls(urls, 0, callback)
+
+func _check_online_urls(urls: Array[String], idx: int, callback: Callable) -> void:
+	if idx >= urls.size():
+		callback.call(false)
+		return
+	var url: String = urls[idx]
 	var http := HTTPRequest.new()
 	http.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	add_child(http)
 	http.request_completed.connect(func(result: int, code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
 		http.queue_free()
-		var online: bool = (result == HTTPRequest.RESULT_SUCCESS and code >= 200 and code < 300)
-		callback.call(online)
+		# Any successful HTTP response from at least one known host means internet is reachable.
+		var reachable: bool = (result == HTTPRequest.RESULT_SUCCESS and code > 0 and code < 500)
+		if reachable:
+			callback.call(true)
+		else:
+			_check_online_urls(urls, idx + 1, callback)
 	, CONNECT_ONE_SHOT)
-	var err := http.request(HEALTHCHECK_URL)
+	var err := http.request(url)
 	if err != OK:
 		http.queue_free()
-		callback.call(false)
+		_check_online_urls(urls, idx + 1, callback)
 
 func _check_android_update(callback: Callable) -> void:
 	if OS.get_name() != "Android":
