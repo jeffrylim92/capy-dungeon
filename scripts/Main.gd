@@ -453,7 +453,12 @@ func _check_android_update(callback: Callable) -> void:
 		callback.call({"checked": true, "required": false, "url": PLAY_STORE_URL_ANDROID, "message": ""})
 		return
 	var current_code: int = _get_android_version_code()
+	if current_code <= 0:
+		DebugLog.log("[Main] _check_android_update: could not read valid version code (got %d)" % current_code)
+		callback.call({"checked": false, "required": false, "url": PLAY_STORE_URL_ANDROID, "message": ""})
+		return
 	var url := "%s?current_version_code=%d" % [ANDROID_VERSION_CHECK_URL, current_code]
+	DebugLog.log("[Main] _check_android_update: querying %s" % url)
 	var http := HTTPRequest.new()
 	http.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(http)
@@ -497,10 +502,19 @@ func _get_android_version_code() -> int:
 	if not info:
 		return max(fallback, 0)
 	var detected: int = 0
-	if info.has_method("getLongVersionCode"):
-		detected = int(info.call("getLongVersionCode"))
-	elif info.has_method("getVersionCode"):
-		detected = int(info.call("getVersionCode"))
+	# JavaObject may not report Java methods through has_method reliably, so call directly.
+	var long_code: Variant = info.call("getLongVersionCode")
+	if long_code != null:
+		detected = int(long_code)
+	if detected <= 0:
+		var legacy_code: Variant = info.call("getVersionCode")
+		if legacy_code != null:
+			detected = int(legacy_code)
+	if detected <= 0:
+		var field_code: Variant = info.get("versionCode")
+		if field_code != null:
+			detected = int(field_code)
+	DebugLog.log("[Main] _get_android_version_code: detected=%d fallback=%d" % [detected, fallback])
 	return max(max(fallback, 0), detected)
 
 func _show_login() -> void:
