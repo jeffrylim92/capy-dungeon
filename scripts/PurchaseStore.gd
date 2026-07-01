@@ -231,22 +231,29 @@ func _on_query_purchases_response(response: Dictionary) -> void:
 		DebugLog.log("[PurchaseStore] query_purchases_response error code=%d" % code)
 		return
 	_prune_recent_requests()
-	var purchases: Array = response.get("purchases", []) as Array
+	var purchases: Array = _extract_purchases(response)
+	var active_non_consumables: Dictionary = {}
 	for p in purchases:
-		var ids: Array = p.get("productIds", []) as Array
-		var token: String = p.get("purchaseToken", "") as String
-		var state: int = int(p.get("purchaseState", 0))
+		if typeof(p) != TYPE_DICTIONARY:
+			continue
+		var pd: Dictionary = p as Dictionary
+		var ids: Array[String] = _extract_purchase_product_ids(pd)
+		var token: String = _extract_purchase_token(pd)
+		var state: int = _extract_purchase_state(pd)
 		if state != BillingClient.PurchaseState.PURCHASED:
 			continue
 		for cid in ids:
-			var product_id: String = cid as String
+			var product_id: String = String(cid)
 			if PURCHASABLE.has(product_id):
 				_grant(product_id)
+				if _is_non_consumable_product(product_id):
+					active_non_consumables[product_id] = true
 				if _recent_requested_at.has(product_id):
 					_recent_requested_at.erase(product_id)
 					purchase_success.emit(product_id)
-		if not (p.get("isAcknowledged", false) as bool) and not token.is_empty():
+		if not _extract_purchase_acknowledged(pd) and not token.is_empty():
 			_billing.acknowledge_purchase(token)
+	_reconcile_non_consumable_entitlements(active_non_consumables)
 	DebugLog.log("[PurchaseStore] Restored %d purchase(s)" % purchases.size())
 
 ## Fired after the billing sheet closes (buy, cancel, or error).
@@ -259,33 +266,30 @@ func _on_purchase_updated(response: Dictionary) -> void:
 		var msg := "Cancelled" if code == BillingClient.BillingResponseCode.USER_CANCELED \
 			else ("Item already owned" if code == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED \
 			else ("Billing error (%d)" % code))
-		# ITEM_ALREADY_OWNED means they paid before — grant and treat as success
-		if code == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED and not _pending_id.is_empty():
-			_grant(_pending_id)
-			var cid := _pending_id
-			_pending_id = ""
-			_recent_requested_at.erase(cid)
-			purchase_success.emit(cid)
-			return
 		if code == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED and _billing != null:
-			# If pending was cleared by timeout, restore ownership from Play.
+			# Do not blindly grant — refunded items can temporarily report as owned.
+			# Always reconcile against current Play purchases.
 			_billing.query_purchases(BillingClient.ProductType.INAPP)
+			msg = "Item already owned. Syncing with Play…"
 		if not _pending_id.is_empty():
 			purchase_failed.emit(_pending_id, msg)
 			_pending_id = ""
 		return
 
-	var purchases: Array = response.get("purchases", []) as Array
+	var purchases: Array = _extract_purchases(response)
 	for p in purchases:
-		var ids: Array = p.get("productIds", []) as Array
-		var token: String = p.get("purchaseToken", "") as String
-		var state: int = int(p.get("purchaseState", 0))
+		if typeof(p) != TYPE_DICTIONARY:
+			continue
+		var pd: Dictionary = p as Dictionary
+		var ids: Array[String] = _extract_purchase_product_ids(pd)
+		var token: String = _extract_purchase_token(pd)
+		var state: int = _extract_purchase_state(pd)
 		if state != BillingClient.PurchaseState.PURCHASED:
 			continue
 		for cid in ids:
-			var product_id: String = cid as String
+			var product_id: String = String(cid)
 			_grant(product_id)
-			if not (p.get("isAcknowledged", false) as bool) and not token.is_empty():
+			if not _extract_purchase_acknowledged(pd) and not token.is_empty():
 				_billing.acknowledge_purchase(token)
 			if product_id == _pending_id:
 				var granted_id := _pending_id
@@ -305,6 +309,68 @@ func _on_purchase_updated(response: Dictionary) -> void:
 func _on_acknowledge_response(response: Dictionary) -> void:
 	var code: int = int(response.get("responseCode", -1))
 	DebugLog.log("[PurchaseStore] acknowledge_purchase_response code=%d" % code)
+
+func _extract_purchases(response: Dictionary) -> Array:
+	for key in ["purchases", "purchaseList", "purchase_list", "items"]:
+		var v: Variant = response.get(key, null)
+		if v is Array:
+			return v as Array
+	return []
+
+func _extract_purchase_product_ids(p: Dictionary) -> Array[String]:
+	var out: Array[String] = []
+	for key in ["productIds", "product_ids", "products", "productId", "product_id"]:
+		var v: Variant = p.get(key, null)
+		if v is Array:
+			for item in (v as Array):
+				var pid: String = String(item)
+				if not pid.is_empty() and not out.has(pid):
+					out.append(pid)
+		elif v != null:
+			var single: String = String(v)
+			if not single.is_empty() and not out.has(single):
+				out.append(single)
+	return out
+
+func _extract_purchase_token(p: Dictionary) -> String:
+	for key in ["purchaseToken", "purchase_token", "token"]:
+		var v: Variant = p.get(key, null)
+		if v != null:
+			var s: String = String(v)
+			if not s.is_empty():
+				return s
+	return ""
+
+func _extract_purchase_state(p: Dictionary) -> int:
+	for key in ["purchaseState", "purchase_state", "state"]:
+		if p.has(key):
+			return int(p.get(key, 0))
+	return 0
+
+func _extract_purchase_acknowledged(p: Dictionary) -> bool:
+	for key in ["isAcknowledged", "is_acknowledged", "acknowledged"]:
+		if p.has(key):
+			return bool(p.get(key, false))
+	return false
+
+func _is_non_consumable_product(product_id: String) -> bool:
+	return CHARACTER_PRODUCTS.has(product_id) or is_ring_product(product_id)
+
+func _reconcile_non_consumable_entitlements(active: Dictionary) -> void:
+	var purchased: Array = _load()
+	if purchased.is_empty():
+		return
+	var changed: bool = false
+	for i in range(purchased.size() - 1, -1, -1):
+		var product_id: String = String(purchased[i])
+		if not _is_non_consumable_product(product_id):
+			continue
+		if not active.has(product_id):
+			purchased.remove_at(i)
+			changed = true
+			DebugLog.log("[PurchaseStore] Revoked local entitlement '%s' (not active in Play purchases)" % product_id)
+	if changed:
+		_save(purchased)
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
