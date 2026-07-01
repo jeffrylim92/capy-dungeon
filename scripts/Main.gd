@@ -63,12 +63,8 @@ func _ready() -> void:
 		_runtime_net_timer.start()
 
 func _should_enforce_online_gate() -> bool:
-	# Keep strict gating for Android release behavior, but do not block local debug runs.
-	if OS.get_name() != "Android":
-		return false
-	if OS.is_debug_build():
-		return false
-	return true
+	# Always enforce on Android (including debug) so test behavior matches production.
+	return OS.get_name() == "Android"
 
 func _check_launch_deep_link() -> void:
 	var url := _read_android_deep_link()
@@ -225,24 +221,24 @@ func _build_blocking_gate_ui() -> void:
 	var view: Vector2 = get_viewport().get_visible_rect().size
 	_gate_layer = CanvasLayer.new()
 	_gate_layer.layer = 200
-	_gate_layer.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	_gate_layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(_gate_layer)
 
 	_gate_overlay = ColorRect.new()
 	_gate_overlay.color = Color(0, 0, 0, 0.72)
 	_gate_overlay.size = view
 	_gate_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	_gate_overlay.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	_gate_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
 	_gate_layer.add_child(_gate_overlay)
 
 	var center := CenterContainer.new()
 	center.size = view
-	center.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	center.process_mode = Node.PROCESS_MODE_ALWAYS
 	_gate_layer.add_child(center)
 
 	_gate_panel = PanelContainer.new()
 	_gate_panel.custom_minimum_size = Vector2(min(view.x - 96.0, 860.0), 0)
-	_gate_panel.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	_gate_panel.process_mode = Node.PROCESS_MODE_ALWAYS
 	center.add_child(_gate_panel)
 
 	var panel_style := StyleBoxFlat.new()
@@ -261,14 +257,14 @@ func _build_blocking_gate_ui() -> void:
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 16)
-	vbox.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	vbox.process_mode = Node.PROCESS_MODE_ALWAYS
 	_gate_panel.add_child(vbox)
 
 	_gate_title = Label.new()
 	_gate_title.add_theme_font_size_override("font_size", 44)
 	_gate_title.add_theme_color_override("font_color", Color(1.0, 0.93, 0.78))
 	_gate_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_gate_title.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	_gate_title.process_mode = Node.PROCESS_MODE_ALWAYS
 	vbox.add_child(_gate_title)
 
 	_gate_message = Label.new()
@@ -276,12 +272,12 @@ func _build_blocking_gate_ui() -> void:
 	_gate_message.add_theme_color_override("font_color", Color(0.90, 0.84, 0.72))
 	_gate_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_gate_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_gate_message.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	_gate_message.process_mode = Node.PROCESS_MODE_ALWAYS
 	vbox.add_child(_gate_message)
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
-	row.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	row.process_mode = Node.PROCESS_MODE_ALWAYS
 	vbox.add_child(row)
 
 	_gate_primary_btn = Button.new()
@@ -289,7 +285,7 @@ func _build_blocking_gate_ui() -> void:
 	_gate_primary_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_gate_primary_btn.add_theme_font_size_override("font_size", 34)
 	_gate_primary_btn.focus_mode = Control.FOCUS_NONE
-	_gate_primary_btn.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	_gate_primary_btn.process_mode = Node.PROCESS_MODE_ALWAYS
 	_gate_primary_btn.pressed.connect(_on_gate_primary_pressed)
 	row.add_child(_gate_primary_btn)
 
@@ -298,7 +294,7 @@ func _build_blocking_gate_ui() -> void:
 	_gate_secondary_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_gate_secondary_btn.add_theme_font_size_override("font_size", 34)
 	_gate_secondary_btn.focus_mode = Control.FOCUS_NONE
-	_gate_secondary_btn.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	_gate_secondary_btn.process_mode = Node.PROCESS_MODE_ALWAYS
 	_gate_secondary_btn.pressed.connect(_on_gate_secondary_pressed)
 	row.add_child(_gate_secondary_btn)
 
@@ -311,7 +307,7 @@ func _setup_runtime_network_timer() -> void:
 	_runtime_net_timer.wait_time = 7.0
 	_runtime_net_timer.one_shot = false
 	_runtime_net_timer.autostart = false
-	_runtime_net_timer.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	_runtime_net_timer.process_mode = Node.PROCESS_MODE_ALWAYS
 	_runtime_net_timer.timeout.connect(_on_runtime_network_tick)
 	add_child(_runtime_net_timer)
 
@@ -396,8 +392,39 @@ func _on_runtime_network_tick() -> void:
 	)
 
 func _check_online(callback: Callable) -> void:
+	if _android_network_available_native():
+		callback.call(true)
+		return
 	var urls: Array[String] = [HEALTHCHECK_URL, INTERNET_FALLBACK_URL]
 	_check_online_urls(urls, 0, callback)
+
+func _android_network_available_native() -> bool:
+	if OS.get_name() != "Android":
+		return false
+	if not Engine.has_singleton("AndroidRuntime"):
+		return false
+	var runtime = Engine.get_singleton("AndroidRuntime")
+	var activity = runtime.call("getActivity")
+	if not activity:
+		return false
+	var connectivity = activity.call("getSystemService", "connectivity")
+	if connectivity == null:
+		return false
+	# API 23+: ask ConnectivityManager for active network capabilities.
+	if connectivity.has_method("getActiveNetwork") and connectivity.has_method("getNetworkCapabilities"):
+		var network = connectivity.call("getActiveNetwork")
+		if network != null:
+			var caps = connectivity.call("getNetworkCapabilities", network)
+			if caps != null and caps.has_method("hasCapability"):
+				# Android constants: NET_CAPABILITY_INTERNET=12
+				if bool(caps.call("hasCapability", 12)):
+					return true
+	# Legacy fallback for older Android API levels.
+	if connectivity.has_method("getActiveNetworkInfo"):
+		var info = connectivity.call("getActiveNetworkInfo")
+		if info != null and info.has_method("isConnected"):
+			return bool(info.call("isConnected"))
+	return false
 
 func _check_online_urls(urls: Array[String], idx: int, callback: Callable) -> void:
 	if idx >= urls.size():
@@ -405,7 +432,7 @@ func _check_online_urls(urls: Array[String], idx: int, callback: Callable) -> vo
 		return
 	var url: String = urls[idx]
 	var http := HTTPRequest.new()
-	http.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	http.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(http)
 	http.request_completed.connect(func(result: int, code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
 		http.queue_free()
@@ -428,7 +455,7 @@ func _check_android_update(callback: Callable) -> void:
 	var current_code: int = _get_android_version_code()
 	var url := "%s?current_version_code=%d" % [ANDROID_VERSION_CHECK_URL, current_code]
 	var http := HTTPRequest.new()
-	http.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	http.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(http)
 	http.request_completed.connect(func(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 		http.queue_free()
