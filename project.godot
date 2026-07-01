@@ -12,6 +12,7 @@ config_version=5
 
 "##AdMobAppIDsâreplacewithyourrealAppIDsbeforepublishing.##TestAppIDs(safetouseduringdevelopment):##Android:ca-app-pub-3940256099942544~3347511713##iOS:ca-app-pub-3940256099942544~1458002511##â ï¸RealAppIDsarefoundinAdMobconsoleâAppsâAppsettings.android/app_id"="ca-app-pub-3940256099942544~3347511713"
 ios/app_id="ca-app-pub-3940256099942544~1458002511"
+android/app_id="ca-app-pub-9375037645592356~3477746977"
 
 [animation]
 
@@ -22,13 +23,14 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 config/name="Capy Dungeon"
 config/description="Tap-combo capybara battler"
 run/main_scene="res://scenes/Main.tscn"
-config/features=PackedStringArray("4.6", "Mobile")
+config/features=PackedStringArray("4.7", "Mobile")
 boot_splash/bg_color=Color(0, 0, 0, 1)
 boot_splash/image="res://assets/splash.png"
 config/icon="res://assets/icon.png"
 
 [autoload]
 
+CrashReporter="*res://scripts/CrashReporter.gd"
 PurchaseStore="*res://scripts/PurchaseStore.gd"
 SkillMgr="*res://scripts/SkillManager.gd"
 
@@ -45,7 +47,7 @@ project/assembly_name="Capy Dungeon"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/GodotGooglePlayBilling/plugin.cfg")
+enabled=PackedStringArray("res://addons/GodotGooglePlayBilling/plugin.cfg", "res://addons/admob/plugin.cfg", "res://addons/deeplink/plugin.cfg")
 
 [input]
 

@@ -35,6 +35,7 @@
             android:launchMode="singleInstancePerTask"
             android:excludeFromRecents="false"
             android:exported="false"
+            android:supportsPictureInPicture="true"
             android:screenOrientation="landscape"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="layoutDirection|locale|orientation|keyboardHidden|screenSize|smallestScreenSize|density|keyboard|navigation|screenLayout|uiMode"
@@ -48,19 +49,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <!-- OAuth2 deep-link handler: browser redirects to capydungeon://auth/callback -->
-        <activity-alias
-            android:name=".GodotAppOAuthCallback"
-            android:targetActivity=".GodotApp"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="capydungeon" android:host="auth" />
             </intent-filter>
         </activity-alias>
 

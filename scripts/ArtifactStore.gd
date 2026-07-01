@@ -165,15 +165,30 @@ static func save_equipped(username: String, equipped: Dictionary) -> void:
 	}))
 	f.close()
 
-static func get_equipped_artifacts(username: String, char_id: String) -> Dictionary:
+static func restore_from_server(username: String, artifact_stash: Array, artifact_equipped: Dictionary) -> void:
+	if username.strip_edges().is_empty():
+		return
+	if artifact_stash.is_empty() and artifact_equipped.is_empty():
+		return
+	if not artifact_stash.is_empty():
+		var stash_copy: Array = []
+		for item in artifact_stash:
+			if typeof(item) == TYPE_DICTIONARY:
+				stash_copy.append((item as Dictionary).duplicate(true))
+		_stash_cache[username] = stash_copy
+		save_stash(username)
+	if not artifact_equipped.is_empty():
+		save_equipped(username, artifact_equipped)
+
+static func get_equipped_artifacts(username: String, _char_id: String) -> Dictionary:
 	return load_equipped(username)
 
-static func equip_artifact(username: String, char_id: String, slot: int, artifact: Dictionary) -> void:
+static func equip_artifact(username: String, _char_id: String, slot: int, artifact: Dictionary) -> void:
 	var all: Dictionary = load_equipped(username)
 	all["slot_%d" % slot] = artifact.duplicate(true)
 	save_equipped(username, all)
 
-static func unequip_artifact(username: String, char_id: String, slot: int) -> void:
+static func unequip_artifact(username: String, _char_id: String, slot: int) -> void:
 	var all: Dictionary = load_equipped(username)
 	all["slot_%d" % slot] = null
 	save_equipped(username, all)

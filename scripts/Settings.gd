@@ -445,10 +445,10 @@ func _avatar_char_defs() -> Array:
 func _mk_av_style(tint: Color, selected: bool, locked: bool, radius: float) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = tint.darkened(0.40) if locked else tint
-	s.corner_radius_top_left    = radius
-	s.corner_radius_top_right   = radius
-	s.corner_radius_bottom_left = radius
-	s.corner_radius_bottom_right = radius
+	s.corner_radius_top_left    = int(radius)
+	s.corner_radius_top_right   = int(radius)
+	s.corner_radius_bottom_left = int(radius)
+	s.corner_radius_bottom_right = int(radius)
 	if selected:
 		s.border_color = Color(1.0, 0.84, 0.12)
 		s.set_border_width_all(6)
@@ -614,8 +614,10 @@ func _show_profile_panel() -> void:
 	var defs := _avatar_char_defs()
 	var av_btns: Array = []
 
+	var avatar_box := [cur_avatar]  # Array wrapper so lambda can mutate the selection
+
 	var update_selection := func(new_id: String) -> void:
-		cur_avatar = new_id
+		avatar_box[0] = new_id
 		profile["avatar"] = new_id
 		_save_profile(profile)
 		for _upd in defs:
@@ -630,7 +632,7 @@ func _show_profile_panel() -> void:
 			var cid2: String  = inf["id"]   as String
 			var tint2: Color  = inf["tint"] as Color
 			var lock2: bool   = not _is_avatar_unlocked(cid2, username)
-			var s2 := _mk_av_style(tint2, cid2 == cur_avatar, lock2, circ_r)
+			var s2 := _mk_av_style(tint2, cid2 == avatar_box[0], lock2, circ_r)
 			var b2 := av_btns[i] as Button
 			b2.add_theme_stylebox_override("normal",  s2)
 			b2.add_theme_stylebox_override("hover",   s2)

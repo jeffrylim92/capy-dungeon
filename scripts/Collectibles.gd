@@ -105,10 +105,10 @@ func _fill_ring_cards(parent: VBoxContainer) -> void:
 			box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			box.add_theme_constant_override("separation", 2)
 			row.add_child(box)
-			var name: String = d2.get("name", "Ring") as String
-			var got: bool = obtained.has(name)
+			var ring_name: String = d2.get("name", "Ring") as String
+			var got: bool = obtained.has(ring_name)
 			var l1 := Label.new()
-			l1.text = name
+			l1.text = ring_name
 			l1.add_theme_font_size_override("font_size", 24)
 			box.add_child(l1)
 			var l2 := Label.new()

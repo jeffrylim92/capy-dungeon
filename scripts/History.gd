@@ -729,13 +729,13 @@ func _make_portrait_panel(char_id: String, size: int, bg: Color) -> Panel:
 	p.clip_contents = true
 	var tex := _load_portrait(char_id)
 	if tex != null:
-		var tr := TextureRect.new()
-		tr.texture      = tex
-		tr.set_anchors_preset(Control.PRESET_FULL_RECT)
-		tr.expand_mode  = TextureRect.EXPAND_IGNORE_SIZE
-		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		p.add_child(tr)
+		var portrait_rect := TextureRect.new()
+		portrait_rect.texture      = tex
+		portrait_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+		portrait_rect.expand_mode  = TextureRect.EXPAND_IGNORE_SIZE
+		portrait_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		portrait_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		p.add_child(portrait_rect)
 	return p
 
 func _section_header(text: String, accent: Color) -> Label:
@@ -981,10 +981,10 @@ func _best_local_record_for_character(char_id: String) -> Dictionary:
 			return d
 	return {}
 
-func _equipment_detail_for_character(char_id: String, seed: Dictionary = {}) -> Dictionary:
+func _equipment_detail_for_character(char_id: String, _seed: Dictionary = {}) -> Dictionary:
 	if char_id.is_empty():
 		return {}
-	var out: Dictionary = seed.duplicate(true)
+	var out: Dictionary = _seed.duplicate(true)
 	out["character"] = char_id
 
 	var username: String = String(account.get("username", ""))

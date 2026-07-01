@@ -463,7 +463,7 @@ func _on_http_completed(result: int, response_code: int, _headers: PackedStringA
 		# Received user-info response
 		_handle_profile(data)
 
-func _fetch_userinfo(access_token: String, id_token: String) -> void:
+func _fetch_userinfo(access_token: String, _id_token: String) -> void:
 	var cfg: Dictionary = OAUTH_CONFIG[_pending_provider] as Dictionary
 	var userinfo_url: String = cfg["userinfo_url"] as String
 

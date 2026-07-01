@@ -127,6 +127,17 @@ func _build_ui() -> void:
 	_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 	root.add_child(_status_lbl)
 
+	var diag := Label.new()
+	diag.add_theme_font_size_override("font_size", 20)
+	diag.add_theme_color_override("font_color", Color(0.50, 0.50, 0.50))
+	diag.autowrap_mode = TextServer.AUTOWRAP_WORD
+	var has_plugin: bool = Engine.has_singleton("GodotGooglePlayBilling")
+	var billing_state: String = "n/a"
+	if has_plugin:
+		billing_state = str(PurchaseStore._billing_ready)
+	diag.text = "[diag] OS:%s plugin:%s billing_ready:%s" % [OS.get_name(), str(has_plugin), billing_state]
+	root.add_child(diag)
+
 func _make_tab_button(text: String) -> Button:
 	var btn := Button.new()
 	btn.text = text

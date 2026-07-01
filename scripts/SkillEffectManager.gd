@@ -152,7 +152,7 @@ func play_particles(caster_node: Node2D, skill_name: String, skill: Dictionary) 
 	
 	# Create particles if not already cached
 	if not skill_name in _skill_particles:
-		var particles = GPUParticles2D.new()
+		var new_particles := GPUParticles2D.new()
 		
 		# Create particle process material (data-driven from JSON)
 		var material = ParticleProcessMaterial.new()
@@ -179,8 +179,8 @@ func play_particles(caster_node: Node2D, skill_name: String, skill: Dictionary) 
 			elif "impact_burst_count" in particle_data:
 				particle_count = int(particle_data["impact_burst_count"])
 		
-		particles.amount = particle_count
-		particles.lifetime = state_duration
+		new_particles.amount = particle_count
+		new_particles.lifetime = state_duration
 		
 		# Rotation speed from skill level (convert °/sec to rad/sec) (NEW: from rotation_speed_deg_per_sec)
 		var rot_speed_rad_per_sec = deg_to_rad(rotation_speed)
@@ -208,9 +208,9 @@ func play_particles(caster_node: Node2D, skill_name: String, skill: Dictionary) 
 		material.initial_velocity_max = 150
 		
 		# Set material and add to scene
-		particles.process_material = material
-		caster_node.add_child(particles)
-		_skill_particles[skill_name] = particles
+		new_particles.process_material = material
+		caster_node.add_child(new_particles)
+		_skill_particles[skill_name] = new_particles
 		
 		print("[SkillMgr] ✓ Created particle system for skill: %s (count: %d, color: %s, glow: %.1f)" % [skill_name, particle_count, color, glow_intensity])
 	

@@ -18,12 +18,12 @@ extends Node
 ## ─────────────────────────────────────────────────────────────────────────
 
 # ── Ad unit IDs — swap for real IDs before publishing ─────────────────────────
-## Android rewarded test ID (replace: ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX)
-const AD_UNIT_REWARDED_ANDROID:     String = "ca-app-pub-3940256099942544/5224354917"
+## Android rewarded ID
+const AD_UNIT_REWARDED_ANDROID:     String = "ca-app-pub-9375037645592356/8574160982"
 ## iOS rewarded test ID (replace: ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX)
 const AD_UNIT_REWARDED_IOS:         String = "ca-app-pub-3940256099942544/1712485313"
-## Android interstitial test ID (replace: ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX)
-const AD_UNIT_INTERSTITIAL_ANDROID: String = "ca-app-pub-3940256099942544/1033173712"
+## Android interstitial ID
+const AD_UNIT_INTERSTITIAL_ANDROID: String = "ca-app-pub-9375037645592356/2200324324"
 ## iOS interstitial test ID (replace: ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX)
 const AD_UNIT_INTERSTITIAL_IOS:     String = "ca-app-pub-3940256099942544/4411468910"
 

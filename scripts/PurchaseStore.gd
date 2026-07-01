@@ -91,6 +91,21 @@ const PRICES: Dictionary = {
 	"key_pack_10": "$9.99",
 }
 
+# Product-specific purchase option IDs (Play Console). Leave empty for default.
+const PURCHASE_OPTION_IDS: Dictionary = {
+	"capy_wizard": "capywizard",
+	"capy_archer": "capyarcher",
+	"capy_assassin": "capyassassin",
+	"ring_warlords_crest": "warlordscrest",
+	"ring_haste_coil": "ringhastecoil",
+	"ring_second_chance": "ringsecondchance",
+	"ring_guardian_pulse": "ringguardianpulse",
+	"key_pack_1": "keypack1",
+	"key_pack_3": "keypack3",
+	"key_pack_5": "keypack5",
+	"key_pack_10": "keypack10",
+}
+
 ## Emitted after a successful purchase + acknowledgement.
 signal purchase_success(character_id: String)
 ## Emitted when the billing flow fails or the user cancels.
@@ -99,35 +114,114 @@ signal purchase_failed(character_id: String, message: String)
 var _current_username: String = ""
 var _pending_id: String = ""
 var _billing: BillingClient = null
+var _billing_ready: bool = false
+var _known_products: Dictionary = {}
+var _known_purchase_option_ids: Dictionary = {}
+var _recent_requested_at: Dictionary = {}
+
+const RECENT_REQUEST_TTL_SEC: int = 10 * 60
 
 # ── Lifecycle ──────────────────────────────────────────────────────────────────
 
 func _ready() -> void:
-	if Engine.has_singleton("GodotGooglePlayBilling"):
-		_billing = BillingClient.new()
-		add_child(_billing)
-		_billing.connected.connect(_on_billing_connected)
-		_billing.disconnected.connect(_on_billing_disconnected)
-		_billing.connect_error.connect(_on_billing_connect_error)
-		_billing.query_purchases_response.connect(_on_query_purchases_response)
-		_billing.on_purchase_updated.connect(_on_purchase_updated)
-		_billing.acknowledge_purchase_response.connect(_on_acknowledge_response)
-		_billing.start_connection()
-		DebugLog.log("[PurchaseStore] BillingClient created — start_connection called")
-	else:
-		DebugLog.log("[PurchaseStore] No GodotGooglePlayBilling plugin — dev mode (grants directly)")
+	if not _ensure_billing_client():
+		DebugLog.log("[PurchaseStore] No GodotGooglePlayBilling plugin yet — will retry on purchase")
+
+func _ensure_billing_client() -> bool:
+	if _billing != null:
+		return true
+	if not Engine.has_singleton("GodotGooglePlayBilling"):
+		return false
+	_billing = BillingClient.new()
+	add_child(_billing)
+	_billing.connected.connect(_on_billing_connected)
+	_billing.disconnected.connect(_on_billing_disconnected)
+	_billing.connect_error.connect(_on_billing_connect_error)
+	_billing.query_product_details_response.connect(_on_query_product_details_response)
+	_billing.query_purchases_response.connect(_on_query_purchases_response)
+	_billing.on_purchase_updated.connect(_on_purchase_updated)
+	_billing.acknowledge_purchase_response.connect(_on_acknowledge_response)
+	_billing.start_connection()
+	DebugLog.log("[PurchaseStore] BillingClient created — start_connection called")
+	return true
 
 # ── Billing callbacks ──────────────────────────────────────────────────────────
 
 func _on_billing_connected() -> void:
-	DebugLog.log("[PurchaseStore] Billing connected — querying existing purchases")
+	_billing_ready = true
+	DebugLog.log("[PurchaseStore] Billing connected — querying product details + existing purchases")
+	_billing.query_product_details(PackedStringArray(PURCHASABLE), BillingClient.ProductType.INAPP)
 	_billing.query_purchases(BillingClient.ProductType.INAPP)
 
 func _on_billing_disconnected() -> void:
+	_billing_ready = false
 	DebugLog.log("[PurchaseStore] Billing disconnected")
+	if _billing != null:
+		# Auto-reconnect so purchase restore/query works after app resumes.
+		get_tree().create_timer(1.5).timeout.connect(func() -> void:
+			if _billing != null and not _billing_ready:
+				_billing.start_connection()
+		, CONNECT_ONE_SHOT)
+	if not _pending_id.is_empty():
+		var pending := _pending_id
+		_pending_id = ""
+		purchase_failed.emit(pending, "Billing disconnected")
 
 func _on_billing_connect_error(response_code: int, debug_message: String) -> void:
+	_billing_ready = false
 	DebugLog.log("[PurchaseStore] Billing connect_error %d: %s" % [response_code, debug_message])
+	if not _pending_id.is_empty():
+		var pending := _pending_id
+		_pending_id = ""
+		purchase_failed.emit(pending, "Billing connect error (%d)" % response_code)
+
+func _on_query_product_details_response(response: Dictionary) -> void:
+	var status: Dictionary = response.get("status", {}) as Dictionary
+	var code: int = int(status.get("responseCode", -1))
+	if code != BillingClient.BillingResponseCode.OK:
+		DebugLog.log("[PurchaseStore] query_product_details_response error code=%d" % code)
+		return
+
+	_known_products.clear()
+	_known_purchase_option_ids.clear()
+
+	var details: Array = []
+	if response.get("productDetails", null) is Array:
+		details = response.get("productDetails", []) as Array
+	elif response.get("product_details", null) is Array:
+		details = response.get("product_details", []) as Array
+	elif response.get("products", null) is Array:
+		details = response.get("products", []) as Array
+
+	for raw in details:
+		if typeof(raw) != TYPE_DICTIONARY:
+			continue
+		var pd: Dictionary = raw as Dictionary
+		var pid: String = str(pd.get("productId", pd.get("product_id", "")))
+		if pid.is_empty():
+			continue
+		_known_products[pid] = true
+
+		var option_ids: Array[String] = []
+		for key in ["purchaseOptions", "purchase_options", "offerDetails", "offer_details"]:
+			var v: Variant = pd.get(key, null)
+			if v is Array:
+				for opt in (v as Array):
+					if typeof(opt) != TYPE_DICTIONARY:
+						continue
+					var od: Dictionary = opt as Dictionary
+					for id_key in ["id", "offerId", "offer_id", "purchaseOptionId", "purchase_option_id", "offerToken", "offer_token"]:
+						var id_val: String = str(od.get(id_key, ""))
+						if not id_val.is_empty() and not option_ids.has(id_val):
+							option_ids.append(id_val)
+
+		_known_purchase_option_ids[pid] = option_ids
+
+	DebugLog.log("[PurchaseStore] Product details fetched: %d/%d products visible to Play account" % [_known_products.size(), PURCHASABLE.size()])
+	if _known_products.has("capy_archer"):
+		DebugLog.log("[PurchaseStore] capy_archer is visible. option_ids=%s" % str(_known_purchase_option_ids.get("capy_archer", [])))
+	else:
+		DebugLog.log("[PurchaseStore] capy_archer NOT returned by Play product details")
 
 ## Fired after query_purchases() — restores previously purchased items on launch.
 func _on_query_purchases_response(response: Dictionary) -> void:
@@ -136,6 +230,7 @@ func _on_query_purchases_response(response: Dictionary) -> void:
 	if code != BillingClient.BillingResponseCode.OK:
 		DebugLog.log("[PurchaseStore] query_purchases_response error code=%d" % code)
 		return
+	_prune_recent_requests()
 	var purchases: Array = response.get("purchases", []) as Array
 	for p in purchases:
 		var ids: Array = p.get("productIds", []) as Array
@@ -144,8 +239,12 @@ func _on_query_purchases_response(response: Dictionary) -> void:
 		if state != BillingClient.PurchaseState.PURCHASED:
 			continue
 		for cid in ids:
-			if PURCHASABLE.has(cid as String):
-				_grant(cid as String)
+			var product_id: String = cid as String
+			if PURCHASABLE.has(product_id):
+				_grant(product_id)
+				if _recent_requested_at.has(product_id):
+					_recent_requested_at.erase(product_id)
+					purchase_success.emit(product_id)
 		if not (p.get("isAcknowledged", false) as bool) and not token.is_empty():
 			_billing.acknowledge_purchase(token)
 	DebugLog.log("[PurchaseStore] Restored %d purchase(s)" % purchases.size())
@@ -155,6 +254,7 @@ func _on_purchase_updated(response: Dictionary) -> void:
 	var status: Dictionary = response.get("status", {}) as Dictionary
 	var code: int = int(status.get("responseCode", -1))
 	DebugLog.log("[PurchaseStore] on_purchase_updated code=%d" % code)
+	_prune_recent_requests()
 	if code != BillingClient.BillingResponseCode.OK:
 		var msg := "Cancelled" if code == BillingClient.BillingResponseCode.USER_CANCELED \
 			else ("Item already owned" if code == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED \
@@ -164,8 +264,12 @@ func _on_purchase_updated(response: Dictionary) -> void:
 			_grant(_pending_id)
 			var cid := _pending_id
 			_pending_id = ""
+			_recent_requested_at.erase(cid)
 			purchase_success.emit(cid)
 			return
+		if code == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED and _billing != null:
+			# If pending was cleared by timeout, restore ownership from Play.
+			_billing.query_purchases(BillingClient.ProductType.INAPP)
 		if not _pending_id.is_empty():
 			purchase_failed.emit(_pending_id, msg)
 			_pending_id = ""
@@ -179,13 +283,19 @@ func _on_purchase_updated(response: Dictionary) -> void:
 		if state != BillingClient.PurchaseState.PURCHASED:
 			continue
 		for cid in ids:
-			_grant(cid as String)
+			var product_id: String = cid as String
+			_grant(product_id)
 			if not (p.get("isAcknowledged", false) as bool) and not token.is_empty():
 				_billing.acknowledge_purchase(token)
-			if (cid as String) == _pending_id:
+			if product_id == _pending_id:
 				var granted_id := _pending_id
 				_pending_id = ""
+				_recent_requested_at.erase(granted_id)
 				purchase_success.emit(granted_id)
+				return
+			if _recent_requested_at.has(product_id):
+				_recent_requested_at.erase(product_id)
+				purchase_success.emit(product_id)
 				return
 
 	if not _pending_id.is_empty():
@@ -217,6 +327,10 @@ func is_purchased(product_id: String) -> bool:
 
 ## Launch the billing flow. Listen to purchase_success / purchase_failed signals for the result.
 func purchase(product_id: String) -> void:
+	if _billing == null and not _ensure_billing_client():
+		DebugLog.log("[PurchaseStore] GodotGooglePlayBilling singleton not found at purchase time")
+		purchase_failed.emit(product_id, "Billing not available in this build")
+		return
 	if is_key_product(product_id) and not can_buy_key_product_this_week(product_id):
 		purchase_failed.emit(product_id, "This key pack can only be purchased once per week.")
 		return
@@ -224,11 +338,80 @@ func purchase(product_id: String) -> void:
 		DebugLog.log("[PurchaseStore] No GodotGooglePlayBilling plugin — purchases disabled")
 		purchase_failed.emit(product_id, "Billing not available")
 		return
+	if not _billing_ready and not _billing.is_ready():
+		purchase_failed.emit(product_id, "Billing not ready yet. Please try again.")
+		return
+	if not _known_products.is_empty() and not _known_products.has(product_id):
+		purchase_failed.emit(product_id, "Product '%s' was not returned by Google Play. Check Play Console activation/tester account." % product_id)
+		return
 	if not _pending_id.is_empty():
 		DebugLog.log("[PurchaseStore] Purchase already in progress for '%s'" % _pending_id)
+		purchase_failed.emit(product_id, "Another purchase is still processing.")
 		return
 	_pending_id = product_id
-	_billing.purchase(product_id)
+	_recent_requested_at[product_id] = int(Time.get_unix_time_from_system())
+	var purchase_option_id: String = PURCHASE_OPTION_IDS.get(product_id, "") as String
+	var known_option_ids: Array = _known_purchase_option_ids.get(product_id, []) as Array
+	if not purchase_option_id.is_empty() and not known_option_ids.is_empty() and not known_option_ids.has(purchase_option_id):
+		DebugLog.log("[PurchaseStore] purchase_option_id '%s' not found for '%s'; falling back to default" % [purchase_option_id, product_id])
+		purchase_option_id = ""
+	DebugLog.log(
+		"[PurchaseStore] Requesting purchase: product_id=%s purchase_option_id=%s _billing_ready=%s" %
+		[product_id, purchase_option_id if not purchase_option_id.is_empty() else "<default>", str(_billing_ready)]
+	)
+	var start_result: Dictionary = _billing.purchase(product_id, purchase_option_id)
+	if not start_result.is_empty():
+		var status: Dictionary = start_result.get("status", {}) as Dictionary
+		var code: int = int(status.get("responseCode", BillingClient.BillingResponseCode.OK))
+		if code != BillingClient.BillingResponseCode.OK:
+			var pending := _pending_id
+			_pending_id = ""
+			purchase_failed.emit(pending, _billing_error_text(code))
+			return
+
+	# Safety net: if Google Play never calls back, release UI from "Processing...".
+	var expected_id := product_id
+	get_tree().create_timer(30.0).timeout.connect(func() -> void:
+		if _pending_id == expected_id:
+			_pending_id = ""
+			DebugLog.log("[PurchaseStore] Purchase timeout for product_id=%s — likely not set up in Play Console" % expected_id)
+			if _billing != null:
+				# Reconcile late/foreground-resume purchase confirmations from Play.
+				_billing.query_purchases(BillingClient.ProductType.INAPP)
+			purchase_failed.emit(expected_id, "Purchase timed out. Waiting for Play confirmation…")
+	, CONNECT_ONE_SHOT)
+
+func _notification(what: int) -> void:
+	if OS.get_name() != "Android":
+		return
+	if what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
+		if _billing != null and _billing_ready:
+			_billing.query_purchases(BillingClient.ProductType.INAPP)
+
+func _prune_recent_requests() -> void:
+	var now: int = int(Time.get_unix_time_from_system())
+	var stale: Array = []
+	for pid in _recent_requested_at.keys():
+		var ts: int = int(_recent_requested_at[pid])
+		if now - ts > RECENT_REQUEST_TTL_SEC:
+			stale.append(pid)
+	for pid in stale:
+		_recent_requested_at.erase(pid)
+
+func _billing_error_text(code: int) -> String:
+	match code:
+		BillingClient.BillingResponseCode.USER_CANCELED:
+			return "Cancelled"
+		BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED:
+			return "Item already owned"
+		BillingClient.BillingResponseCode.BILLING_UNAVAILABLE:
+			return "Billing unavailable on this device/account"
+		BillingClient.BillingResponseCode.SERVICE_UNAVAILABLE, BillingClient.BillingResponseCode.NETWORK_ERROR:
+			return "Network unavailable. Please try again."
+		BillingClient.BillingResponseCode.ITEM_UNAVAILABLE:
+			return "Item unavailable in this region/account"
+		_:
+			return "Billing error (%d)" % code
 
 func is_ring_product(product_id: String) -> bool:
 	return RING_PRODUCTS.has(product_id)
@@ -315,8 +498,8 @@ func get_key_drop_remaining_text(username: String = "") -> String:
 	var remaining: int = get_key_drop_remaining_seconds(username)
 	if remaining <= 0:
 		return "00:00"
-	var h: int = remaining / 3600
-	var m: int = (remaining % 3600) / 60
+	var h: int = int(remaining / 3600.0)
+	var m: int = int((remaining - h * 3600) / 60.0)
 	return "%02d:%02d" % [h, m]
 
 # ── Storage helpers ────────────────────────────────────────────────────────────

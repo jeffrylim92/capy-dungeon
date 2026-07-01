@@ -258,6 +258,21 @@ static func save_equipped(username: String, equipped: Dictionary) -> void:
 	f.store_string(JSON.stringify(equipped))
 	f.close()
 
+static func restore_from_server(username: String, ring_stash: Array, rings_equipped: Dictionary) -> void:
+	if username.strip_edges().is_empty():
+		return
+	if ring_stash.is_empty() and rings_equipped.is_empty():
+		return
+	if not ring_stash.is_empty():
+		var normalized_stash: Array = []
+		for item in ring_stash:
+			if typeof(item) == TYPE_DICTIONARY:
+				normalized_stash.append(normalize_ring(item as Dictionary))
+		_stash_cache[username] = normalized_stash
+		save_stash(username)
+	if not rings_equipped.is_empty():
+		save_equipped(username, rings_equipped)
+
 # Returns dict: { "slot_0": ring_dict_or_null, "slot_1": ring_dict_or_null }
 static func get_equipped_rings(username: String, char_id: String) -> Dictionary:
 	var all: Dictionary = load_equipped(username)

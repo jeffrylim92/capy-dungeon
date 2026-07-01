@@ -492,13 +492,13 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 
 	var portrait: Texture2D = _load_portrait(String(data.id))
 	if portrait != null:
-		var tr := TextureRect.new()
-		tr.texture = portrait
-		tr.set_anchors_preset(Control.PRESET_FULL_RECT)
-		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		portrait_panel.add_child(tr)
+		var portrait_rect := TextureRect.new()
+		portrait_rect.texture = portrait
+		portrait_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+		portrait_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		portrait_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		portrait_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		portrait_panel.add_child(portrait_rect)
 	else:
 		var swatch := ColorRect.new()
 		swatch.color = data.tint
@@ -674,7 +674,7 @@ func _make_char_button(data: CharacterData, card_w: float, card_h: float, idx: i
 	btn.pressed.connect(func() -> void: _on_card_pressed(idx))
 	return btn
 
-func _show_ulti_info(char_id: String, ulti_sid: String) -> void:
+func _show_ulti_info(_char_id: String, ulti_sid: String) -> void:
 	var view := get_viewport_rect().size
 	var ulti_name: String = SKILL_NAMES.get(ulti_sid, ulti_sid) as String
 	var desc: String      = ULTI_DESC.get(ulti_sid, "An unstoppable ultimate skill exclusive to this character.") as String

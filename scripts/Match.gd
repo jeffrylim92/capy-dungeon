@@ -8,6 +8,7 @@ signal match_ended(next_action: String)
 # ─── Public (set by Main before adding to tree) ───────────────────────────────
 var selected_player_character: CharacterData = null
 var account_username: String = ""
+var account_cloud_id: String = ""
 var account_display_name: String = ""
 
 # ─── Tuning constants ─────────────────────────────────────────────────────────
@@ -889,7 +890,7 @@ var _prism_zones: Array[Dictionary] = []
 var _venom_pods: Array[Dictionary] = []
 var _lightning_markers: Array[Dictionary] = []
 var _thorn_patches: Array[Dictionary] = []
-var _boss_summons: Array[Dictionary] = []
+var _boss_summons: Array[Dictionary] = []  # reserved for future boss summon feature
 
 # ─── Jump state for belly bounce ──────────────────────────────────────────────
 var _player_jump_vel_y: float = 0.0
@@ -1958,7 +1959,6 @@ func _update_stampedes(delta: float) -> void:
 				continue
 			var e: Dictionary = _enemies[j]
 			var ep: Vector2 = e.get("pos", Vector2.ZERO) as Vector2
-			var enemy_id: int = e.get("id", -1) as int
 			var dist: float = ep.distance_to(cent_pos)
 			
 			# Hit detected - damage and disappear
@@ -5851,7 +5851,6 @@ func _draw() -> void:
 	# Venom pods (Blight Vine Tyrant)
 	for pod in _venom_pods:
 		var pp: Vector2 = pod["pos"] as Vector2
-		var life_ratio: float = (pod["life"] as float) / (pod["max_life"] as float)
 		var pulse: float = 0.8 + 0.2 * sin(_elapsed * 6.0)
 		draw_circle(pp, 9.0 * pulse, Color(0.40, 0.95, 0.30, 0.85))
 		draw_circle(pp, 5.0 * pulse, Color(0.70, 1.0, 0.45, 0.92))
@@ -5869,7 +5868,6 @@ func _draw() -> void:
 			draw_circle(mp, phase_radius, Color(1.0, 0.85, 0.20, 0.15 + warning * 0.20))
 			draw_arc(mp, phase_radius, 0.0, TAU, 24, Color(1.0, 0.90, 0.30, 0.80), 2.5)
 		else:
-			var orbit_r: float = marker.get("orbit_r", 200.0) as float
 			draw_circle(mp, 8.0, Color(1.0, 0.85, 0.20, 0.90))
 			draw_circle(mp, 4.0, Color(1.0, 1.0, 0.50, 0.95))
 			draw_arc(mp, 10.0, 0.0, TAU, 16, Color(1.0, 0.70, 0.10, 0.70 * life_ratio), 1.5)
@@ -5897,7 +5895,6 @@ func _draw() -> void:
 	# Ring drops
 	for rd in _ring_drops:
 		var rp: Vector2 = rd["pos"] as Vector2
-		var ring: Dictionary = rd["ring"] as Dictionary
 		var rpulse: float = 0.80 + sin(_elapsed * 4.0) * 0.20
 		draw_arc(rp, 14.0 * rpulse, 0.0, TAU, 24, Color(0.98, 0.82, 0.15, 0.90), 3.5)
 		draw_arc(rp, 8.0 * rpulse, 0.0, TAU, 16, Color(1.0, 0.95, 0.55, 0.55), 2.0)
@@ -5906,7 +5903,6 @@ func _draw() -> void:
 	# Artifact drops
 	for ad in _artifact_drops:
 		var ap: Vector2 = ad["pos"] as Vector2
-		var artifact: Dictionary = ad["artifact"] as Dictionary
 		var apulse: float = 0.80 + sin(_elapsed * 3.5) * 0.20
 		draw_arc(ap, 14.0 * apulse, 0.0, TAU, 24, Color(0.98, 0.82, 0.15, 0.90), 3.5)
 		draw_arc(ap, 8.0 * apulse, 0.0, TAU, 16, Color(1.0, 0.95, 0.55, 0.55), 2.0)
@@ -6557,7 +6553,7 @@ func _draw() -> void:
 		var bp: Vector2  = b["pos"] as Vector2
 		var fr: float    = b["freeze_r"] as float
 		var blv: int     = b["lvl"] as int
-		var lf: float    = clamp((b["life"] as float) / ICE_ORB_LIFE, 0.0, 1.0)
+		var _lf: float   = clamp((b["life"] as float) / ICE_ORB_LIFE, 0.0, 1.0)
 		draw_arc(bp, fr, 0.0, TAU, 36, Color(0.70, 0.92, 1.0, 0.18 + float(blv) * 0.04), 1.5)
 		var n_shards: int = 5 + blv
 		for i in n_shards:
@@ -7609,7 +7605,8 @@ func _on_death() -> void:
 			StatsStore.OUTCOME_LOSS,
 			0, _elapsed, 0, _kills
 		)
-		LeaderboardClient.submit_stats(self, account_username, account_display_name)
+		var cloud_id: String = account_cloud_id if not account_cloud_id.is_empty() else account_username
+		LeaderboardClient.submit_stats(self, cloud_id, account_display_name)
 
 	var view: Vector2 = get_viewport_rect().size
 	var layer := CanvasLayer.new()

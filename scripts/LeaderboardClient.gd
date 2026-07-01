@@ -40,7 +40,10 @@ static func submit_stats(host: Node, username: String, display_name: String) -> 
 		"best_kill_character":   best_kill_char,
 		"best_survive_character": best_survive_char,
 		"stats_json":            StatsStore.get_all_for_user(username),
-		"rings_json":            RingStore.load_equipped(username),
+			"rings_json":            RingStore.load_equipped(username),
+			"ring_stash_json":       RingStore.load_stash(username),
+			"artifact_stash_json":   ArtifactStore.load_stash(username),
+			"artifact_equipped_json": ArtifactStore.load_equipped(username),
 	})
 
 	var http := HTTPRequest.new()
@@ -55,8 +58,10 @@ static func submit_stats(host: Node, username: String, display_name: String) -> 
 		DebugLog.log("[LeaderboardClient] submit failed to start: %d" % err)
 		http.queue_free()
 
-## Fetch the cloud-backed stats for a user. `callback` receives a Dictionary
-## (the per-character stats dict from StatsStore) or {} on failure.
+## Fetch cloud-backed progress for a user.
+## `callback` receives a Dictionary with keys:
+##   stats, rings_equipped, ring_stash, artifact_stash, artifact_equipped
+## or {} on failure.
 static func fetch_user_stats(host: Node, username: String, callback: Callable) -> void:
 	if username.is_empty():
 		callback.call({})
@@ -73,7 +78,14 @@ static func fetch_user_stats(host: Node, username: String, callback: Callable) -
 			if typeof(parsed) != TYPE_DICTIONARY:
 				callback.call({})
 				return
-			callback.call(parsed.get("stats", {}) as Dictionary)
+			var payload: Dictionary = parsed as Dictionary
+			callback.call({
+				"stats": payload.get("stats", {}) as Dictionary,
+				"rings_equipped": payload.get("rings_json", {}) as Dictionary,
+				"ring_stash": payload.get("ring_stash", []) as Array,
+				"artifact_stash": payload.get("artifact_stash", []) as Array,
+				"artifact_equipped": payload.get("artifact_equipped", {}) as Dictionary,
+			})
 	)
 	var err := http.request(BASE_URL + "/stats/user/" + username.to_lower())
 	if err != OK:

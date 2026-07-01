@@ -165,8 +165,8 @@ static func format_seconds(s: float) -> String:
 	if s <= 0.0:
 		return "—"
 	var total: int = int(round(s))
-	var mins: int = total / 60
-	var secs: int = total % 60
+	var mins: int = int(total / 60.0)
+	var secs: int = total - mins * 60
 	return "%d:%02d" % [mins, secs]
 
 static func win_rate(entry: Dictionary) -> float:
@@ -187,16 +187,44 @@ static func get_brown_unlock_progress(username: String) -> Dictionary:
 	return result
 
 ## Restore stats from a server backup if no local data exists for this user.
-## Called once on login. Does nothing if the user already has local match history.
+## Called on login/history-open. Merges server values into local data.
 static func restore_from_server(username: String, server_per_char: Dictionary) -> void:
 	if server_per_char.is_empty():
 		return
 	var key := username.to_lower()
 	var data := _load_all()
 	var local_char: Dictionary = data.get(key, {}) as Dictionary
-	if not local_char.is_empty():
-		return
-	data[key] = server_per_char
+	for char_id_variant in server_per_char.keys():
+		var char_id: String = String(char_id_variant)
+		var srv: Dictionary = server_per_char.get(char_id, {}) as Dictionary
+		if srv.is_empty():
+			continue
+		var dst: Dictionary = local_char.get(char_id, _blank_entry()) as Dictionary
+		for default_key in _blank_entry().keys():
+			if not dst.has(default_key):
+				dst[default_key] = _blank_entry()[default_key]
+		dst["matches"] = maxi(int(dst.get("matches", 0)), int(srv.get("matches", 0)))
+		dst["wins"] = maxi(int(dst.get("wins", 0)), int(srv.get("wins", 0)))
+		dst["losses"] = maxi(int(dst.get("losses", 0)), int(srv.get("losses", 0)))
+		dst["draws"] = maxi(int(dst.get("draws", 0)), int(srv.get("draws", 0)))
+		dst["best_combo"] = maxi(int(dst.get("best_combo", 0)), int(srv.get("best_combo", 0)))
+		var dst_fast: float = float(dst.get("fastest_win_seconds", 0.0))
+		var srv_fast: float = float(srv.get("fastest_win_seconds", 0.0))
+		if dst_fast <= 0.0:
+			dst["fastest_win_seconds"] = srv_fast
+		elif srv_fast > 0.0:
+			dst["fastest_win_seconds"] = min(dst_fast, srv_fast)
+		dst["finishers_unleashed"] = maxi(int(dst.get("finishers_unleashed", 0)), int(srv.get("finishers_unleashed", 0)))
+		dst["total_play_time_seconds"] = max(float(dst.get("total_play_time_seconds", 0.0)), float(srv.get("total_play_time_seconds", 0.0)))
+		dst["total_kills"] = maxi(int(dst.get("total_kills", 0)), int(srv.get("total_kills", 0)))
+		dst["best_survive_seconds"] = max(float(dst.get("best_survive_seconds", 0.0)), float(srv.get("best_survive_seconds", 0.0)))
+		dst["survive_5min_count"] = maxi(int(dst.get("survive_5min_count", 0)), int(srv.get("survive_5min_count", 0)))
+		var dst_played: String = String(dst.get("last_played_at", ""))
+		var srv_played: String = String(srv.get("last_played_at", ""))
+		if srv_played > dst_played:
+			dst["last_played_at"] = srv_played
+		local_char[char_id] = dst
+	data[key] = local_char
 	_save_all(data)
 
 static func merge_user_local_data(into_username: String, from_username: String) -> void:

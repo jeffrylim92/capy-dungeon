@@ -102,6 +102,9 @@ def _db_init() -> None:
                 best_survive_char TEXT    DEFAULT '',
                 stats_json        TEXT    DEFAULT '{}',
                 rings_json        TEXT    DEFAULT '{}',
+                ring_stash_json   TEXT    DEFAULT '[]',
+                artifact_stash_json TEXT  DEFAULT '[]',
+                artifact_equipped_json TEXT DEFAULT '{}',
                 updated_at        TEXT    DEFAULT ''
             )
         """)
@@ -112,6 +115,18 @@ def _db_init() -> None:
             pass
         try:
             _execute(conn, "ALTER TABLE leaderboard ADD COLUMN rings_json TEXT DEFAULT '{}'")
+        except Exception:
+            pass
+        try:
+            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN ring_stash_json TEXT DEFAULT '[]'")
+        except Exception:
+            pass
+        try:
+            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN artifact_stash_json TEXT DEFAULT '[]'")
+        except Exception:
+            pass
+        try:
+            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN artifact_equipped_json TEXT DEFAULT '{}'")
         except Exception:
             pass
         conn.commit()
@@ -130,6 +145,9 @@ class StatsSubmit(BaseModel):
     best_survive_character: str = ""
     stats_json: dict = {}  # full per-character stats for cloud backup
     rings_json: dict = {}  # full per-character equipped ring slots for leaderboard display
+    ring_stash_json: list = []
+    artifact_stash_json: list = []
+    artifact_equipped_json: dict = {}
 
 
 def _best_kill_from_stats(stats: dict, fallback_kills: int = 0, fallback_char: str = "") -> tuple[int, str]:
@@ -181,6 +199,9 @@ async def stats_submit(body: StatsSubmit) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     stats_blob = _json.dumps(body.stats_json, ensure_ascii=False)
     rings_blob = _json.dumps(body.rings_json, ensure_ascii=False)
+    ring_stash_blob = _json.dumps(body.ring_stash_json, ensure_ascii=False)
+    artifact_stash_blob = _json.dumps(body.artifact_stash_json, ensure_ascii=False)
+    artifact_equipped_blob = _json.dumps(body.artifact_equipped_json, ensure_ascii=False)
     submitted_kills, submitted_kill_char = _best_kill_from_stats(
         body.stats_json,
         body.total_kills,
@@ -193,6 +214,9 @@ async def stats_submit(body: StatsSubmit) -> dict:
         if row:
             existing_blob = row["stats_json"] if row["stats_json"] else "{}"
             existing_rings_blob = row["rings_json"] if row["rings_json"] else "{}"
+            existing_ring_stash_blob = row["ring_stash_json"] if row["ring_stash_json"] else "[]"
+            existing_artifact_stash_blob = row["artifact_stash_json"] if row["artifact_stash_json"] else "[]"
+            existing_artifact_equipped_blob = row["artifact_equipped_json"] if row["artifact_equipped_json"] else "{}"
             existing_stats = {}
             try:
                 existing_stats = _json.loads(existing_blob)
@@ -213,18 +237,25 @@ async def stats_submit(body: StatsSubmit) -> dict:
             surv_char   = body.best_survive_character if body.best_survive_seconds   >= row["best_survive_sec"] else row["best_survive_char"]
             new_blob = stats_blob if body.stats_json else existing_blob
             new_rings_blob = rings_blob if body.rings_json else existing_rings_blob
+            new_ring_stash_blob = ring_stash_blob if body.ring_stash_json else existing_ring_stash_blob
+            new_artifact_stash_blob = artifact_stash_blob if body.artifact_stash_json else existing_artifact_stash_blob
+            new_artifact_equipped_blob = artifact_equipped_blob if body.artifact_equipped_json else existing_artifact_equipped_blob
             _execute(conn,
                 f"UPDATE leaderboard SET display_name={ph},total_kills={ph},best_survive_sec={ph},"
-                f"best_kill_char={ph},best_survive_char={ph},stats_json={ph},rings_json={ph},updated_at={ph} WHERE username={ph}",
-                (body.display_name, new_kills, new_survive, kill_char, surv_char, new_blob, new_rings_blob, now, username),
+                f"best_kill_char={ph},best_survive_char={ph},stats_json={ph},rings_json={ph},"
+                f"ring_stash_json={ph},artifact_stash_json={ph},artifact_equipped_json={ph},updated_at={ph} WHERE username={ph}",
+                (body.display_name, new_kills, new_survive, kill_char, surv_char, new_blob, new_rings_blob,
+                 new_ring_stash_blob, new_artifact_stash_blob, new_artifact_equipped_blob, now, username),
             )
         else:
             _execute(conn,
                 f"INSERT INTO leaderboard "
-                f"(username,display_name,total_kills,best_survive_sec,best_kill_char,best_survive_char,stats_json,rings_json,updated_at)"
-                f" VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})",
+                f"(username,display_name,total_kills,best_survive_sec,best_kill_char,best_survive_char,stats_json,rings_json,"
+                f"ring_stash_json,artifact_stash_json,artifact_equipped_json,updated_at)"
+                f" VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})",
                 (username, body.display_name, submitted_kills, body.best_survive_seconds,
-                 submitted_kill_char, body.best_survive_character, stats_blob, rings_blob, now),
+                 submitted_kill_char, body.best_survive_character, stats_blob, rings_blob,
+                 ring_stash_blob, artifact_stash_blob, artifact_equipped_blob, now),
             )
         conn.commit()
         conn.close()
@@ -239,15 +270,43 @@ async def stats_user(username: str) -> dict:
     ph = _PH
     with _db_lock:
         conn = _db_connect()
-        row = _fetchone(conn, f"SELECT stats_json FROM leaderboard WHERE username = {ph}", (uname,))
+        row = _fetchone(
+            conn,
+            f"SELECT stats_json, rings_json, ring_stash_json, artifact_stash_json, artifact_equipped_json "
+            f"FROM leaderboard WHERE username = {ph}",
+            (uname,),
+        )
         conn.close()
-    if not row or not row["stats_json"]:
-        return {"ok": True, "stats": {}}
+    if not row:
+        return {"ok": True, "stats": {}, "rings_json": {}, "ring_stash": [], "artifact_stash": [], "artifact_equipped": {}}
     try:
-        data = _json.loads(row["stats_json"])
+        stats = _json.loads(row["stats_json"] if row["stats_json"] else "{}")
     except Exception:
-        data = {}
-    return {"ok": True, "stats": data}
+        stats = {}
+    try:
+        rings = _json.loads(row["rings_json"] if row["rings_json"] else "{}")
+    except Exception:
+        rings = {}
+    try:
+        ring_stash = _json.loads(row["ring_stash_json"] if row["ring_stash_json"] else "[]")
+    except Exception:
+        ring_stash = []
+    try:
+        artifact_stash = _json.loads(row["artifact_stash_json"] if row["artifact_stash_json"] else "[]")
+    except Exception:
+        artifact_stash = []
+    try:
+        artifact_equipped = _json.loads(row["artifact_equipped_json"] if row["artifact_equipped_json"] else "{}")
+    except Exception:
+        artifact_equipped = {}
+    return {
+        "ok": True,
+        "stats": stats if isinstance(stats, dict) else {},
+        "rings_json": rings if isinstance(rings, dict) else {},
+        "ring_stash": ring_stash if isinstance(ring_stash, list) else [],
+        "artifact_stash": artifact_stash if isinstance(artifact_stash, list) else [],
+        "artifact_equipped": artifact_equipped if isinstance(artifact_equipped, dict) else {},
+    }
 
 
 @app.get("/stats/leaderboard/kills")
@@ -344,6 +403,21 @@ GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID",     "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 RELAY_BASE           = os.environ.get("RELAY_BASE_URL",       "https://capy-dungeon.onrender.com")
 DEEP_LINK            = "capydungeon://auth/callback"
+ANDROID_PLAY_STORE_URL = os.environ.get(
+    "ANDROID_PLAY_STORE_URL",
+    "https://play.google.com/store/apps/details?id=com.capydungeon.game",
+)
+
+
+def _env_int(name: str, default: int = 0) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except Exception:
+        return default
+
+
+ANDROID_LATEST_VERSION_CODE = _env_int("ANDROID_LATEST_VERSION_CODE", 0)
+ANDROID_MIN_SUPPORTED_VERSION_CODE = _env_int("ANDROID_MIN_SUPPORTED_VERSION_CODE", 0)
 
 # ── State-keyed result cache ──────────────────────────────────────────────────
 # Facebook's safety crawler hits the redirect URL before the user's browser,
@@ -424,6 +498,29 @@ async def root():
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
     return {"status": "ok", "service": "capy-oauth-relay"}
+
+
+@app.get("/app/version/android")
+async def app_version_android(current_version_code: int = Query(0, ge=0)) -> dict:
+    latest = max(ANDROID_LATEST_VERSION_CODE, 0)
+    minimum = max(ANDROID_MIN_SUPPORTED_VERSION_CODE, 0)
+    required_threshold = max(latest, minimum)
+    update_required = required_threshold > 0 and current_version_code < required_threshold
+    message = (
+        "A newer version is available. Please update from the Play Store to continue."
+        if update_required
+        else ""
+    )
+    return {
+        "ok": True,
+        "platform": "android",
+        "current_version_code": current_version_code,
+        "latest_version_code": latest,
+        "min_supported_version_code": minimum,
+        "update_required": update_required,
+        "play_store_url": ANDROID_PLAY_STORE_URL,
+        "message": message,
+    }
 
 
 @app.get("/fb/callback")
