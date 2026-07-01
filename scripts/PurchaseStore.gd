@@ -225,8 +225,7 @@ func _on_query_product_details_response(response: Dictionary) -> void:
 
 ## Fired after query_purchases() — restores previously purchased items on launch.
 func _on_query_purchases_response(response: Dictionary) -> void:
-	var status: Dictionary = response.get("status", {}) as Dictionary
-	var code: int = int(status.get("responseCode", -1))
+	var code: int = _extract_response_code(response)
 	if code != BillingClient.BillingResponseCode.OK:
 		DebugLog.log("[PurchaseStore] query_purchases_response error code=%d" % code)
 		return
@@ -258,10 +257,47 @@ func _on_query_purchases_response(response: Dictionary) -> void:
 
 ## Fired after the billing sheet closes (buy, cancel, or error).
 func _on_purchase_updated(response: Dictionary) -> void:
-	var status: Dictionary = response.get("status", {}) as Dictionary
-	var code: int = int(status.get("responseCode", -1))
-	DebugLog.log("[PurchaseStore] on_purchase_updated code=%d" % code)
+	var code: int = _extract_response_code(response)
+	DebugLog.log("[PurchaseStore] on_purchase_updated code=%d raw=%s" % [code, str(response)])
 	_prune_recent_requests()
+
+	# Some plugin/device combinations may return unknown code (-1) but still include
+	# valid PURCHASED entries. Grant first, then only fail if nothing grantable exists.
+	var purchases: Array = _extract_purchases(response)
+	var granted_any: bool = false
+	for p in purchases:
+		if typeof(p) != TYPE_DICTIONARY:
+			continue
+		var pd: Dictionary = p as Dictionary
+		var ids: Array[String] = _extract_purchase_product_ids(pd)
+		var token: String = _extract_purchase_token(pd)
+		var state: int = _extract_purchase_state(pd)
+		if state != BillingClient.PurchaseState.PURCHASED:
+			continue
+		for cid in ids:
+			var product_id: String = String(cid)
+			_grant(product_id)
+			granted_any = true
+			if not _extract_purchase_acknowledged(pd) and not token.is_empty():
+				_billing.acknowledge_purchase(token)
+			if product_id == _pending_id:
+				var granted_id := _pending_id
+				_pending_id = ""
+				_recent_requested_at.erase(granted_id)
+				purchase_success.emit(granted_id)
+				return
+			if _recent_requested_at.has(product_id):
+				_recent_requested_at.erase(product_id)
+				purchase_success.emit(product_id)
+				return
+
+	if granted_any:
+		if not _pending_id.is_empty():
+			var synced_id := _pending_id
+			_pending_id = ""
+			purchase_success.emit(synced_id)
+		return
+
 	if code != BillingClient.BillingResponseCode.OK:
 		var msg := "Cancelled" if code == BillingClient.BillingResponseCode.USER_CANCELED \
 			else ("Item already owned" if code == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED \
@@ -275,32 +311,6 @@ func _on_purchase_updated(response: Dictionary) -> void:
 			purchase_failed.emit(_pending_id, msg)
 			_pending_id = ""
 		return
-
-	var purchases: Array = _extract_purchases(response)
-	for p in purchases:
-		if typeof(p) != TYPE_DICTIONARY:
-			continue
-		var pd: Dictionary = p as Dictionary
-		var ids: Array[String] = _extract_purchase_product_ids(pd)
-		var token: String = _extract_purchase_token(pd)
-		var state: int = _extract_purchase_state(pd)
-		if state != BillingClient.PurchaseState.PURCHASED:
-			continue
-		for cid in ids:
-			var product_id: String = String(cid)
-			_grant(product_id)
-			if not _extract_purchase_acknowledged(pd) and not token.is_empty():
-				_billing.acknowledge_purchase(token)
-			if product_id == _pending_id:
-				var granted_id := _pending_id
-				_pending_id = ""
-				_recent_requested_at.erase(granted_id)
-				purchase_success.emit(granted_id)
-				return
-			if _recent_requested_at.has(product_id):
-				_recent_requested_at.erase(product_id)
-				purchase_success.emit(product_id)
-				return
 
 	if not _pending_id.is_empty():
 		purchase_failed.emit(_pending_id, "Purchase not confirmed")
@@ -316,6 +326,16 @@ func _extract_purchases(response: Dictionary) -> Array:
 		if v is Array:
 			return v as Array
 	return []
+
+func _extract_response_code(response: Dictionary) -> int:
+	var status: Dictionary = response.get("status", {}) as Dictionary
+	for key in ["responseCode", "response_code", "code"]:
+		if status.has(key):
+			return int(status.get(key, -1))
+	for key in ["responseCode", "response_code", "code", "billingResultCode"]:
+		if response.has(key):
+			return int(response.get(key, -1))
+	return -1
 
 func _extract_purchase_product_ids(p: Dictionary) -> Array[String]:
 	var out: Array[String] = []
