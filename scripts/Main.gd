@@ -312,12 +312,13 @@ func _setup_runtime_network_timer() -> void:
 	add_child(_runtime_net_timer)
 
 func _begin_startup_checks() -> void:
-	_show_gate_message("Checking internet", "Capy Dungeon requires an internet connection to start.", "Retry", "Quit")
+	_show_gate_message("Checking internet", "Capy Dungeon requires an internet connection to start.", "Retry", "Quit", false)
 	_check_online(func(online: bool) -> void:
 		if not online:
 			_gate_mode = "offline_startup"
 			_show_gate_message("No internet connection", "Please connect to the internet to continue.", "Retry", "Quit")
 			return
+		_show_gate_message("Checking app version", "Please wait while we verify your app version.", "Retry", "Quit", false)
 		_check_android_update(func(info: Dictionary) -> void:
 			if not (info.get("checked", false) as bool):
 				_gate_mode = "offline_startup"
@@ -339,13 +340,17 @@ func _begin_startup_checks() -> void:
 		)
 	)
 
-func _show_gate_message(title: String, message: String, primary_text: String, secondary_text: String) -> void:
+func _show_gate_message(title: String, message: String, primary_text: String, secondary_text: String, show_buttons: bool = true) -> void:
 	if _gate_layer == null:
 		return
 	_gate_title.text = title
 	_gate_message.text = message
 	_gate_primary_btn.text = primary_text
 	_gate_secondary_btn.text = secondary_text
+	_gate_primary_btn.visible = show_buttons
+	_gate_secondary_btn.visible = show_buttons
+	_gate_primary_btn.disabled = not show_buttons
+	_gate_secondary_btn.disabled = not show_buttons
 	_gate_layer.visible = true
 	# During startup, there is nothing to pause yet; during runtime, this blocks play.
 	if _startup_gate_passed:

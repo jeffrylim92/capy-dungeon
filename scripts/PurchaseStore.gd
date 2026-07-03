@@ -456,13 +456,20 @@ func _reconcile_non_consumable_entitlements(active: Dictionary) -> void:
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 func set_username(username: String) -> void:
-	_current_username = username
+	var normalized: String = username.strip_edges().to_lower()
+	var changed: bool = normalized != _current_username
+	_current_username = normalized
+	if changed:
+		_migrate_legacy_purchases_if_needed(_current_username)
 	RingStore.sync_equipped_to_shared_stash(username)
 	_sync_purchased_rings_to_stash()
 	if _is_dev_account():
 		var d: Dictionary = _load_key_data(username)
 		d["keys"] = 99
 		_save_key_data(username, d)
+	if changed and _billing != null and _billing_ready:
+		# Reconcile Play entitlements into the active account's local purchase file.
+		_billing.query_purchases(BillingClient.ProductType.INAPP)
 
 func is_purchased(product_id: String) -> bool:
 	if not PURCHASABLE.has(product_id):
@@ -745,9 +752,10 @@ func _mark_key_product_purchase_this_week(username: String, product_id: String) 
 	_save_key_data(username, data)
 
 func _load() -> Array:
-	if not FileAccess.file_exists(PATH):
+	var path: String = _purchase_path_for(_current_username)
+	if not FileAccess.file_exists(path):
 		return []
-	var f := FileAccess.open(PATH, FileAccess.READ)
+	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
 		return []
 	var parsed: Variant = JSON.parse_string(f.get_as_text())
@@ -757,8 +765,40 @@ func _load() -> Array:
 	return parsed as Array
 
 func _save(purchased: Array) -> void:
-	var f := FileAccess.open(PATH, FileAccess.WRITE)
+	var path: String = _purchase_path_for(_current_username)
+	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		return
 	f.store_string(JSON.stringify(purchased))
 	f.close()
+
+func _purchase_path_for(username: String) -> String:
+	var u: String = username.strip_edges().to_lower()
+	if u.is_empty():
+		return PATH
+	return "user://purchases_%s.json" % u
+
+func _migrate_legacy_purchases_if_needed(username: String) -> void:
+	if username.is_empty():
+		return
+	var legacy_path: String = PATH
+	var scoped_path: String = _purchase_path_for(username)
+	if not FileAccess.file_exists(legacy_path):
+		return
+	if FileAccess.file_exists(scoped_path):
+		return
+	var src := FileAccess.open(legacy_path, FileAccess.READ)
+	if src == null:
+		return
+	var raw: String = src.get_as_text()
+	src.close()
+	var parsed: Variant = JSON.parse_string(raw)
+	if typeof(parsed) != TYPE_ARRAY:
+		return
+	var dst := FileAccess.open(scoped_path, FileAccess.WRITE)
+	if dst == null:
+		return
+	dst.store_string(raw)
+	dst.close()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(legacy_path))
+	DebugLog.log("[PurchaseStore] Migrated legacy purchases.json to scoped file for '%s'" % username)

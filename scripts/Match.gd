@@ -779,7 +779,7 @@ var _potions: Array[Dictionary] = []
 var _ring_drops: Array[Dictionary] = []
 var _artifact_drops: Array[Dictionary] = []
 var _rings_obtained: Array[Dictionary] = []
-var _boss_artifact_result: Dictionary = {}
+var _boss_artifact_results: Array[Dictionary] = []
 
 # ─── Boss projectiles  {pos,vel,dmg,life} ────────────────────────────────
 var _boss_projs: Array[Dictionary] = []
@@ -3865,7 +3865,8 @@ func _on_arena_boss_cleared() -> void:
 		"last_boss_wave": _wave,
 	}
 	var reward: Dictionary = _award_random_artifact()
-	_boss_artifact_result = reward
+	if not reward.is_empty():
+		_boss_artifact_results.append(reward)
 	if reward.get("duplicated", false) as bool and _boss_key_spent_this_run > 0:
 		PurchaseStore.add_keys(account_username, 1)
 		_boss_key_spent_this_run -= 1
@@ -7637,7 +7638,7 @@ func _on_death() -> void:
 	layer.add_child(stats)
 
 	var has_ring_rewards: bool = not _rings_obtained.is_empty()
-	var has_artifact_reward: bool = not _boss_artifact_result.is_empty()
+	var has_artifact_reward: bool = not _boss_artifact_results.is_empty()
 	if has_ring_rewards:
 		title.position = Vector2(0, view.y * 0.13)
 		stats.position = Vector2(0, view.y * 0.28)
@@ -7783,19 +7784,41 @@ func _add_death_artifact_reward(layer: Node, view: Vector2, y: float) -> void:
 	panel.add_child(root)
 
 	var title := Label.new()
-	title.text = "Artifact Found"
+	title.text = "Artifacts Found"
 	title.add_theme_font_size_override("font_size", 30)
 	title.add_theme_color_override("font_color", Color(0.84, 0.78, 1.0))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(title)
 
-	var reward_art: Dictionary = _boss_artifact_result.get("artifact", {}) as Dictionary
-	var duplicated: bool = _boss_artifact_result.get("duplicated", false) as bool
-	if not reward_art.is_empty():
-		root.add_child(_make_death_artifact_row(reward_art, duplicated))
-	if duplicated:
+	var max_rows: int = min(_boss_artifact_results.size(), 3)
+	for i in max_rows:
+		var reward: Dictionary = _boss_artifact_results[i] as Dictionary
+		var reward_art: Dictionary = reward.get("artifact", {}) as Dictionary
+		var duplicated: bool = reward.get("duplicated", false) as bool
+		if not reward_art.is_empty():
+			root.add_child(_make_death_artifact_row(reward_art, duplicated))
+
+	var duplicate_count: int = 0
+	for reward_any in _boss_artifact_results:
+		if typeof(reward_any) != TYPE_DICTIONARY:
+			continue
+		if bool((reward_any as Dictionary).get("duplicated", false)):
+			duplicate_count += 1
+
+	if _boss_artifact_results.size() > max_rows:
+		var more := Label.new()
+		more.text = "+%d more in stash" % (_boss_artifact_results.size() - max_rows)
+		more.add_theme_font_size_override("font_size", 30)
+		more.add_theme_color_override("font_color", Color(0.72, 0.68, 0.78))
+		more.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		root.add_child(more)
+
+	if duplicate_count > 0:
 		var dup := Label.new()
-		dup.text = "Duplicated artifact - key refunded to stash"
+		dup.text = "%d duplicated artifact%s - key refunded to stash" % [
+			duplicate_count,
+			"s" if duplicate_count != 1 else "",
+		]
 		dup.add_theme_font_size_override("font_size", 24)
 		dup.add_theme_color_override("font_color", Color(0.70, 0.70, 0.74))
 		dup.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
