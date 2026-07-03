@@ -349,7 +349,7 @@ func _on_acknowledge_response(response: Dictionary) -> void:
 	DebugLog.log("[PurchaseStore] acknowledge_purchase_response code=%d" % code)
 
 func _extract_purchases(response: Dictionary) -> Array:
-	for key in ["purchases", "purchaseList", "purchase_list", "items", "purchase"]:
+	for key in ["purchases", "purchaseList", "purchase_list", "items", "purchase", "purchaseDataList", "purchase_data_list", "purchaseData", "purchase_data"]:
 		var v: Variant = response.get(key, null)
 		if v is Array:
 			return v as Array
@@ -370,17 +370,48 @@ func _extract_response_code(response: Dictionary) -> int:
 func _extract_purchase_product_ids(p: Dictionary) -> Array[String]:
 	var out: Array[String] = []
 	for key in ["productIds", "product_ids", "products", "productId", "product_id"]:
-		var v: Variant = p.get(key, null)
-		if v is Array:
-			for item in (v as Array):
-				var pid: String = String(item)
-				if not pid.is_empty() and not out.has(pid):
-					out.append(pid)
-		elif v != null:
-			var single: String = String(v)
-			if not single.is_empty() and not out.has(single):
-				out.append(single)
+		_append_product_id_from_variant(p.get(key, null), out)
+
+	# Some plugin versions keep raw purchase JSON in a string field.
+	if out.is_empty():
+		for json_key in ["originalJson", "original_json", "purchaseData", "purchase_data", "json"]:
+			if not p.has(json_key):
+				continue
+			var raw: String = String(p.get(json_key, ""))
+			if raw.is_empty():
+				continue
+			var parsed: Variant = JSON.parse_string(raw)
+			if typeof(parsed) == TYPE_DICTIONARY:
+				var pd: Dictionary = parsed as Dictionary
+				for key in ["productIds", "product_ids", "products", "productId", "product_id"]:
+					_append_product_id_from_variant(pd.get(key, null), out)
+			if not out.is_empty():
+				break
 	return out
+
+func _append_product_id_from_variant(v: Variant, out: Array[String]) -> void:
+	if v == null:
+		return
+	if v is Array:
+		for item in (v as Array):
+			_append_product_id_from_variant(item, out)
+		return
+	if typeof(v) == TYPE_DICTIONARY:
+		var d: Dictionary = v as Dictionary
+		for key in ["productId", "product_id", "id", "product", "sku"]:
+			if d.has(key):
+				_append_product_id_from_variant(d.get(key, null), out)
+		for nested_key in ["products", "productIds", "product_ids", "items"]:
+			if d.has(nested_key):
+				_append_product_id_from_variant(d.get(nested_key, null), out)
+		return
+	var pid: String = String(v).strip_edges()
+	if pid.is_empty():
+		return
+	if pid.begins_with("{") or pid.begins_with("["):
+		return
+	if not out.has(pid):
+		out.append(pid)
 
 func _extract_purchase_token(p: Dictionary) -> String:
 	for key in ["purchaseToken", "purchase_token", "token"]:
