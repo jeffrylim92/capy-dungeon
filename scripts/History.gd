@@ -23,6 +23,8 @@ var _global_kills_done: bool      = false
 var _global_survive_done: bool    = false
 var _global_kill_user_entry: Variant = null
 var _global_survive_user_entry: Variant = null
+var _global_kills_failed: bool    = false
+var _global_survive_failed: bool  = false
 
 func _cloud_username_for_history() -> String:
 	var social_email: String = String(account.get("social_email", "")).strip_edges().to_lower()
@@ -374,13 +376,21 @@ func _fetch_global_rankings() -> void:
 	_global_survive_done = false
 	_global_kill_user_entry = null
 	_global_survive_user_entry = null
+	_global_kills_failed = false
+	_global_survive_failed = false
 
 	var cloud_username: String = _cloud_username_for_history()
-	LeaderboardClient.fetch_kills(self, func(entries: Array) -> void:
-		_populate_global_section("kills", entries, false)
+	LeaderboardClient.fetch_kills(self, func(payload: Dictionary) -> void:
+		var entries: Array = payload.get("entries", []) as Array
+		var ok: bool = payload.get("ok", false) as bool
+		_global_kills_failed = not ok
+		_populate_global_section("kills", entries, false, _global_kills_failed)
 	)
-	LeaderboardClient.fetch_survive(self, func(entries: Array) -> void:
-		_populate_global_section("survive", entries, true)
+	LeaderboardClient.fetch_survive(self, func(payload: Dictionary) -> void:
+		var entries: Array = payload.get("entries", []) as Array
+		var ok: bool = payload.get("ok", false) as bool
+		_global_survive_failed = not ok
+		_populate_global_section("survive", entries, true, _global_survive_failed)
 	)
 	LeaderboardClient.fetch_kills_with_user(self, cloud_username, func(payload: Dictionary) -> void:
 		_global_kills_done = true
@@ -440,7 +450,7 @@ func _local_best_rank_entry(is_survive: bool) -> Variant:
 		"character": best_char,
 	}
 
-func _populate_global_section(section: String, entries: Array, is_survive: bool) -> void:
+func _populate_global_section(section: String, entries: Array, is_survive: bool, fetch_failed: bool = false) -> void:
 	var vbox: VBoxContainer = _global_panel.get_node_or_null("GlobalScroll/GlobalVBox") as VBoxContainer
 	if vbox == null:
 		return
@@ -451,6 +461,24 @@ func _populate_global_section(section: String, entries: Array, is_survive: bool)
 	placeholder.queue_free()
 
 	if entries.is_empty():
+		if fetch_failed:
+			var fail_hint := _empty_hint("Could not load global ranking. Please retry.")
+			vbox.add_child(fail_hint)
+			vbox.move_child(fail_hint, insert_idx)
+			insert_idx += 1
+			var retry := Button.new()
+			retry.text = "↺  Retry"
+			retry.add_theme_font_size_override("font_size", 30)
+			retry.custom_minimum_size = Vector2(160, 56)
+			retry.focus_mode = Control.FOCUS_NONE
+			_style_retry(retry)
+			vbox.add_child(retry)
+			vbox.move_child(retry, insert_idx)
+			retry.pressed.connect(func() -> void:
+				_global_loaded = false
+				_switch_tab(2)
+			)
+			return
 		var local_fallback: Variant = _local_best_rank_entry(is_survive)
 		if typeof(local_fallback) == TYPE_DICTIONARY:
 			var fallback_entry: Dictionary = local_fallback as Dictionary
@@ -462,18 +490,6 @@ func _populate_global_section(section: String, entries: Array, is_survive: bool)
 			vbox.add_child(hint)
 			vbox.move_child(hint, insert_idx)
 			insert_idx += 1
-		var retry := Button.new()
-		retry.text = "↺  Retry"
-		retry.add_theme_font_size_override("font_size", 30)
-		retry.custom_minimum_size = Vector2(160, 56)
-		retry.focus_mode = Control.FOCUS_NONE
-		_style_retry(retry)
-		vbox.add_child(retry)
-		vbox.move_child(retry, insert_idx)
-		retry.pressed.connect(func() -> void:
-			_global_loaded = false
-			_switch_tab(2)
-		)
 		return
 
 	for entry in entries:
@@ -497,6 +513,11 @@ func _populate_global_best_detail() -> void:
 
 	var has_kills := typeof(_global_kill_user_entry) == TYPE_DICTIONARY
 	var has_survive := typeof(_global_survive_user_entry) == TYPE_DICTIONARY
+	if _global_kills_failed and _global_survive_failed:
+		var err_hint := _empty_hint("Global rank unavailable right now. Please retry later.")
+		vbox.add_child(err_hint)
+		vbox.move_child(err_hint, insert_idx)
+		return
 	if not has_kills and not has_survive:
 		var hint := _empty_hint("Play a match to see your global rank here.")
 		vbox.add_child(hint)
@@ -522,7 +543,7 @@ func _global_user_rank_card(title: String, entry: Dictionary, is_survive: bool) 
 	else:
 		value_text = str(int(entry.get("value", 0))) + " kills"
 	if rank <= 0:
-		value_text += " · rank syncing"
+		value_text += " · global rank unavailable"
 	var value_color := Color(0.50, 0.88, 0.62) if is_survive else Color(0.95, 0.72, 0.20)
 
 	var card := PanelContainer.new()

@@ -36,6 +36,7 @@ var _gate_message: Label = null
 var _gate_primary_btn: Button = null
 var _gate_secondary_btn: Button = null
 var _runtime_net_timer: Timer = null
+var _history_loading_layer: CanvasLayer = null
 
 # ── Music players ─────────────────────────────────────────────────────────────
 var _bgm_a: AudioStreamPlayer = null
@@ -567,13 +568,44 @@ func _show_history() -> void:
 		h_local.back_requested.connect(_show_lobby)
 		add_child(h_local)
 		return
+	_show_history_loading_overlay("Loading history...\nSyncing latest records")
 	_restore_cloud_progress_for_account(_account, func() -> void:
+		_hide_history_loading_overlay()
 		_clear_children()
 		var h := HISTORY_SCENE.instantiate()
 		h.account = _account
 		h.back_requested.connect(_show_lobby)
 		add_child(h)
 	)
+
+func _show_history_loading_overlay(message: String) -> void:
+	_hide_history_loading_overlay()
+	var view: Vector2 = get_viewport().get_visible_rect().size
+	_history_loading_layer = CanvasLayer.new()
+	_history_loading_layer.layer = 210
+	add_child(_history_loading_layer)
+
+	var overlay := ColorRect.new()
+	overlay.color = Color(0, 0, 0, 0.70)
+	overlay.size = view
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_history_loading_layer.add_child(overlay)
+
+	var label := Label.new()
+	label.text = message
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size", 36)
+	label.add_theme_color_override("font_color", Color(0.96, 0.92, 0.80))
+	label.position = Vector2(0, view.y * 0.42)
+	label.size = Vector2(view.x, 220)
+	_history_loading_layer.add_child(label)
+
+func _hide_history_loading_overlay() -> void:
+	if _history_loading_layer != null and is_instance_valid(_history_loading_layer):
+		_history_loading_layer.queue_free()
+	_history_loading_layer = null
 
 func _apply_cloud_payload(username: String, data: Dictionary) -> void:
 	StatsStore.restore_from_server(username, data.get("stats", {}) as Dictionary)
