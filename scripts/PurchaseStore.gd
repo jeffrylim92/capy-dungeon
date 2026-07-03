@@ -265,6 +265,7 @@ func _on_purchase_updated(response: Dictionary) -> void:
 	# valid PURCHASED entries. Grant first, then only fail if nothing grantable exists.
 	var purchases: Array = _extract_purchases(response)
 	var granted_any: bool = false
+	var saw_pending_for_requested: bool = false
 	for p in purchases:
 		if typeof(p) != TYPE_DICTIONARY:
 			continue
@@ -272,6 +273,12 @@ func _on_purchase_updated(response: Dictionary) -> void:
 		var ids: Array[String] = _extract_purchase_product_ids(pd)
 		var token: String = _extract_purchase_token(pd)
 		var state: int = _extract_purchase_state(pd)
+		if state == BillingClient.PurchaseState.PENDING:
+			for cid in ids:
+				var pending_id: String = String(cid)
+				if pending_id == _pending_id or _recent_requested_at.has(pending_id):
+					saw_pending_for_requested = true
+			continue
 		if state != BillingClient.PurchaseState.PURCHASED:
 			continue
 		for cid in ids:
@@ -298,6 +305,27 @@ func _on_purchase_updated(response: Dictionary) -> void:
 			purchase_success.emit(synced_id)
 		return
 
+	if saw_pending_for_requested:
+		if not _pending_id.is_empty():
+			var pending := _pending_id
+			_pending_id = ""
+			purchase_failed.emit(pending, "Payment pending. Waiting for Google Play confirmation…")
+		return
+
+	if code == BillingClient.BillingResponseCode.OK:
+		# Some devices return OK immediately with an empty purchase list, then deliver
+		# the entitlement only via query_purchases a moment later.
+		if _billing != null:
+			var expected_id := _pending_id
+			_billing.query_purchases(BillingClient.ProductType.INAPP)
+			if not expected_id.is_empty():
+				get_tree().create_timer(6.0).timeout.connect(func() -> void:
+					if _pending_id == expected_id:
+						_pending_id = ""
+						purchase_failed.emit(expected_id, "Purchase confirmation is delayed. Please reopen Store in a moment.")
+				, CONNECT_ONE_SHOT)
+			return
+
 	if code != BillingClient.BillingResponseCode.OK:
 		var msg := "Cancelled" if code == BillingClient.BillingResponseCode.USER_CANCELED \
 			else ("Item already owned" if code == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED \
@@ -321,10 +349,12 @@ func _on_acknowledge_response(response: Dictionary) -> void:
 	DebugLog.log("[PurchaseStore] acknowledge_purchase_response code=%d" % code)
 
 func _extract_purchases(response: Dictionary) -> Array:
-	for key in ["purchases", "purchaseList", "purchase_list", "items"]:
+	for key in ["purchases", "purchaseList", "purchase_list", "items", "purchase"]:
 		var v: Variant = response.get(key, null)
 		if v is Array:
 			return v as Array
+		if typeof(v) == TYPE_DICTIONARY:
+			return [v]
 	return []
 
 func _extract_response_code(response: Dictionary) -> int:
@@ -466,6 +496,24 @@ func purchase(product_id: String) -> void:
 				_billing.query_purchases(BillingClient.ProductType.INAPP)
 			purchase_failed.emit(expected_id, "Purchase timed out. Waiting for Play confirmation…")
 	, CONNECT_ONE_SHOT)
+
+## Debug-only helper to validate grant wiring without Play checkout.
+func debug_simulate_purchase(product_id: String) -> void:
+	if not OS.has_feature("debug"):
+		purchase_failed.emit(product_id, "Debug simulate is disabled in release builds")
+		return
+	if not PURCHASABLE.has(product_id):
+		purchase_failed.emit(product_id, "Unknown product id")
+		return
+	if is_key_product(product_id) and not can_buy_key_product_this_week(product_id):
+		purchase_failed.emit(product_id, "This key pack can only be purchased once per week.")
+		return
+	_grant(product_id)
+	_recent_requested_at.erase(product_id)
+	if _pending_id == product_id:
+		_pending_id = ""
+	DebugLog.log("[PurchaseStore] Debug simulated purchase granted: %s" % product_id)
+	purchase_success.emit(product_id)
 
 func _notification(what: int) -> void:
 	if OS.get_name() != "Android":
