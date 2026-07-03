@@ -771,6 +771,12 @@ var _active_enemy_mod_name: String = ""
 var _active_enemy_mod_desc: String = ""
 var _frozen_trails: Array[Dictionary] = []
 var _burn_trails:   Array[Dictionary] = []
+const TRAIL_FROZEN_MAX: int = 140
+const TRAIL_BURN_MAX: int = 120
+const TRAIL_FROZEN_LIFE: float = 2.0
+const TRAIL_BURN_LIFE: float = 2.0
+const TRAIL_FROZEN_EMIT_INTERVAL: float = 0.34
+const TRAIL_BURN_EMIT_INTERVAL: float = 0.30
 
 # ─── Potions  {pos,life} ─────────────────────────────────────────────────────
 var _potions: Array[Dictionary] = []
@@ -4765,14 +4771,13 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 		# Emit a final burst of trail on death for trail types
 		var death_mod: String = e.get("mod", "") as String
 		if death_mod == "frozen_trail":
-			for _fi in 4:
+			for _fi in 2:
 				var off: Vector2 = Vector2(randf_range(-22, 22), randf_range(-22, 22))
-				_frozen_trails.append({"pos": ep + off, "life": 3.0, "max_life": 3.0})
+				_append_frozen_trail(ep + off)
 		elif death_mod == "burn_trail":
-			for _bi in 5:
+			for _bi in 3:
 				var off: Vector2 = Vector2(randf_range(-28, 28), randf_range(-28, 28))
-				_burn_trails.append({"pos": ep + off, "life": 3.0, "max_life": 3.0,
-					"dmg_per_tick": 2.5 + float(_wave) * 0.1, "tick_t": 0.0})
+				_append_burn_trail(ep + off, 2.5 + float(_wave) * 0.1)
 
 func _bleed_bonus_from_level(level: int) -> float:
 	var max_lvl: int = int(SKILL_DEFS["bleed_mark"]["max_lvl"])
@@ -4798,19 +4803,14 @@ func _update_enemy_trails(delta: float) -> void:
 		var emod: String = e.get("mod", "") as String
 		if emod == "frozen_trail":
 			e["trail_t"] = (e.get("trail_t", 0.0) as float) + delta
-			if (e["trail_t"] as float) >= 0.22:
+			if (e["trail_t"] as float) >= TRAIL_FROZEN_EMIT_INTERVAL:
 				e["trail_t"] = 0.0
-				_frozen_trails.append({"pos": e["pos"] as Vector2, "life": 3.0, "max_life": 3.0})
+				_append_frozen_trail(e["pos"] as Vector2)
 		elif emod == "burn_trail":
 			e["trail_t"] = (e.get("trail_t", 0.0) as float) + delta
-			if (e["trail_t"] as float) >= 0.18:
+			if (e["trail_t"] as float) >= TRAIL_BURN_EMIT_INTERVAL:
 				e["trail_t"] = 0.0
-				_burn_trails.append({
-					"pos": e["pos"] as Vector2,
-					"life": 3.0, "max_life": 3.0,
-					"dmg_per_tick": 2.5 + float(_wave) * 0.1,
-					"tick_t": 0.0,
-				})
+				_append_burn_trail(e["pos"] as Vector2, 2.5 + float(_wave) * 0.1)
 	# Tick frozen trails (slow player if overlapping)
 	for i in range(_frozen_trails.size() - 1, -1, -1):
 		var ft: Dictionary = _frozen_trails[i]
@@ -4834,6 +4834,22 @@ func _update_enemy_trails(delta: float) -> void:
 			bt["tick_t"] = 0.0
 			if _player_pos.distance_to(bt["pos"] as Vector2) < 32.0 and _player_iframes <= 0.0:
 				_damage_player(bt["dmg_per_tick"] as float, 0.18)
+
+func _append_frozen_trail(pos: Vector2) -> void:
+	_frozen_trails.append({"pos": pos, "life": TRAIL_FROZEN_LIFE, "max_life": TRAIL_FROZEN_LIFE})
+	if _frozen_trails.size() > TRAIL_FROZEN_MAX:
+		_frozen_trails.remove_at(0)
+
+func _append_burn_trail(pos: Vector2, dmg_per_tick: float) -> void:
+	_burn_trails.append({
+		"pos": pos,
+		"life": TRAIL_BURN_LIFE,
+		"max_life": TRAIL_BURN_LIFE,
+		"dmg_per_tick": dmg_per_tick,
+		"tick_t": 0.0,
+	})
+	if _burn_trails.size() > TRAIL_BURN_MAX:
+		_burn_trails.remove_at(0)
 
 func _update_potions(delta: float) -> void:
 	for i in range(_potions.size() - 1, -1, -1):
@@ -6684,6 +6700,8 @@ func _draw_bg() -> void:
 	# Enemy frozen trails
 	for ft in _frozen_trails:
 		var ftp: Vector2 = ft["pos"] as Vector2
+		if abs(ftp.x - cx) > hw + 40.0 or abs(ftp.y - cy) > hh + 40.0:
+			continue
 		var fl: float    = clamp((ft["life"] as float) / (ft["max_life"] as float), 0.0, 1.0)
 		draw_circle(ftp, 28.0, Color(0.45, 0.88, 1.0, 0.22 * fl))
 		draw_arc(ftp, 28.0, 0.0, TAU, 20, Color(0.55, 0.92, 1.0, 0.65 * fl), 2.0)
@@ -6691,6 +6709,8 @@ func _draw_bg() -> void:
 	# Enemy burn trails
 	for bt in _burn_trails:
 		var btp: Vector2 = bt["pos"] as Vector2
+		if abs(btp.x - cx) > hw + 40.0 or abs(btp.y - cy) > hh + 40.0:
+			continue
 		var bl: float    = clamp((bt["life"] as float) / (bt["max_life"] as float), 0.0, 1.0)
 		var bpulse: float = 0.5 + 0.5 * sin(_elapsed * 8.0 + (btp.x + btp.y) * 0.05)
 		draw_circle(btp, 26.0, Color(1.0, 0.30 + bpulse * 0.20, 0.0, 0.25 * bl))

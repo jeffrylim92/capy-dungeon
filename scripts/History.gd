@@ -24,6 +24,12 @@ var _global_survive_done: bool    = false
 var _global_kill_user_entry: Variant = null
 var _global_survive_user_entry: Variant = null
 
+func _cloud_username_for_history() -> String:
+	var social_email: String = String(account.get("social_email", "")).strip_edges().to_lower()
+	if not social_email.is_empty():
+		return social_email
+	return String(account.get("username", "")).strip_edges().to_lower()
+
 func _ready() -> void:
 	SettingsStore.apply(get_tree())
 	_build_ui()
@@ -369,19 +375,23 @@ func _fetch_global_rankings() -> void:
 	_global_kill_user_entry = null
 	_global_survive_user_entry = null
 
-	var username := String(account.get("username", ""))
-	LeaderboardClient.fetch_kills_with_user(self, username, func(payload: Dictionary) -> void:
-		_global_kills_done = true
-		var entries: Array = payload.get("entries", []) as Array
-		_global_kill_user_entry = _best_rank_entry(payload.get("user_entry", null), entries, false)
+	var cloud_username: String = _cloud_username_for_history()
+	LeaderboardClient.fetch_kills(self, func(entries: Array) -> void:
 		_populate_global_section("kills", entries, false)
+	)
+	LeaderboardClient.fetch_survive(self, func(entries: Array) -> void:
+		_populate_global_section("survive", entries, true)
+	)
+	LeaderboardClient.fetch_kills_with_user(self, cloud_username, func(payload: Dictionary) -> void:
+		_global_kills_done = true
+		var entries_for_match: Array = payload.get("entries", []) as Array
+		_global_kill_user_entry = _best_rank_entry(payload.get("user_entry", null), entries_for_match, false)
 		_populate_global_best_detail()
 	)
-	LeaderboardClient.fetch_survive_with_user(self, username, func(payload: Dictionary) -> void:
+	LeaderboardClient.fetch_survive_with_user(self, cloud_username, func(payload: Dictionary) -> void:
 		_global_survive_done = true
-		var entries: Array = payload.get("entries", []) as Array
-		_global_survive_user_entry = _best_rank_entry(payload.get("user_entry", null), entries, true)
-		_populate_global_section("survive", entries, true)
+		var entries_for_match: Array = payload.get("entries", []) as Array
+		_global_survive_user_entry = _best_rank_entry(payload.get("user_entry", null), entries_for_match, true)
 		_populate_global_best_detail()
 	)
 
