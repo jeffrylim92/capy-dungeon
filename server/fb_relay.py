@@ -59,6 +59,41 @@ def _db_connect():
     return conn
 
 
+def _rollback_if_needed(conn) -> None:
+    try:
+        conn.rollback()
+    except Exception:
+        pass
+
+
+def _column_exists(conn, table: str, column: str) -> bool:
+    if _USE_PG:
+        row = _fetchone(
+            conn,
+            "SELECT 1 FROM information_schema.columns WHERE table_name = %s AND column_name = %s",
+            (table, column),
+        )
+        return bool(row)
+    row = _fetchone(conn, f"PRAGMA table_info({table})")
+    rows = _fetchall(conn, f"PRAGMA table_info({table})")
+    for info in rows:
+        name = info[1] if not isinstance(info, dict) else info.get("name", "")
+        if str(name) == column:
+            return True
+    return False
+
+
+def _ensure_column(conn, table: str, column: str, column_sql: str) -> None:
+    if _column_exists(conn, table, column):
+        return
+    try:
+        _execute(conn, f"ALTER TABLE {table} ADD COLUMN {column} {column_sql}")
+        conn.commit()
+    except Exception:
+        _rollback_if_needed(conn)
+        raise
+
+
 def _execute(conn, sql: str, params: tuple = ()):
     """Run a statement, handling the cursor difference between psycopg2 and sqlite3."""
     if _USE_PG:
@@ -110,35 +145,16 @@ def _db_init() -> None:
                 updated_at        TEXT    DEFAULT ''
             )
         """)
-        # Migrate older tables missing the stats_json column
-        try:
-            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN stats_json TEXT DEFAULT '{}'")
-        except Exception:
-            pass
-        try:
-            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN best_kill_char TEXT DEFAULT ''")
-        except Exception:
-            pass
-        try:
-            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN best_survive_char TEXT DEFAULT ''")
-        except Exception:
-            pass
-        try:
-            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN rings_json TEXT DEFAULT '{}'")
-        except Exception:
-            pass
-        try:
-            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN ring_stash_json TEXT DEFAULT '[]'")
-        except Exception:
-            pass
-        try:
-            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN artifact_stash_json TEXT DEFAULT '[]'")
-        except Exception:
-            pass
-        try:
-            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN artifact_equipped_json TEXT DEFAULT '{}'")
-        except Exception:
-            pass
+        # Migrate older tables missing newer leaderboard columns.
+        # Important for PostgreSQL: a failed ALTER aborts the transaction, so we
+        # must detect column existence first or rollback between attempts.
+        _ensure_column(conn, "leaderboard", "stats_json", "TEXT DEFAULT '{}'")
+        _ensure_column(conn, "leaderboard", "best_kill_char", "TEXT DEFAULT ''")
+        _ensure_column(conn, "leaderboard", "best_survive_char", "TEXT DEFAULT ''")
+        _ensure_column(conn, "leaderboard", "rings_json", "TEXT DEFAULT '{}'")
+        _ensure_column(conn, "leaderboard", "ring_stash_json", "TEXT DEFAULT '[]'")
+        _ensure_column(conn, "leaderboard", "artifact_stash_json", "TEXT DEFAULT '[]'")
+        _ensure_column(conn, "leaderboard", "artifact_equipped_json", "TEXT DEFAULT '{}'")
         conn.commit()
         conn.close()
 
@@ -340,90 +356,97 @@ async def stats_user(username: str) -> dict:
 
 @app.get("/stats/leaderboard/kills")
 async def leaderboard_kills(limit: int = 10, username: str = "") -> dict:
-    limit = _normalize_limit(limit)
-    ph = _PH
-    user_entry = None
-    uname = username.strip().lower()
-    with _db_lock:
-        conn = _db_connect()
-        rows = _fetchall(conn,
-            "SELECT username, display_name, total_kills, best_kill_char, stats_json, rings_json FROM leaderboard",
-            (),
-        )
-        conn.close()
+    try:
+        limit = _normalize_limit(limit)
+        user_entry = None
+        uname = username.strip().lower()
+        with _db_lock:
+            conn = _db_connect()
+            rows = _fetchall(conn,
+                "SELECT username, display_name, total_kills, best_kill_char, stats_json, rings_json FROM leaderboard",
+                (),
+            )
+            conn.close()
 
-    ranked = []
-    for row in rows:
-        kills, char_id = _row_best_kill(row)
-        if kills <= 0:
-            continue
-        ranked.append({
-            "username": row["username"],
-            "display_name": row["display_name"],
-            "value": kills,
-            "character": char_id,
-            "rings": _rings_for_character(row, char_id),
-        })
-    ranked.sort(key=lambda entry: entry["value"], reverse=True)
-    for i, entry in enumerate(ranked):
-        entry["rank"] = i + 1
-        if uname and entry["username"] == uname:
-            user_entry = dict(entry)
+        ranked = []
+        for row in rows:
+            kills, char_id = _row_best_kill(row)
+            if kills <= 0:
+                continue
+            ranked.append({
+                "username": row["username"],
+                "display_name": row["display_name"],
+                "value": kills,
+                "character": char_id,
+                "rings": _rings_for_character(row, char_id),
+            })
+        ranked.sort(key=lambda entry: entry["value"], reverse=True)
+        for i, entry in enumerate(ranked):
+            entry["rank"] = i + 1
+            if uname and entry["username"] == uname:
+                user_entry = dict(entry)
 
-    entries = ranked if limit == 0 else ranked[:limit]
-    return {
-        "entries": entries,
-        "user_entry": user_entry,
-    }
+        entries = ranked if limit == 0 else ranked[:limit]
+        return {
+            "entries": entries,
+            "user_entry": user_entry,
+        }
+    except Exception as exc:
+        logger.exception("leaderboard_kills failed")
+        return {"entries": [], "user_entry": None, "ok": False, "error": str(exc)}
 
 
 @app.get("/stats/leaderboard/survive")
 async def leaderboard_survive(limit: int = 10, username: str = "") -> dict:
-    limit = _normalize_limit(limit)
-    ph = _PH
-    user_entry = None
-    uname = username.strip().lower()
-    with _db_lock:
-        conn = _db_connect()
-        if limit == 0:
-            rows = _fetchall(conn,
-                "SELECT username, display_name, best_survive_sec, best_survive_char, rings_json "
-                "FROM leaderboard WHERE best_survive_sec > 0 ORDER BY best_survive_sec DESC",
-                (),
-            )
-        else:
-            rows = _fetchall(conn,
-                f"SELECT username, display_name, best_survive_sec, best_survive_char, rings_json "
-                f"FROM leaderboard WHERE best_survive_sec > 0 ORDER BY best_survive_sec DESC LIMIT {ph}", (limit,)
-            )
-        if uname:
-            user_row = _fetchone(conn,
-                f"SELECT username, display_name, best_survive_sec, best_survive_char, rings_json FROM leaderboard WHERE username = {ph}",
-                (uname,),
-            )
-            if user_row and user_row["best_survive_sec"] > 0.0:
-                rank_row = _fetchone(conn,
-                    f"SELECT COUNT(*) AS ahead FROM leaderboard WHERE best_survive_sec > {ph}",
-                    (user_row["best_survive_sec"],),
+    try:
+        limit = _normalize_limit(limit)
+        ph = _PH
+        user_entry = None
+        uname = username.strip().lower()
+        with _db_lock:
+            conn = _db_connect()
+            if limit == 0:
+                rows = _fetchall(conn,
+                    "SELECT username, display_name, best_survive_sec, best_survive_char, rings_json "
+                    "FROM leaderboard WHERE best_survive_sec > 0 ORDER BY best_survive_sec DESC",
+                    (),
                 )
-                user_entry = {
-                    "rank": int(rank_row["ahead"]) + 1,
-                    "username": user_row["username"],
-                    "display_name": user_row["display_name"],
-                    "value": user_row["best_survive_sec"],
-                    "character": user_row["best_survive_char"],
-                    "rings": _rings_for_character(user_row, user_row["best_survive_char"]),
-                }
-        conn.close()
-    return {
-        "entries": [
-            {"rank": i + 1, "username": r["username"], "display_name": r["display_name"],
-             "value": r["best_survive_sec"], "character": r["best_survive_char"],
-             "rings": _rings_for_character(r, r["best_survive_char"])}
-            for i, r in enumerate(rows)
-        ],
-        "user_entry": user_entry,
-    }
+            else:
+                rows = _fetchall(conn,
+                    f"SELECT username, display_name, best_survive_sec, best_survive_char, rings_json "
+                    f"FROM leaderboard WHERE best_survive_sec > 0 ORDER BY best_survive_sec DESC LIMIT {ph}", (limit,)
+                )
+            if uname:
+                user_row = _fetchone(conn,
+                    f"SELECT username, display_name, best_survive_sec, best_survive_char, rings_json FROM leaderboard WHERE username = {ph}",
+                    (uname,),
+                )
+                if user_row and user_row["best_survive_sec"] > 0.0:
+                    rank_row = _fetchone(conn,
+                        f"SELECT COUNT(*) AS ahead FROM leaderboard WHERE best_survive_sec > {ph}",
+                        (user_row["best_survive_sec"],),
+                    )
+                    user_entry = {
+                        "rank": int(rank_row["ahead"]) + 1,
+                        "username": user_row["username"],
+                        "display_name": user_row["display_name"],
+                        "value": user_row["best_survive_sec"],
+                        "character": user_row["best_survive_char"],
+                        "rings": _rings_for_character(user_row, user_row["best_survive_char"]),
+                    }
+            conn.close()
+        return {
+            "entries": [
+                {"rank": i + 1, "username": r["username"], "display_name": r["display_name"],
+                 "value": r["best_survive_sec"], "character": r["best_survive_char"],
+                 "rings": _rings_for_character(r, r["best_survive_char"])}
+                for i, r in enumerate(rows)
+            ],
+            "user_entry": user_entry,
+        }
+    except Exception as exc:
+        logger.exception("leaderboard_survive failed")
+        return {"entries": [], "user_entry": None, "ok": False, "error": str(exc)}
 
 # Config
 FB_APP_ID            = os.environ.get("FB_APP_ID",            "1572914337762590")
