@@ -20,6 +20,7 @@ Environment variables (set in Render dashboard):
 
 import asyncio
 import json as _json
+import logging
 import os
 import sqlite3
 import threading
@@ -33,6 +34,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 app = FastAPI()
+logger = logging.getLogger("capy-relay")
 
 # ── Database layer ─────────────────────────────────────────────────────────────
 # Set DATABASE_URL (PostgreSQL) in Render env vars for persistent storage.
@@ -114,6 +116,14 @@ def _db_init() -> None:
         except Exception:
             pass
         try:
+            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN best_kill_char TEXT DEFAULT ''")
+        except Exception:
+            pass
+        try:
+            _execute(conn, "ALTER TABLE leaderboard ADD COLUMN best_survive_char TEXT DEFAULT ''")
+        except Exception:
+            pass
+        try:
             _execute(conn, "ALTER TABLE leaderboard ADD COLUMN rings_json TEXT DEFAULT '{}'")
         except Exception:
             pass
@@ -134,6 +144,25 @@ def _db_init() -> None:
 
 
 _db_init()
+
+
+class ClientErrorPayload(BaseModel):
+    events: list = []
+    game: str = ""
+    version: str = ""
+
+
+@app.post("/client-errors")
+async def client_errors(payload: ClientErrorPayload) -> dict:
+    # Accept client telemetry payloads so mobile clients don't spam 404 retries.
+    try:
+        count = len(payload.events) if isinstance(payload.events, list) else 0
+        if count > 0:
+            logger.warning("client-errors accepted: game=%s version=%s events=%d", payload.game, payload.version, count)
+    except Exception:
+        # Never fail this endpoint for logging payload shape issues.
+        pass
+    return {"ok": True}
 
 
 class StatsSubmit(BaseModel):

@@ -9,6 +9,9 @@ const QUEUE_PATH: String = "user://crash_queue.json"
 const FLUSH_INTERVAL_SEC: float = 15.0
 const MAX_QUEUE_SIZE: int = 100
 const MAX_BATCH_SIZE: int = 20
+const RETRY_BACKOFF_BASE_SEC: float = 30.0
+const RETRY_BACKOFF_MAX_SEC: float = 15.0 * 60.0
+const DISABLE_AFTER_404_COUNT: int = 3
 
 var _session_id: String = ""
 var _seq: int = 0
@@ -17,6 +20,10 @@ var _sending: bool = false
 var _inflight_count: int = 0
 var _queue: Array[Dictionary] = []
 var _http: HTTPRequest = null
+var _next_retry_at_unix: int = 0
+var _consecutive_failures: int = 0
+var _consecutive_404: int = 0
+var _remote_disabled_for_session: bool = false
 
 func _ready() -> void:
 	_session_id = "%d-%d" % [Time.get_unix_time_from_system(), randi()]
@@ -81,7 +88,9 @@ func _enqueue_event(kind: String, message: String, context: Dictionary = {}) -> 
 	_try_flush()
 
 func _try_flush() -> void:
-	if ERROR_ENDPOINT.is_empty() or _sending or _queue.is_empty() or _http == null:
+	if ERROR_ENDPOINT.is_empty() or _remote_disabled_for_session or _sending or _queue.is_empty() or _http == null:
+		return
+	if int(Time.get_unix_time_from_system()) < _next_retry_at_unix:
 		return
 	var count: int = mini(MAX_BATCH_SIZE, _queue.size())
 	var batch: Array[Dictionary] = []
@@ -112,8 +121,26 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 				break
 			_queue.remove_at(0)
 		_write_json_file(QUEUE_PATH, _queue)
+		_consecutive_failures = 0
+		_consecutive_404 = 0
+		_next_retry_at_unix = 0
+		_inflight_count = 0
+		_try_flush()
+		return
+
+	_consecutive_failures += 1
+	if result == HTTPRequest.RESULT_SUCCESS and response_code == 404:
+		_consecutive_404 += 1
+		if _consecutive_404 >= DISABLE_AFTER_404_COUNT:
+			_remote_disabled_for_session = true
+			DebugLog.log("[CrashReporter] Disabled remote reporting for this session after repeated 404 on /client-errors")
+	else:
+		_consecutive_404 = 0
+
+	var wait_sec: float = min(RETRY_BACKOFF_BASE_SEC * pow(2.0, float(max(_consecutive_failures - 1, 0))), RETRY_BACKOFF_MAX_SEC)
+	_next_retry_at_unix = int(Time.get_unix_time_from_system() + int(ceil(wait_sec)))
+	DebugLog.log("[CrashReporter] Remote report failed result=%d code=%d, next retry in %ds" % [result, response_code, int(wait_sec)])
 	_inflight_count = 0
-	_try_flush()
 
 func _mark_clean_exit(clean_exit: bool) -> void:
 	var state: Dictionary = {
