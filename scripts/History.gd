@@ -502,12 +502,12 @@ func _fetch_global_rankings() -> void:
 				var entries_retry: Array = payload2.get("entries", []) as Array
 				_global_kill_user_entry = _best_rank_entry(payload2.get("user_entry", null), entries_retry, false, _global_kills_entries)
 				_populate_global_best_detail()
-			, LeaderboardClient.GLOBAL_LIMIT_ALL, "")
+			, LeaderboardClient.GLOBAL_LIMIT_TOP20, "")
 			return
 		_global_kills_done = true
 		_global_kill_user_entry = resolved_entry
 		_populate_global_best_detail()
-	, LeaderboardClient.GLOBAL_LIMIT_ALL, "")
+	, LeaderboardClient.GLOBAL_LIMIT_TOP20, "")
 	LeaderboardClient.fetch_survive_with_user(self, cloud_username, func(payload: Dictionary) -> void:
 		var entries_for_match: Array = payload.get("entries", []) as Array
 		var resolved_entry: Variant = _best_rank_entry(payload.get("user_entry", null), entries_for_match, true, _global_survive_entries)
@@ -519,12 +519,12 @@ func _fetch_global_rankings() -> void:
 				var entries_retry: Array = payload2.get("entries", []) as Array
 				_global_survive_user_entry = _best_rank_entry(payload2.get("user_entry", null), entries_retry, true, _global_survive_entries)
 				_populate_global_best_detail()
-			, LeaderboardClient.GLOBAL_LIMIT_ALL, "")
+			, LeaderboardClient.GLOBAL_LIMIT_TOP20, "")
 			return
 		_global_survive_done = true
 		_global_survive_user_entry = resolved_entry
 		_populate_global_best_detail()
-	, LeaderboardClient.GLOBAL_LIMIT_ALL, "")
+	, LeaderboardClient.GLOBAL_LIMIT_TOP20, "")
 
 func _best_rank_entry(server_entry: Variant, entries: Array, is_survive: bool, fallback_entries: Array = []) -> Variant:
 	var candidate: Variant = null

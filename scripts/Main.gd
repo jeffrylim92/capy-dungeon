@@ -21,6 +21,7 @@ const BGM_DUNGEON_PATH: String = "res://assets/sfx/bgm_dungeon.mp3"
 const BGM_FADE_TIME:    float  = 1.2   # crossfade duration in seconds
 const BGM_LOBBY_VOLUME_DB: float = 0.0
 const BGM_DUNGEON_VOLUME_DB: float = -14.0
+const HISTORY_SYNC_COOLDOWN_MS: int = 45000
 
 var _account: Dictionary = {}
 var _last_character: CharacterData = null
@@ -37,6 +38,7 @@ var _gate_primary_btn: Button = null
 var _gate_secondary_btn: Button = null
 var _runtime_net_timer: Timer = null
 var _history_loading_layer: CanvasLayer = null
+var _last_history_sync_ms: int = 0
 
 # ── Music players ─────────────────────────────────────────────────────────────
 var _bgm_a: AudioStreamPlayer = null
@@ -537,7 +539,9 @@ func _on_logged_in(account: Dictionary) -> void:
 	var cloud_username: String = _cloud_username_for(account)
 	if not username.is_empty():
 		PurchaseStore.set_username(username)
-		_restore_cloud_progress_for_account(account)
+		_restore_cloud_progress_for_account(account, func() -> void:
+			_last_history_sync_ms = Time.get_ticks_msec()
+		)
 		LeaderboardClient.submit_stats(self, cloud_username, String(account.get("display_name", username)), username)
 	_show_lobby()
 
@@ -561,22 +565,18 @@ func _show_collectibles() -> void:
 
 func _show_history() -> void:
 	var username: String = String(_account.get("username", "")).strip_edges()
+	_clear_children()
+	var h := HISTORY_SCENE.instantiate()
+	h.account = _account
+	h.back_requested.connect(_show_lobby)
+	add_child(h)
 	if username.is_empty():
-		_clear_children()
-		var h_local := HISTORY_SCENE.instantiate()
-		h_local.account = _account
-		h_local.back_requested.connect(_show_lobby)
-		add_child(h_local)
 		return
-	_show_history_loading_overlay("Loading history...\nSyncing latest records")
-	_restore_cloud_progress_for_account(_account, func() -> void:
-		_hide_history_loading_overlay()
-		_clear_children()
-		var h := HISTORY_SCENE.instantiate()
-		h.account = _account
-		h.back_requested.connect(_show_lobby)
-		add_child(h)
-	)
+	var now_ms: int = Time.get_ticks_msec()
+	if now_ms - _last_history_sync_ms < HISTORY_SYNC_COOLDOWN_MS:
+		return
+	_last_history_sync_ms = now_ms
+	_restore_cloud_progress_for_account(_account)
 
 func _show_history_loading_overlay(message: String) -> void:
 	_hide_history_loading_overlay()
