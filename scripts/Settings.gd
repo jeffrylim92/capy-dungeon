@@ -706,13 +706,31 @@ func _show_profile_panel() -> void:
 	var sep_p := HSeparator.new()
 	col.add_child(sep_p)
 
+	var primary_actions := VBoxContainer.new()
+	primary_actions.add_theme_constant_override("separation", 0)
+	col.add_child(primary_actions)
+
 	var logout_btn := Button.new()
 	logout_btn.text = "Log out / switch account"
 	logout_btn.add_theme_font_size_override("font_size", 36)
 	logout_btn.custom_minimum_size = Vector2(0, 80)
 	_style_danger(logout_btn)
 	logout_btn.pressed.connect(func() -> void: logout_requested.emit())
-	col.add_child(logout_btn)
+	primary_actions.add_child(logout_btn)
+
+	var close_p := Button.new()
+	close_p.text = "Done"
+	close_p.add_theme_font_size_override("font_size", 40)
+	close_p.custom_minimum_size = Vector2(0, 88)
+	_style_primary(close_p)
+	close_p.pressed.connect(func() -> void:
+		scrim.queue_free()
+		panel.queue_free())
+	primary_actions.add_child(close_p)
+
+	var delete_gap := Control.new()
+	delete_gap.custom_minimum_size = Vector2(0, 18)
+	col.add_child(delete_gap)
 
 	var delete_status := Label.new()
 	delete_status.add_theme_font_size_override("font_size", 24)
@@ -746,16 +764,6 @@ func _show_profile_panel() -> void:
 		)
 	)
 	col.add_child(delete_btn)
-
-	var close_p := Button.new()
-	close_p.text = "Done"
-	close_p.add_theme_font_size_override("font_size", 40)
-	close_p.custom_minimum_size = Vector2(0, 88)
-	_style_primary(close_p)
-	close_p.pressed.connect(func() -> void:
-		scrim.queue_free()
-		panel.queue_free())
-	col.add_child(close_p)
 
 func _style_danger(btn: Button) -> void:
 	var n := StyleBoxFlat.new()
