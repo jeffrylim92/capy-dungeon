@@ -714,7 +714,7 @@ func _show_profile_panel() -> void:
 	logout_btn.text = "Log out / switch account"
 	logout_btn.add_theme_font_size_override("font_size", 36)
 	logout_btn.custom_minimum_size = Vector2(0, 80)
-	_style_danger(logout_btn)
+	_style_primary(logout_btn)
 	logout_btn.pressed.connect(func() -> void: logout_requested.emit())
 	primary_actions.add_child(logout_btn)
 
@@ -729,7 +729,7 @@ func _show_profile_panel() -> void:
 	primary_actions.add_child(close_p)
 
 	var delete_gap := Control.new()
-	delete_gap.custom_minimum_size = Vector2(0, 18)
+	delete_gap.custom_minimum_size = Vector2(0, 12)
 	col.add_child(delete_gap)
 
 	var delete_status := Label.new()
