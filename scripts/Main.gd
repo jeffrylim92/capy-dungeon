@@ -10,6 +10,7 @@ const INVENTORY_SCENE := preload("res://scenes/Inventory.tscn")
 const MATCH_SCENE := preload("res://scenes/Match.tscn")
 const HISTORY_SCENE := preload("res://scenes/History.tscn")
 const COLLECTIBLES_SCENE := preload("res://scenes/Collectibles.tscn")
+const PROFILE_PATH := "user://profile.json"
 
 const HEALTHCHECK_URL: String = "https://capy-dungeon.onrender.com/health"
 const INTERNET_FALLBACK_URL: String = "https://www.google.com/generate_204"
@@ -39,6 +40,7 @@ var _gate_secondary_btn: Button = null
 var _runtime_net_timer: Timer = null
 var _history_loading_layer: CanvasLayer = null
 var _last_history_sync_ms: int = 0
+var _display_name_prompt_layer: CanvasLayer = null
 
 # ── Music players ─────────────────────────────────────────────────────────────
 var _bgm_a: AudioStreamPlayer = null
@@ -217,6 +219,129 @@ func _cloud_username_for(account: Dictionary) -> String:
 	if not social_email.is_empty():
 		return social_email
 	return String(account.get("username", "")).strip_edges().to_lower()
+
+func _load_profile() -> Dictionary:
+	if not FileAccess.file_exists(PROFILE_PATH):
+		return {}
+	var f := FileAccess.open(PROFILE_PATH, FileAccess.READ)
+	if f == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f.close()
+	return parsed as Dictionary if typeof(parsed) == TYPE_DICTIONARY else {}
+
+func _save_profile(profile: Dictionary) -> void:
+	var f := FileAccess.open(PROFILE_PATH, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify(profile))
+	f.close()
+
+func _profile_display_name_for(account: Dictionary) -> String:
+	var profile: Dictionary = _load_profile()
+	var from_profile: String = String(profile.get("display_name", "")).strip_edges()
+	if not from_profile.is_empty():
+		return from_profile
+	var fallback: String = String(account.get("display_name", "")).strip_edges()
+	if fallback.is_empty():
+		fallback = String(account.get("username", "Capy Player")).strip_edges()
+	return fallback
+
+func _ensure_profile_display_name(account: Dictionary, done: Callable) -> void:
+	var existing: String = String(_load_profile().get("display_name", "")).strip_edges()
+	if not existing.is_empty():
+		done.call(existing)
+		return
+
+	if _display_name_prompt_layer != null and is_instance_valid(_display_name_prompt_layer):
+		_display_name_prompt_layer.queue_free()
+
+	var view: Vector2 = get_viewport().get_visible_rect().size
+	_display_name_prompt_layer = CanvasLayer.new()
+	_display_name_prompt_layer.layer = 220
+	add_child(_display_name_prompt_layer)
+
+	var overlay := ColorRect.new()
+	overlay.color = Color(0, 0, 0, 0.72)
+	overlay.size = view
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_display_name_prompt_layer.add_child(overlay)
+
+	var center := CenterContainer.new()
+	center.size = view
+	_display_name_prompt_layer.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(min(view.x - 96.0, 860.0), 0)
+	center.add_child(panel)
+
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.12, 0.10, 0.08, 0.98)
+	panel_style.border_color = Color(0.96, 0.78, 0.40, 0.85)
+	panel_style.set_border_width_all(2)
+	panel_style.corner_radius_top_left = 24
+	panel_style.corner_radius_top_right = 24
+	panel_style.corner_radius_bottom_right = 24
+	panel_style.corner_radius_bottom_left = 24
+	panel_style.content_margin_left = 28
+	panel_style.content_margin_right = 28
+	panel_style.content_margin_top = 24
+	panel_style.content_margin_bottom = 24
+	panel.add_theme_stylebox_override("panel", panel_style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 14)
+	panel.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "Set your display name"
+	title.add_theme_font_size_override("font_size", 44)
+	title.add_theme_color_override("font_color", Color(1.0, 0.93, 0.78))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var msg := Label.new()
+	msg.text = "Choose a display name for leaderboard and profile. You can change this later in My Profile."
+	msg.add_theme_font_size_override("font_size", 28)
+	msg.add_theme_color_override("font_color", Color(0.90, 0.84, 0.72))
+	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(msg)
+
+	var input := LineEdit.new()
+	input.custom_minimum_size = Vector2(0, 72)
+	input.add_theme_font_size_override("font_size", 32)
+	input.placeholder_text = "Display name"
+	input.text = _profile_display_name_for(account)
+	vbox.add_child(input)
+
+	var status := Label.new()
+	status.add_theme_font_size_override("font_size", 22)
+	status.add_theme_color_override("font_color", Color(1.0, 0.55, 0.45))
+	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(status)
+
+	var save_btn := Button.new()
+	save_btn.text = "Continue"
+	save_btn.custom_minimum_size = Vector2(0, 84)
+	save_btn.add_theme_font_size_override("font_size", 34)
+	vbox.add_child(save_btn)
+
+	var submit := func() -> void:
+		var chosen: String = input.text.strip_edges()
+		if chosen.is_empty():
+			status.text = "Display name cannot be empty."
+			return
+		var profile: Dictionary = _load_profile()
+		profile["display_name"] = chosen
+		_save_profile(profile)
+		if _display_name_prompt_layer != null and is_instance_valid(_display_name_prompt_layer):
+			_display_name_prompt_layer.queue_free()
+		_display_name_prompt_layer = null
+		done.call(chosen)
+
+	save_btn.pressed.connect(submit)
+	input.text_submitted.connect(func(_t: String) -> void: submit.call())
 
 func _build_blocking_gate_ui() -> void:
 	if _gate_layer != null:
@@ -535,15 +660,18 @@ func _show_login() -> void:
 
 func _on_logged_in(account: Dictionary) -> void:
 	_account = account
-	var username: String = String(account.get("username", "")).strip_edges()
-	var cloud_username: String = _cloud_username_for(account)
-	if not username.is_empty():
-		PurchaseStore.set_username(username)
-		_restore_cloud_progress_for_account(account, func() -> void:
-			_last_history_sync_ms = Time.get_ticks_msec()
-		)
-		LeaderboardClient.submit_stats(self, cloud_username, String(account.get("display_name", username)), username)
-	_show_lobby()
+	_ensure_profile_display_name(account, func(chosen_display_name: String) -> void:
+		_account["display_name"] = chosen_display_name
+		var username: String = String(account.get("username", "")).strip_edges()
+		var cloud_username: String = _cloud_username_for(account)
+		if not username.is_empty():
+			PurchaseStore.set_username(username)
+			_restore_cloud_progress_for_account(account, func() -> void:
+				_last_history_sync_ms = Time.get_ticks_msec()
+			)
+			LeaderboardClient.submit_stats(self, cloud_username, chosen_display_name, username)
+		_show_lobby()
+	)
 
 func _show_lobby() -> void:
 	_clear_children()
@@ -654,7 +782,7 @@ func _restore_cloud_progress_for_account(account: Dictionary, done: Callable = C
 		LeaderboardClient.fetch_user_stats(self, username, func(legacy: Dictionary) -> void:
 			if _payload_has_progress(legacy):
 				_apply_cloud_payload(username, legacy)
-				LeaderboardClient.submit_stats(self, cloud_username, String(account.get("display_name", username)), username)
+				LeaderboardClient.submit_stats(self, cloud_username, _profile_display_name_for(account), username)
 			if done.is_valid():
 				done.call()
 		)
@@ -694,7 +822,7 @@ func _start_match(data: CharacterData) -> void:
 	m.selected_player_character = data
 	m.account_username     = String(_account.get("username", ""))
 	m.account_cloud_id     = _cloud_username_for(_account)
-	m.account_display_name = String(_account.get("display_name", _account.get("username", "")))
+	m.account_display_name = _profile_display_name_for(_account)
 	m.match_ended.connect(_on_match_ended)
 	add_child(m)
 
