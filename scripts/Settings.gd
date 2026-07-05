@@ -707,7 +707,7 @@ func _show_profile_panel() -> void:
 	col.add_child(sep_p)
 
 	var primary_actions := VBoxContainer.new()
-	primary_actions.add_theme_constant_override("separation", 0)
+	primary_actions.add_theme_constant_override("separation", 8)
 	col.add_child(primary_actions)
 
 	var logout_btn := Button.new()
