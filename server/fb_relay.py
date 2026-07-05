@@ -27,6 +27,7 @@ import threading
 import time
 import urllib.parse
 from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Query
@@ -35,6 +36,8 @@ from pydantic import BaseModel
 
 app = FastAPI()
 logger = logging.getLogger("capy-relay")
+_ROOT_DIR = Path(__file__).resolve().parent.parent
+_DOCS_DIR = _ROOT_DIR / "docs"
 
 # ── Database layer ─────────────────────────────────────────────────────────────
 # Set DATABASE_URL (PostgreSQL) in Render env vars for persistent storage.
@@ -641,9 +644,45 @@ def _deep_link_page(deep_url: str) -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
+def _read_doc_html(filename: str, fallback_title: str, fallback_body: str) -> str:
+    path = _DOCS_DIR / filename
+    if path.exists():
+        try:
+            return path.read_text(encoding="utf-8")
+        except Exception:
+            pass
+    return (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+        f"<title>{fallback_title}</title></head><body>"
+        f"<h1>{fallback_title}</h1><p>{fallback_body}</p></body></html>"
+    )
+
+
 @app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     return {"status": "ok", "service": "capy-oauth-relay"}
+
+
+@app.get("/privacy-policy")
+@app.get("/privacy-policy.html")
+async def privacy_policy_page() -> HTMLResponse:
+    html = _read_doc_html(
+        "privacy-policy.html",
+        "Privacy Policy",
+        "Privacy policy content is currently being updated.",
+    )
+    return HTMLResponse(content=html)
+
+
+@app.get("/terms")
+@app.get("/terms.html")
+async def terms_page() -> HTMLResponse:
+    html = _read_doc_html(
+        "terms.html",
+        "Terms and Conditions",
+        "Terms and conditions content is currently being updated.",
+    )
+    return HTMLResponse(content=html)
 
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
