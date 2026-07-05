@@ -20,6 +20,7 @@ func _ready() -> void:
 	SettingsStore.apply(get_tree())
 	add_to_group("active_account")
 	set_meta("username", String(account.get("username", "")))
+	set_meta("social_email", String(account.get("social_email", "")).strip_edges().to_lower())
 	_build_ui()
 
 func _build_ui() -> void:

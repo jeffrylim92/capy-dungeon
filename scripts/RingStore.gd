@@ -273,6 +273,14 @@ static func restore_from_server(username: String, ring_stash: Array, rings_equip
 	if not rings_equipped.is_empty():
 		save_equipped(username, rings_equipped)
 
+static func purge_user(username: String) -> void:
+	var key := username.strip_edges().to_lower()
+	if key.is_empty():
+		return
+	_stash_cache.erase(key)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(_stash_path(key)))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(_equip_path(key)))
+
 # Returns dict: { "slot_0": ring_dict_or_null, "slot_1": ring_dict_or_null }
 static func get_equipped_rings(username: String, char_id: String) -> Dictionary:
 	var all: Dictionary = load_equipped(username)

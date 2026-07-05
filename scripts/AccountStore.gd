@@ -212,3 +212,12 @@ static func _merge_social_accounts(accounts: Dictionary, from_key: String, into_
 	StatsStore.merge_user_local_data(into_key, from_key)
 	accounts.erase(from_key)
 
+static func delete_local_account(username: String) -> void:
+	var key := username.strip_edges().to_lower()
+	if key.is_empty():
+		return
+	var accounts := _load_all()
+	if accounts.has(key):
+		accounts.erase(key)
+		_save_all(accounts)
+

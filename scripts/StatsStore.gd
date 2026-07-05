@@ -73,6 +73,14 @@ static func reset_user(username: String) -> void:
 		data.erase(key)
 		_save_all(data)
 
+static func purge_user(username: String) -> void:
+	var key := username.strip_edges().to_lower()
+	if key.is_empty():
+		return
+	reset_user(key)
+	var match_path: String = "user://match_records_%s.json" % key
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(match_path))
+
 static func record_match(username: String, character_id: String, outcome: String, best_combo: int, elapsed_seconds: float, finishers: int, kills: int = 0) -> void:
 	if username.is_empty() or character_id.is_empty():
 		return

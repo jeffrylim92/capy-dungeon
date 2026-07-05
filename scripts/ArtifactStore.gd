@@ -180,6 +180,14 @@ static func restore_from_server(username: String, artifact_stash: Array, artifac
 	if not artifact_equipped.is_empty():
 		save_equipped(username, artifact_equipped)
 
+static func purge_user(username: String) -> void:
+	var key := username.strip_edges().to_lower()
+	if key.is_empty():
+		return
+	_stash_cache.erase(key)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(_stash_path(key)))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(_equip_path(key)))
+
 static func get_equipped_artifacts(username: String, _char_id: String) -> Dictionary:
 	return load_equipped(username)
 

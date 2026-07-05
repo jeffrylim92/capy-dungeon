@@ -73,14 +73,6 @@ func _build_ui() -> void:
 	var sep := HSeparator.new()
 	col.add_child(sep)
 
-	var reset_btn := Button.new()
-	reset_btn.text = "Reset my stats"
-	reset_btn.add_theme_font_size_override("font_size", 36)
-	reset_btn.custom_minimum_size = Vector2(0, 80)
-	_style_secondary(reset_btn)
-	reset_btn.pressed.connect(_on_reset_stats)
-	col.add_child(reset_btn)
-
 	var profile_btn := Button.new()
 	profile_btn.text = "My Profile"
 	profile_btn.add_theme_font_size_override("font_size", 36)
@@ -229,90 +221,6 @@ func _add_toggle(parent: Node, label_text: String, key: String) -> CheckBox:
 	parent.add_child(row)
 	return cb
 
-func _on_reset_stats() -> void:
-	# Show a confirmation overlay before destroying the player's stats.
-	var view := get_viewport().get_visible_rect().size
-
-	var scrim2 := ColorRect.new()
-	scrim2.color = Color(0, 0, 0, 0.45)
-	scrim2.size = view
-	scrim2.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(scrim2)
-
-	var box := PanelContainer.new()
-	var box_w: float = min(view.x - 120.0, 600.0)
-	box.custom_minimum_size = Vector2(box_w, 0)
-	var bstyle := StyleBoxFlat.new()
-	bstyle.bg_color = Color(0.99, 0.96, 0.88)
-	bstyle.corner_radius_top_left = 14
-	bstyle.corner_radius_top_right = 14
-	bstyle.corner_radius_bottom_left = 14
-	bstyle.corner_radius_bottom_right = 14
-	bstyle.border_color = Color(0.75, 0.15, 0.1)
-	bstyle.set_border_width_all(3)
-	bstyle.content_margin_left = 20
-	bstyle.content_margin_right = 20
-	bstyle.content_margin_top = 16
-	bstyle.content_margin_bottom = 16
-	box.add_theme_stylebox_override("panel", bstyle)
-	add_child(box)
-
-	var inner := VBoxContainer.new()
-	inner.add_theme_constant_override("separation", 10)
-	box.add_child(inner)
-
-	var warn := Label.new()
-	warn.text = "Reset stats?"
-	warn.add_theme_font_size_override("font_size", 36)
-	warn.add_theme_color_override("font_color", Color(0.6, 0.08, 0.06))
-	warn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	inner.add_child(warn)
-
-	var msg := Label.new()
-	msg.text = "This will permanently erase all your wins, losses, and combos. Cannot be undone."
-	msg.add_theme_font_size_override("font_size", 28)
-	msg.add_theme_color_override("font_color", Color(0.15, 0.08, 0.02))
-	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	inner.add_child(msg)
-
-	var btns := HBoxContainer.new()
-	btns.add_theme_constant_override("separation", 16)
-	btns.alignment = BoxContainer.ALIGNMENT_CENTER
-	inner.add_child(btns)
-
-	var cancel_btn := Button.new()
-	cancel_btn.text = "Cancel"
-	cancel_btn.custom_minimum_size = Vector2(180, 56)
-	cancel_btn.add_theme_font_size_override("font_size", 32)
-	_style_secondary(cancel_btn)
-	cancel_btn.pressed.connect(func() -> void:
-		scrim2.queue_free()
-		box.queue_free())
-	btns.add_child(cancel_btn)
-
-	var confirm_btn := Button.new()
-	confirm_btn.text = "Yes, reset"
-	confirm_btn.custom_minimum_size = Vector2(180, 56)
-	confirm_btn.add_theme_font_size_override("font_size", 32)
-	_style_danger(confirm_btn)
-	confirm_btn.pressed.connect(func() -> void:
-		scrim2.queue_free()
-		box.queue_free()
-		var username := ""
-		for n in get_tree().get_nodes_in_group("active_account"):
-			if n.has_meta("username"):
-				username = String(n.get_meta("username"))
-				break
-		if username != "":
-			StatsStore.reset_user(username))
-	btns.add_child(confirm_btn)
-
-	# Position the dialog centred on screen after layout settles.
-	box.set_deferred("position", Vector2(
-		(view.x - box_w) * 0.5,
-		view.y * 0.3))
-
 # ---- Button style helpers ---------------------------------------------------
 
 func _style_primary(btn: Button) -> void:
@@ -406,6 +314,103 @@ func _get_username() -> String:
 		if n.has_meta("username"):
 			return String(n.get_meta("username"))
 	return ""
+
+func _get_social_email() -> String:
+	for n in get_tree().get_nodes_in_group("active_account"):
+		if n.has_meta("social_email"):
+			return String(n.get_meta("social_email")).strip_edges().to_lower()
+	return ""
+
+func _purge_local_account_data(username: String) -> void:
+	if username.is_empty():
+		return
+	AccountStore.delete_local_account(username)
+	StatsStore.purge_user(username)
+	RingStore.purge_user(username)
+	ArtifactStore.purge_user(username)
+	PurchaseStore.purge_user(username)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(_PROFILE_PATH))
+
+func _show_delete_account_confirm(username: String, social_email: String, on_confirm: Callable) -> void:
+	var view := get_viewport().get_visible_rect().size
+	var scrim2 := ColorRect.new()
+	scrim2.color = Color(0, 0, 0, 0.55)
+	scrim2.size = view
+	scrim2.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(scrim2)
+
+	var box := PanelContainer.new()
+	var box_w: float = min(view.x - 100.0, 640.0)
+	box.custom_minimum_size = Vector2(box_w, 0)
+	var bstyle := StyleBoxFlat.new()
+	bstyle.bg_color = Color(0.99, 0.96, 0.88)
+	bstyle.corner_radius_top_left = 14
+	bstyle.corner_radius_top_right = 14
+	bstyle.corner_radius_bottom_left = 14
+	bstyle.corner_radius_bottom_right = 14
+	bstyle.border_color = Color(0.75, 0.15, 0.1)
+	bstyle.set_border_width_all(3)
+	bstyle.content_margin_left = 20
+	bstyle.content_margin_right = 20
+	bstyle.content_margin_top = 16
+	bstyle.content_margin_bottom = 16
+	box.add_theme_stylebox_override("panel", bstyle)
+	add_child(box)
+
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", 10)
+	box.add_child(inner)
+
+	var warn := Label.new()
+	warn.text = "Delete account?"
+	warn.add_theme_font_size_override("font_size", 36)
+	warn.add_theme_color_override("font_color", Color(0.6, 0.08, 0.06))
+	warn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	inner.add_child(warn)
+
+	var msg := Label.new()
+	msg.text = "This will delete your cloud account records and local game data on this device. This action cannot be undone."
+	msg.add_theme_font_size_override("font_size", 28)
+	msg.add_theme_color_override("font_color", Color(0.15, 0.08, 0.02))
+	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	inner.add_child(msg)
+
+	if not social_email.is_empty():
+		var identity := Label.new()
+		identity.text = "Cloud identity: %s" % social_email
+		identity.add_theme_font_size_override("font_size", 22)
+		identity.add_theme_color_override("font_color", Color(0.40, 0.24, 0.12))
+		identity.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		inner.add_child(identity)
+
+	var btns := HBoxContainer.new()
+	btns.add_theme_constant_override("separation", 16)
+	btns.alignment = BoxContainer.ALIGNMENT_CENTER
+	inner.add_child(btns)
+
+	var cancel_btn := Button.new()
+	cancel_btn.text = "Cancel"
+	cancel_btn.custom_minimum_size = Vector2(180, 56)
+	cancel_btn.add_theme_font_size_override("font_size", 32)
+	_style_secondary(cancel_btn)
+	cancel_btn.pressed.connect(func() -> void:
+		scrim2.queue_free()
+		box.queue_free())
+	btns.add_child(cancel_btn)
+
+	var confirm_btn := Button.new()
+	confirm_btn.text = "Yes, delete"
+	confirm_btn.custom_minimum_size = Vector2(180, 56)
+	confirm_btn.add_theme_font_size_override("font_size", 32)
+	_style_danger(confirm_btn)
+	confirm_btn.pressed.connect(func() -> void:
+		scrim2.queue_free()
+		box.queue_free()
+		on_confirm.call())
+	btns.add_child(confirm_btn)
+
+	box.set_deferred("position", Vector2((view.x - box_w) * 0.5, view.y * 0.3))
 
 func _load_profile() -> Dictionary:
 	if not FileAccess.file_exists(_PROFILE_PATH):
@@ -708,6 +713,39 @@ func _show_profile_panel() -> void:
 	_style_danger(logout_btn)
 	logout_btn.pressed.connect(func() -> void: logout_requested.emit())
 	col.add_child(logout_btn)
+
+	var delete_status := Label.new()
+	delete_status.add_theme_font_size_override("font_size", 24)
+	delete_status.add_theme_color_override("font_color", Color(0.65, 0.08, 0.08))
+	delete_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(delete_status)
+
+	var delete_btn := Button.new()
+	delete_btn.text = "Delete account"
+	delete_btn.add_theme_font_size_override("font_size", 36)
+	delete_btn.custom_minimum_size = Vector2(0, 80)
+	_style_danger(delete_btn)
+	delete_btn.pressed.connect(func() -> void:
+		if username.is_empty():
+			delete_status.text = "No active account to delete."
+			return
+		var social_email: String = _get_social_email()
+		_show_delete_account_confirm(username, social_email, func() -> void:
+			delete_btn.disabled = true
+			delete_status.text = "Deleting account..."
+			LeaderboardClient.delete_account(self, username, social_email, func(resp: Dictionary) -> void:
+				delete_btn.disabled = false
+				if not bool(resp.get("ok", false)):
+					delete_status.text = "Delete failed. Please try again."
+					return
+				_purge_local_account_data(username)
+				logout_requested.emit()
+				scrim.queue_free()
+				panel.queue_free()
+			)
+		)
+	)
+	col.add_child(delete_btn)
 
 	var close_p := Button.new()
 	close_p.text = "Done"

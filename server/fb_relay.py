@@ -86,6 +86,18 @@ def _column_exists(conn, table: str, column: str) -> bool:
     return False
 
 
+def _table_exists(conn, table: str) -> bool:
+    if _USE_PG:
+        row = _fetchone(
+            conn,
+            "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name = %s",
+            (table,),
+        )
+        return bool(row)
+    row = _fetchone(conn, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,))
+    return bool(row)
+
+
 def _ensure_column(conn, table: str, column: str, column_sql: str) -> None:
     if _column_exists(conn, table, column):
         return
@@ -215,6 +227,11 @@ class StatsSubmit(BaseModel):
     artifact_stash_json: list = []
     artifact_equipped_json: dict = {}
     latest_match: dict = {}
+
+
+class AccountDeleteRequest(BaseModel):
+    username: str
+    social_email: str = ""
 
 
 def _best_kill_from_stats(stats: dict, fallback_kills: int = 0, fallback_char: str = "") -> tuple[int, str]:
@@ -454,6 +471,50 @@ async def stats_user(username: str) -> dict:
         "artifact_stash": artifact_stash if isinstance(artifact_stash, list) else [],
         "artifact_equipped": artifact_equipped if isinstance(artifact_equipped, dict) else {},
     }
+
+
+@app.post("/account/delete")
+async def account_delete(body: AccountDeleteRequest) -> dict:
+    username = body.username.strip().lower()
+    social_email = body.social_email.strip().lower()
+    if not username:
+        return {"ok": False, "error": "missing username", "deleted": 0}
+
+    keys: list[str] = [username]
+    if social_email and social_email not in keys:
+        keys.append(social_email)
+
+    placeholders = ",".join([_PH] * len(keys))
+    deleted: int = 0
+
+    with _db_lock:
+        conn = _db_connect()
+        try:
+            # Legacy leaderboard tables currently used by the game client.
+            if _table_exists(conn, "leaderboard_runs"):
+                cur = _execute(conn, f"DELETE FROM leaderboard_runs WHERE username IN ({placeholders})", tuple(keys))
+                deleted += int(cur.rowcount or 0)
+            if _table_exists(conn, "leaderboard"):
+                cur = _execute(conn, f"DELETE FROM leaderboard WHERE username IN ({placeholders})", tuple(keys))
+                deleted += int(cur.rowcount or 0)
+
+            # New Supabase schema tables (if present).
+            if _table_exists(conn, "users"):
+                if social_email:
+                    cur = _execute(conn, "DELETE FROM users WHERE username = %s OR email = %s" if _USE_PG else "DELETE FROM users WHERE username = ? OR email = ?", (username, social_email))
+                else:
+                    cur = _execute(conn, f"DELETE FROM users WHERE username = {_PH}", (username,))
+                deleted += int(cur.rowcount or 0)
+
+            conn.commit()
+        except Exception as exc:
+            _rollback_if_needed(conn)
+            logger.exception("account_delete failed")
+            return {"ok": False, "error": str(exc), "deleted": deleted}
+        finally:
+            conn.close()
+
+    return {"ok": True, "deleted": deleted}
 
 
 @app.get("/stats/leaderboard/kills")

@@ -100,6 +100,41 @@ static func fetch_user_stats(host: Node, username: String, callback: Callable) -
 		http.queue_free()
 		callback.call({})
 
+## Delete this user's cloud account data.
+## callback receives { ok: bool, deleted: int, error: String }.
+static func delete_account(host: Node, username: String, social_email: String, callback: Callable) -> void:
+	var key: String = username.strip_edges().to_lower()
+	if key.is_empty():
+		callback.call({"ok": false, "deleted": 0, "error": "missing username"})
+		return
+	var payload: Dictionary = {"username": key}
+	var email_key: String = social_email.strip_edges().to_lower()
+	if not email_key.is_empty():
+		payload["social_email"] = email_key
+	var http := HTTPRequest.new()
+	host.add_child(http)
+	http.request_completed.connect(
+		func(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+			http.queue_free()
+			if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+				callback.call({"ok": false, "deleted": 0, "error": "request failed"})
+				return
+			var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+			if typeof(parsed) != TYPE_DICTIONARY:
+				callback.call({"ok": false, "deleted": 0, "error": "invalid response"})
+				return
+			callback.call(parsed as Dictionary)
+	)
+	var err := http.request(
+		BASE_URL + "/account/delete",
+		["Content-Type: application/json"],
+		HTTPClient.METHOD_POST,
+		JSON.stringify(payload)
+	)
+	if err != OK:
+		http.queue_free()
+		callback.call({"ok": false, "deleted": 0, "error": "request start failed"})
+
 ## Fetch the global kill leaderboard.
 ## `callback` receives { entries:Array, user_entry:Dictionary/null, ok:bool }.
 static func fetch_kills(host: Node, callback: Callable, limit: int = GLOBAL_LIMIT_TOP20, character: String = "") -> void:

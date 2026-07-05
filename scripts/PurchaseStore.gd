@@ -778,6 +778,15 @@ func _purchase_path_for(username: String) -> String:
 		return PATH
 	return "user://purchases_%s.json" % u
 
+func purge_user(username: String) -> void:
+	var key: String = username.strip_edges().to_lower()
+	if key.is_empty():
+		return
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(_purchase_path_for(key)))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(_key_path(key)))
+	if _current_username == key:
+		_current_username = ""
+
 func _migrate_legacy_purchases_if_needed(username: String) -> void:
 	if username.is_empty():
 		return
