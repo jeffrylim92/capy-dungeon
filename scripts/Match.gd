@@ -13,8 +13,11 @@ var account_display_name: String = ""
 
 # ─── Tuning constants ─────────────────────────────────────────────────────────
 const PLAYER_R:    float = 34.0
-const PLAYER_DRAW_R: float = 48.0
-const PLAYER_SPRITE_SIZE: float = 124.0
+const PLAYER_DRAW_R: float = 56.0
+const PLAYER_SPRITE_SIZE: float = 144.0
+const LEVEL_UP_HP_GAIN_PCT: float = 0.08
+const LEVEL_UP_HP_GAIN_FLAT: float = 14.0
+const LEVEL_UP_HEAL_GAIN_MULT: float = 1.25
 const ENEMY_DRAW_SCALE: float = 1.60
 const IFRAMES_SEC: float = 0.55
 const ORB_ORBIT_R: float = 72.0
@@ -496,11 +499,11 @@ const SKILL_DEFS: Dictionary = {
 		"name": "Corruption Field", "short": "Mud patches trap and sink enemies",
 		"col": Color(0.50, 0.82, 0.20), "max_lvl": 5,
 		"lvl": [
-			{"n": 2, "r": 62.0, "dps": 16.0, "cd": 8.0, "sink_t": 3.0, "note": "2 trap patches"},
-			{"n": 2, "r": 70.0, "dps": 22.0, "cd": 7.5, "sink_t": 3.0, "note": "Bigger patch"},
-			{"n": 3, "r": 78.0, "dps": 29.0, "cd": 7.0, "sink_t": 3.0, "note": "3 trap patches"},
-			{"n": 3, "r": 86.0, "dps": 38.0, "cd": 6.5, "sink_t": 3.0, "note": "Stronger sink"},
-			{"n": 4, "r": 94.0, "dps": 48.0, "cd": 6.0, "sink_t": 3.0, "note": "MAX sinking field"},
+			{"n": 2, "r": 92.0, "dps": 16.0, "cd": 8.0, "sink_t": 3.0, "max_targets": 2, "note": "Large patch, traps up to 2 enemies"},
+			{"n": 2, "r": 104.0, "dps": 22.0, "cd": 7.5, "sink_t": 3.0, "max_targets": 2, "note": "Bigger patch"},
+			{"n": 3, "r": 116.0, "dps": 29.0, "cd": 7.0, "sink_t": 3.0, "max_targets": 2, "note": "3 trap patches"},
+			{"n": 3, "r": 126.0, "dps": 38.0, "cd": 6.5, "sink_t": 3.0, "max_targets": 2, "note": "Stronger sink"},
+			{"n": 4, "r": 136.0, "dps": 48.0, "cd": 6.0, "sink_t": 3.0, "max_targets": 2, "note": "MAX sinking field"},
 		],
 	},
 	# ── Chef skills ───────────────────────────────────────────────────────────
@@ -721,6 +724,7 @@ var _camera: Camera2D
 var _player_pos:     Vector2 = Vector2.ZERO
 var _player_hp:      float   = 200.0
 var _player_max_hp:  float   = 200.0
+var _player_base_max_hp: float = 200.0
 var _player_speed:   float   = 360.0
 var _player_iframes: float   = 0.0
 var _player_tint:    Color   = Color(0.62, 0.46, 0.30)
@@ -728,6 +732,7 @@ var _player_tex:     Texture2D = null
 var _player_facing_x: int     = 1  # 1 = right, -1 = left
 var _player_move_dir: Vector2 = Vector2.ZERO
 var _enemy_tex:       Dictionary = {}  # kind -> Texture2D
+var _skill_icon_cache: Dictionary = {}  # sid -> cropped Texture2D
 
 # ─── Progression ──────────────────────────────────────────────────────────────
 var _xp:      int   = 0
@@ -777,9 +782,12 @@ const TRAIL_FROZEN_LIFE: float = 2.0
 const TRAIL_BURN_LIFE: float = 2.0
 const TRAIL_FROZEN_EMIT_INTERVAL: float = 0.34
 const TRAIL_BURN_EMIT_INTERVAL: float = 0.30
+const ICE_PATCH_SLOW_MULT: float = 0.55
+const ICE_PATCH_SLOW_DURATION: float = 1.5
 
 # ─── Potions  {pos,life} ─────────────────────────────────────────────────────
 var _potions: Array[Dictionary] = []
+var _ice_patch_slow_t: float = 0.0
 
 # ─── Ring drops  {pos,life,ring} ─────────────────────────────────────────────
 var _ring_drops: Array[Dictionary] = []
@@ -927,7 +935,8 @@ func _ready() -> void:
 	_joy_zone = Rect2(0.0, view.y * 0.55, view.x, view.y * 0.45)
 
 	if selected_player_character != null:
-		_player_max_hp = float(selected_player_character.max_hp)
+		_player_base_max_hp = float(selected_player_character.max_hp)
+		_player_max_hp = _player_base_max_hp
 		_player_hp     = _player_max_hp
 		_player_speed  = 300.0 + float(selected_player_character.attack - 7) * 12.0
 		_player_tint   = selected_player_character.tint
@@ -951,9 +960,11 @@ func _ready() -> void:
 		if bonuses.has("max_hp"):
 			_player_max_hp += float(bonuses["max_hp"])
 			_player_hp      = _player_max_hp
+			_player_base_max_hp += float(bonuses["max_hp"])
 		if bonuses.has("max_hp_pct"):
 			_player_max_hp *= 1.0 + float(bonuses["max_hp_pct"])
 			_player_hp = _player_max_hp
+			_player_base_max_hp *= 1.0 + float(bonuses["max_hp_pct"])
 		if bonuses.has("move_speed"):
 			_player_speed += float(bonuses["move_speed"])
 		if bonuses.has("move_speed_mul"):
@@ -1075,6 +1086,7 @@ func _process(delta: float) -> void:
 		return
 	_elapsed           += delta
 	_room_elapsed      += delta
+	_ice_patch_slow_t = max(_ice_patch_slow_t - delta, 0.0)
 	_sync_room_state()
 	_update_boss_intermission(delta)
 	_update_artifact_runtime(delta)
@@ -1194,6 +1206,8 @@ func _current_room() -> Dictionary:
 func _apply_room_movement(delta: float, move_dir: Vector2) -> void:
 	var room_type: String = _current_room().get("id", "lava") as String
 	var move_mul: float = 1.0 + _artifact_wheel_move_mul
+	if _ice_patch_slow_t > 0.0:
+		move_mul *= ICE_PATCH_SLOW_MULT
 	if room_type == "frozen":
 		var target_vel: Vector2 = move_dir * _player_speed * 1.08 * move_mul
 		if move_dir == Vector2.ZERO:
@@ -3493,9 +3507,10 @@ func _spawn_corruption_pools(def: Dictionary) -> void:
 			"r": def.get("r", 62.0) as float,
 			"dps": def.get("dps", 16.0) as float,
 			"sink_t": def.get("sink_t", 3.0) as float,
+			"max_targets": def.get("max_targets", 2) as int,
 			"life": 4.0,
 			"max_life": 4.0,
-			"enemy_idx": -1,
+			"enemy_idxs": [],
 			"tick_t": 0.0,
 		})
 
@@ -3506,26 +3521,36 @@ func _update_corruption_pools(delta: float) -> void:
 		if (p["life"] as float) <= 0.0:
 			_corruption_pools.remove_at(i)
 			continue
-		var idx: int = p.get("enemy_idx", -1) as int
-		if idx < 0:
-			for ei in range(_enemies.size() - 1, -1, -1):
-				if (_enemies[ei]["pos"] as Vector2).distance_to(p["pos"] as Vector2) <= (p["r"] as float) + (_enemies[ei]["r"] as float):
-					p["enemy_idx"] = ei
-					_enemies[ei]["corr_sink_t"] = p["sink_t"] as float
-					break
-		else:
-			if idx >= _enemies.size():
-				p["enemy_idx"] = -1
+		var trapped: Array = p.get("enemy_idxs", []) as Array
+		for ti in range(trapped.size() - 1, -1, -1):
+			var idx: int = trapped[ti] as int
+			if idx < 0 or idx >= _enemies.size():
+				trapped.remove_at(ti)
 				continue
-			p["tick_t"] = (p["tick_t"] as float) + delta
-			if (p["tick_t"] as float) >= 0.5:
-				p["tick_t"] = 0.0
-				_hit_enemy(idx, (p.get("dps", 0.0) as float) * 0.5)
-			if idx < _enemies.size():
-				_enemies[idx]["trap_t"] = max(_enemies[idx].get("trap_t", 0.0) as float, 0.12)
-				_enemies[idx]["corr_sink_t"] = max((_enemies[idx].get("corr_sink_t", 0.0) as float) - delta, 0.0)
-				if (_enemies[idx].get("corr_sink_t", 0.0) as float) <= 0.0:
-					p["enemy_idx"] = -1
+			_enemies[idx]["trap_t"] = max(_enemies[idx].get("trap_t", 0.0) as float, 0.12)
+			_enemies[idx]["corr_sink_t"] = max((_enemies[idx].get("corr_sink_t", 0.0) as float) - delta, 0.0)
+			if (_enemies[idx].get("corr_sink_t", 0.0) as float) <= 0.0:
+				trapped.remove_at(ti)
+
+		var max_targets: int = max(p.get("max_targets", 2) as int, 1)
+		if trapped.size() < max_targets:
+			for ei in range(_enemies.size() - 1, -1, -1):
+				if trapped.size() >= max_targets:
+					break
+				if trapped.has(ei):
+					continue
+				if (_enemies[ei]["pos"] as Vector2).distance_to(p["pos"] as Vector2) <= (p["r"] as float) + (_enemies[ei]["r"] as float):
+					trapped.append(ei)
+					_enemies[ei]["corr_sink_t"] = p["sink_t"] as float
+
+		p["enemy_idxs"] = trapped
+		p["tick_t"] = (p["tick_t"] as float) + delta
+		if (p["tick_t"] as float) >= 0.5:
+			p["tick_t"] = 0.0
+			for ti in range(trapped.size() - 1, -1, -1):
+				var idx2: int = trapped[ti] as int
+				if idx2 >= 0 and idx2 < _enemies.size():
+					_hit_enemy(idx2, (p.get("dps", 0.0) as float) * 0.5)
 
 func _attach_plague_beetles(def: Dictionary) -> void:
 	if _enemies.is_empty():
@@ -4553,9 +4578,9 @@ func _enemy_mod_description(mod: String) -> String:
 		"explosive":
 			return "Enemies explode when they die."
 		"frozen_trail":
-			return "Enemies leave icy trails that slow you down if you run over them."
+			return "Enemies leave ice patches on death; running over one slows you for 1.5s."
 		"burn_trail":
-			return "Enemies leave burning trails that hurt you if you run over them."
+			return "Enemies spawn 2-3 embers on death; running over embers damages you."
 		_:
 			return ""
 
@@ -4771,13 +4796,12 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 		# Emit a final burst of trail on death for trail types
 		var death_mod: String = e.get("mod", "") as String
 		if death_mod == "frozen_trail":
-			for _fi in 2:
-				var off: Vector2 = Vector2(randf_range(-22, 22), randf_range(-22, 22))
-				_append_frozen_trail(ep + off)
+			_append_frozen_trail(ep)
 		elif death_mod == "burn_trail":
-			for _bi in 3:
+			var ember_count: int = randi_range(2, 3)
+			for _bi in ember_count:
 				var off: Vector2 = Vector2(randf_range(-28, 28), randf_range(-28, 28))
-				_append_burn_trail(ep + off, 2.5 + float(_wave) * 0.1)
+				_append_burn_trail(ep + off, 2.2 + float(_wave) * 0.08)
 
 func _bleed_bonus_from_level(level: int) -> float:
 	var max_lvl: int = int(SKILL_DEFS["bleed_mark"]["max_lvl"])
@@ -4798,19 +4822,6 @@ func _spread_bleed_explosion(center: Vector2, bonus: float, mark_t: float, radiu
 # ─── Enemy trail updates ────────────────────────────────────────────────────
 
 func _update_enemy_trails(delta: float) -> void:
-	# Emit trails from living mod enemies
-	for e in _enemies:
-		var emod: String = e.get("mod", "") as String
-		if emod == "frozen_trail":
-			e["trail_t"] = (e.get("trail_t", 0.0) as float) + delta
-			if (e["trail_t"] as float) >= TRAIL_FROZEN_EMIT_INTERVAL:
-				e["trail_t"] = 0.0
-				_append_frozen_trail(e["pos"] as Vector2)
-		elif emod == "burn_trail":
-			e["trail_t"] = (e.get("trail_t", 0.0) as float) + delta
-			if (e["trail_t"] as float) >= TRAIL_BURN_EMIT_INTERVAL:
-				e["trail_t"] = 0.0
-				_append_burn_trail(e["pos"] as Vector2, 2.5 + float(_wave) * 0.1)
 	# Tick frozen trails (slow player if overlapping)
 	for i in range(_frozen_trails.size() - 1, -1, -1):
 		var ft: Dictionary = _frozen_trails[i]
@@ -4818,10 +4829,8 @@ func _update_enemy_trails(delta: float) -> void:
 		if (ft["life"] as float) <= 0.0:
 			_frozen_trails.remove_at(i)
 			continue
-		if _player_pos.distance_to(ft["pos"] as Vector2) < 32.0:
-			# Slow the slide/movement by clamping velocity toward zero faster
-			_room_slide_velocity = _room_slide_velocity.move_toward(Vector2.ZERO, 980.0 * delta)
-			_player_pos -= (_player_pos - (ft["pos"] as Vector2)).normalized() * 44.0 * delta
+		if _player_pos.distance_to(ft["pos"] as Vector2) < 34.0:
+			_ice_patch_slow_t = max(_ice_patch_slow_t, ICE_PATCH_SLOW_DURATION)
 	# Tick burn trails (damage player if overlapping)
 	for i in range(_burn_trails.size() - 1, -1, -1):
 		var bt: Dictionary = _burn_trails[i]
@@ -5014,8 +5023,15 @@ func _gain_xp(amount: int) -> void:
 	if _xp >= _xp_next:
 		_xp -= _xp_next
 		_level   += 1
+		_apply_level_up_hp_growth()
 		_xp_next  = int(40.0 * pow(float(_level), 1.40))
 		_show_skill_select(false)
+
+func _apply_level_up_hp_growth() -> void:
+	var hp_gain: float = max(_player_base_max_hp * LEVEL_UP_HP_GAIN_PCT, LEVEL_UP_HP_GAIN_FLAT)
+	_player_base_max_hp += hp_gain
+	_player_max_hp += hp_gain
+	_player_hp = min(_player_max_hp, _player_hp + hp_gain * LEVEL_UP_HEAL_GAIN_MULT)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # DRAWING
@@ -6657,11 +6673,16 @@ func _draw() -> void:
 	# Idle-enrage warning: only when stand-still boost is active
 	if _idle_enemy_speed_boost_active and not _enemies.is_empty():
 		var warn_flash: float = 0.6 + 0.4 * sin(_elapsed * 6.0)
-		var warn_text: String = "WARNING: enemy will enrage and move faster if player stand still for more than 2 seconds"
-		var warn_width: float = 1060.0
-		var warn_pos: Vector2 = pdp + Vector2(-warn_width * 0.5, p_draw_r + 35.0)
-		draw_string(ThemeDB.fallback_font, warn_pos, warn_text, HORIZONTAL_ALIGNMENT_CENTER, warn_width, 22, Color(0.0, 0.0, 0.0, 0.70 * warn_flash))
-		draw_string(ThemeDB.fallback_font, warn_pos + Vector2(0, -2), warn_text, HORIZONTAL_ALIGNMENT_CENTER, warn_width, 22, Color(1.0, 0.12, 0.08, 0.98 * warn_flash))
+		var warn_line_1: String = "WARNING: ENEMIES ENRAGE AND MOVE FASTER"
+		var warn_line_2: String = "IF YOU STAND STILL FOR MORE THAN 2 SECONDS"
+		var warn_width: float = 1180.0
+		var warn_font_size: int = 30
+		var warn_pos_1: Vector2 = pdp + Vector2(-warn_width * 0.5, p_draw_r + 42.0)
+		var warn_pos_2: Vector2 = warn_pos_1 + Vector2(0.0, 34.0)
+		draw_string(ThemeDB.fallback_font, warn_pos_1, warn_line_1, HORIZONTAL_ALIGNMENT_CENTER, warn_width, warn_font_size, Color(0.0, 0.0, 0.0, 0.70 * warn_flash))
+		draw_string(ThemeDB.fallback_font, warn_pos_1 + Vector2(0, -2), warn_line_1, HORIZONTAL_ALIGNMENT_CENTER, warn_width, warn_font_size, Color(1.0, 0.12, 0.08, 0.98 * warn_flash))
+		draw_string(ThemeDB.fallback_font, warn_pos_2, warn_line_2, HORIZONTAL_ALIGNMENT_CENTER, warn_width, warn_font_size, Color(0.0, 0.0, 0.0, 0.70 * warn_flash))
+		draw_string(ThemeDB.fallback_font, warn_pos_2 + Vector2(0, -2), warn_line_2, HORIZONTAL_ALIGNMENT_CENTER, warn_width, warn_font_size, Color(1.0, 0.12, 0.08, 0.98 * warn_flash))
 
 func _draw_bg() -> void:
 	var view: Vector2 = get_viewport_rect().size
@@ -6828,7 +6849,7 @@ func _build_hud() -> void:
 	hp_bg_s.corner_radius_top_left = 12; hp_bg_s.corner_radius_top_right = 12
 	hp_bg_s.corner_radius_bottom_right = 12; hp_bg_s.corner_radius_bottom_left = 12
 	hp_bg.add_theme_stylebox_override("panel", hp_bg_s)
-	hp_bg.position = Vector2(28, 44); hp_bg.size = Vector2(330, 32)
+	hp_bg.position = Vector2(28, 40); hp_bg.size = Vector2(390, 40)
 	hud.add_child(hp_bg)
 
 	_hp_fill = Panel.new()
@@ -6837,15 +6858,15 @@ func _build_hud() -> void:
 	hp_fill_s.corner_radius_top_left = 10; hp_fill_s.corner_radius_top_right = 10
 	hp_fill_s.corner_radius_bottom_right = 10; hp_fill_s.corner_radius_bottom_left = 10
 	_hp_fill.add_theme_stylebox_override("panel", hp_fill_s)
-	_hp_fill.position = Vector2(3, 3); _hp_fill.size = Vector2(324, 26)
-	_hp_fill.custom_minimum_size = Vector2(0, 26)
+	_hp_fill.position = Vector2(3, 3); _hp_fill.size = Vector2(384, 34)
+	_hp_fill.custom_minimum_size = Vector2(0, 34)
 	hp_bg.add_child(_hp_fill)
 
 	var hp_lbl := Label.new()
 	hp_lbl.text = "HP"
-	hp_lbl.add_theme_font_size_override("font_size", 13)
+	hp_lbl.add_theme_font_size_override("font_size", 16)
 	hp_lbl.add_theme_color_override("font_color", Color(1, 0.85, 0.85))
-	hp_lbl.position = Vector2(7, 7); hp_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hp_lbl.position = Vector2(10, 10); hp_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hp_bg.add_child(hp_lbl)
 
 	# XP bar
@@ -6855,7 +6876,7 @@ func _build_hud() -> void:
 	xp_bg_s.corner_radius_top_left = 8; xp_bg_s.corner_radius_top_right = 8
 	xp_bg_s.corner_radius_bottom_right = 8; xp_bg_s.corner_radius_bottom_left = 8
 	xp_bg.add_theme_stylebox_override("panel", xp_bg_s)
-	xp_bg.position = Vector2(28, 82); xp_bg.size = Vector2(330, 18)
+	xp_bg.position = Vector2(28, 88); xp_bg.size = Vector2(390, 22)
 	hud.add_child(xp_bg)
 
 	_xp_fill = Panel.new()
@@ -6864,58 +6885,58 @@ func _build_hud() -> void:
 	xp_fill_s.corner_radius_top_left = 6; xp_fill_s.corner_radius_top_right = 6
 	xp_fill_s.corner_radius_bottom_right = 6; xp_fill_s.corner_radius_bottom_left = 6
 	_xp_fill.add_theme_stylebox_override("panel", xp_fill_s)
-	_xp_fill.position = Vector2(2, 2); _xp_fill.size = Vector2(0, 14)
-	_xp_fill.custom_minimum_size = Vector2(0, 14)
+	_xp_fill.position = Vector2(2, 2); _xp_fill.size = Vector2(0, 18)
+	_xp_fill.custom_minimum_size = Vector2(0, 18)
 	xp_bg.add_child(_xp_fill)
 
 	# Level label
 	_level_lbl = Label.new()
 	_level_lbl.text = "LV 1"
-	_level_lbl.add_theme_font_size_override("font_size", 34)
+	_level_lbl.add_theme_font_size_override("font_size", 40)
 	_level_lbl.add_theme_color_override("font_color", Color(0.98, 0.88, 0.50))
-	_level_lbl.position = Vector2(370, 42)
+	_level_lbl.position = Vector2(436, 38)
 	hud.add_child(_level_lbl)
 
 	# Time  — below XP bar
 	_time_lbl = Label.new()
 	_time_lbl.text = "0:00"
-	_time_lbl.add_theme_font_size_override("font_size", 34)
+	_time_lbl.add_theme_font_size_override("font_size", 40)
 	_time_lbl.add_theme_color_override("font_color", Color(0.90, 0.86, 0.76))
-	_time_lbl.position = Vector2(28, 106); _time_lbl.size = Vector2(720, 44)
+	_time_lbl.position = Vector2(28, 120); _time_lbl.size = Vector2(860, 50)
 	hud.add_child(_time_lbl)
 
 	# Kill count  — same row, right-aligned
 	_kill_lbl = Label.new()
 	_kill_lbl.text = "Kills: 0"
-	_kill_lbl.add_theme_font_size_override("font_size", 34)
+	_kill_lbl.add_theme_font_size_override("font_size", 40)
 	_kill_lbl.add_theme_color_override("font_color", Color(0.75, 0.70, 0.60))
 	_kill_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_kill_lbl.position = Vector2(28, 106); _kill_lbl.size = Vector2(720, 44)
+	_kill_lbl.position = Vector2(28, 120); _kill_lbl.size = Vector2(860, 50)
 	hud.add_child(_kill_lbl)
 
 	# Wave label  — second sub-row
 	_wave_lbl = Label.new()
 	_wave_lbl.text = "Wave 1"
-	_wave_lbl.add_theme_font_size_override("font_size", 34)
+	_wave_lbl.add_theme_font_size_override("font_size", 40)
 	_wave_lbl.add_theme_color_override("font_color", Color(1.0, 0.80, 0.20))
-	_wave_lbl.position = Vector2(28, 148); _wave_lbl.size = Vector2(980, 44)
+	_wave_lbl.position = Vector2(28, 170); _wave_lbl.size = Vector2(1080, 50)
 	hud.add_child(_wave_lbl)
 
 	# Room effect detail  — third sub-row
 	_room_detail_lbl = Label.new()
 	_room_detail_lbl.text = ""
-	_room_detail_lbl.add_theme_font_size_override("font_size", 24)
+	_room_detail_lbl.add_theme_font_size_override("font_size", 28)
 	_room_detail_lbl.add_theme_color_override("font_color", Color(0.80, 0.76, 0.65))
-	_room_detail_lbl.position = Vector2(28, 192); _room_detail_lbl.size = Vector2(1220, 66)
+	_room_detail_lbl.position = Vector2(28, 224); _room_detail_lbl.size = Vector2(1220, 74)
 	_room_detail_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hud.add_child(_room_detail_lbl)
 
 	# Enemy modifier summary  — fourth sub-row
 	_enemy_mod_lbl = Label.new()
 	_enemy_mod_lbl.text = ""
-	_enemy_mod_lbl.add_theme_font_size_override("font_size", 23)
+	_enemy_mod_lbl.add_theme_font_size_override("font_size", 27)
 	_enemy_mod_lbl.add_theme_color_override("font_color", Color(1.0, 0.58, 0.20))
-	_enemy_mod_lbl.position = Vector2(28, 250); _enemy_mod_lbl.size = Vector2(1260, 56)
+	_enemy_mod_lbl.position = Vector2(28, 306); _enemy_mod_lbl.size = Vector2(1260, 62)
 	_enemy_mod_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hud.add_child(_enemy_mod_lbl)
 
@@ -7117,8 +7138,8 @@ func _pause_btn(label: String, bg: Color, fg: Color) -> Button:
 	return btn
 
 func _update_hud() -> void:
-	_hp_fill.size = Vector2(324.0 * clamp(_player_hp / _player_max_hp, 0.0, 1.0), 26)
-	_xp_fill.size = Vector2(326.0 * clamp(float(_xp) / float(_xp_next), 0.0, 1.0), 14)
+	_hp_fill.size = Vector2(384.0 * clamp(_player_hp / _player_max_hp, 0.0, 1.0), 34)
+	_xp_fill.size = Vector2(386.0 * clamp(float(_xp) / float(_xp_next), 0.0, 1.0), 18)
 	_level_lbl.text = "LV %d" % _level
 	var m: int = int(_elapsed) / 60
 	var s: int = int(_elapsed) % 60
@@ -7146,7 +7167,7 @@ func _update_hud() -> void:
 		_room_detail_lbl.text = "%s\nStash Keys: %d" % [room_desc, PurchaseStore.get_key_count(account_username)]
 
 	if _enemy_mod_lbl != null:
-		_enemy_mod_lbl.position.y = _room_detail_lbl.position.y + 130.0
+		_enemy_mod_lbl.position.y = _room_detail_lbl.position.y + 82.0
 		if _wave >= 10 and not _active_enemy_mod.is_empty():
 			_enemy_mod_lbl.text = "Floor affix: %s - %s" % [_active_enemy_mod_name, _active_enemy_mod_desc]
 		else:
@@ -7168,21 +7189,133 @@ func _update_skill_icons() -> void:
 		ps.border_color = (sdef["col"] as Color).darkened(0.15)
 		pill.add_theme_stylebox_override("panel", ps)
 		pill.custom_minimum_size = Vector2(196, 104)
+		var icon := _make_skill_card_icon(sid, sdef["col"] as Color, 76.0)
+		icon.position = Vector2(10, 14)
+		pill.add_child(icon)
 		var nl := Label.new()
 		nl.text = sdef["name"] as String
 		nl.add_theme_font_size_override("font_size", 22)
 		nl.add_theme_color_override("font_color", sdef["col"] as Color)
-		nl.position = Vector2(12, 10); nl.size = Vector2(172, 40)
+		nl.position = Vector2(94, 10); nl.size = Vector2(92, 40)
+		nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		nl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		pill.add_child(nl)
 		var ll := Label.new()
 		ll.text = "Lv %d" % lvl
 		ll.add_theme_font_size_override("font_size", 20)
 		ll.add_theme_color_override("font_color", Color(0.70, 0.65, 0.52))
-		ll.position = Vector2(12, 56); ll.size = Vector2(172, 34)
+		ll.position = Vector2(94, 60); ll.size = Vector2(90, 28)
 		ll.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		pill.add_child(ll)
 		_skill_icon_row.add_child(pill)
+
+func _skill_icon_path_candidates(sid: String) -> Array[String]:
+	var out: Array[String] = ["res://assets/skills/%s.png" % sid]
+	if sid == "time_warp":
+		out.append("res://assets/skills/time_wrap.png")
+	return out
+
+func _skill_icon_texture(sid: String) -> Texture2D:
+	if _skill_icon_cache.has(sid):
+		return _skill_icon_cache[sid] as Texture2D
+	for path in _skill_icon_path_candidates(sid):
+		if ResourceLoader.exists(path):
+			var tex: Texture2D = load(path) as Texture2D
+			if tex != null:
+				var cropped: Texture2D = _crop_transparent_skill_icon(tex)
+				_skill_icon_cache[sid] = cropped
+				return cropped
+	return null
+
+func _crop_transparent_skill_icon(tex: Texture2D) -> Texture2D:
+	var img: Image = tex.get_image()
+	if img == null or img.is_empty():
+		return tex
+	var min_x: int = img.get_width()
+	var min_y: int = img.get_height()
+	var max_x: int = -1
+	var max_y: int = -1
+	for y in range(img.get_height()):
+		for x in range(img.get_width()):
+			if img.get_pixel(x, y).a <= 0.02:
+				continue
+			min_x = mini(min_x, x)
+			min_y = mini(min_y, y)
+			max_x = maxi(max_x, x)
+			max_y = maxi(max_y, y)
+	if max_x < 0 or max_y < 0:
+		return tex
+	if min_x == 0 and min_y == 0 and max_x == img.get_width() - 1 and max_y == img.get_height() - 1:
+		return tex
+	var atlas := AtlasTexture.new()
+	atlas.atlas = tex
+	atlas.region = Rect2(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
+	return atlas
+
+func _skill_icon_abbrev(sid: String) -> String:
+	if not SKILL_DEFS.has(sid):
+		return "?"
+	var name: String = String((SKILL_DEFS[sid] as Dictionary).get("name", sid)).strip_edges()
+	if name.is_empty():
+		return "?"
+	var words: PackedStringArray = name.split(" ", false)
+	var out: String = ""
+	for word in words:
+		if word.is_empty():
+			continue
+		out += word.substr(0, 1).to_upper()
+		if out.length() >= 2:
+			break
+	if out.is_empty():
+		out = name.substr(0, 1).to_upper()
+	return out
+
+func _make_skill_card_icon(sid: String, icon_color: Color, size: float, is_ulti: bool = false, is_combo: bool = false) -> Control:
+	var panel := Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.10, 0.08, 0.06, 0.96).lerp(icon_color, 0.16 if not is_ulti else 0.24)
+	style.corner_radius_top_left = 18
+	style.corner_radius_top_right = 18
+	style.corner_radius_bottom_right = 18
+	style.corner_radius_bottom_left = 18
+	style.set_border_width_all(3 if is_ulti else 2)
+	style.border_color = Color(1.0, 0.82, 0.18) if is_ulti else (Color(0.46, 0.98, 0.90) if is_combo else icon_color)
+	panel.add_theme_stylebox_override("panel", style)
+	panel.custom_minimum_size = Vector2(size, size)
+	panel.size = Vector2(size, size)
+	panel.clip_contents = true
+
+	var tex: Texture2D = _skill_icon_texture(sid)
+	if tex != null:
+		var inset: float = max(6.0, floor(size * 0.08))
+		var icon := TextureRect.new()
+		icon.texture = tex
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.position = Vector2(inset, inset)
+		icon.size = Vector2(size - inset * 2.0, size - inset * 2.0)
+		panel.add_child(icon)
+		return panel
+
+	var glow := ColorRect.new()
+	glow.color = Color(icon_color.r, icon_color.g, icon_color.b, 0.18)
+	glow.position = Vector2(10, 10)
+	glow.size = Vector2(size - 20.0, size - 20.0)
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(glow)
+
+	var label := Label.new()
+	label.text = _skill_icon_abbrev(sid)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	label.add_theme_font_size_override("font_size", 34 if not is_ulti else 38)
+	label.add_theme_color_override("font_color", Color(1.0, 0.96, 0.88) if is_ulti else Color(0.96, 0.93, 0.86))
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(label)
+
+	return panel
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SKILL SELECT UI
@@ -7225,12 +7358,13 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 
 	# 3 skill cards
 	var card_w: float = view.x - 80.0
-	var card_h: float = 172.0
+	var card_h: float = 242.0
 	var gap: float    = 18.0
-	var total_h: float = 3.0 * card_h + 2.0 * gap
+	var card_count: int = mini(choices.size(), 3)
+	var total_h: float = float(card_count) * card_h + float(max(card_count - 1, 0)) * gap
 	var start_y: float = (view.y - total_h) * 0.5
 
-	for i in 3:
+	for i in card_count:
 		var ch: Dictionary  = choices[i]
 		var sid: String     = ch["id"] as String
 		var new_lvl: int    = ch["lvl"] as int
@@ -7281,8 +7415,12 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 			badge.text = "NEW"
 			badge.add_theme_color_override("font_color", Color(0.32, 0.95, 0.55))
 		badge.add_theme_font_size_override("font_size", 15 if not is_ulti else 17)
-		badge.position = Vector2(16, 12); badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		badge.position = Vector2(202, 16); badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		card.add_child(badge)
+
+		var skill_icon := _make_skill_card_icon(sid, scol, 164.0, is_ulti, is_combo)
+		skill_icon.position = Vector2(22, 40)
+		card.add_child(skill_icon)
 
 		if is_ulti:
 			var unlock_lbl := Label.new()
@@ -7297,18 +7435,18 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 		# Name
 		var nm := Label.new()
 		nm.text = sdef["name"] as String
-		nm.add_theme_font_size_override("font_size", 38)
+		nm.add_theme_font_size_override("font_size", 40)
 		nm.add_theme_color_override("font_color", scol)
-		nm.position = Vector2(16, 36); nm.size = Vector2(card_w - 120, 46)
+		nm.position = Vector2(202, 46); nm.size = Vector2(card_w - 320, 54)
 		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		card.add_child(nm)
 
 		# Level
 		var lv := Label.new()
 		lv.text = "Level %d" % new_lvl
-		lv.add_theme_font_size_override("font_size", 18)
+		lv.add_theme_font_size_override("font_size", 21)
 		lv.add_theme_color_override("font_color", Color(0.60, 0.55, 0.42))
-		lv.position = Vector2(card_w - 116, 42); lv.size = Vector2(100, 28)
+		lv.position = Vector2(card_w - 144, 54); lv.size = Vector2(128, 32)
 		lv.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		lv.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		card.add_child(lv)
@@ -7316,9 +7454,9 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 		# Description
 		var desc := Label.new()
 		desc.text = ldata["note"] as String
-		desc.add_theme_font_size_override("font_size", 26)
+		desc.add_theme_font_size_override("font_size", 30)
 		desc.add_theme_color_override("font_color", Color(0.82, 0.76, 0.65))
-		desc.position = Vector2(16, 90); desc.size = Vector2(card_w - 32, 72)
+		desc.position = Vector2(202, 112); desc.size = Vector2(card_w - 224, 106)
 		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		card.add_child(desc)
@@ -7334,7 +7472,7 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 		layer.add_child(card)
 
 	# ── Watch Ad to Reroll button ─────────────────────────────────────────────
-	var reroll_y: float = start_y + 3.0 * (card_h + gap) + 20.0
+	var reroll_y: float = start_y + float(card_count) * card_h + float(max(card_count - 1, 0)) * gap + 20.0
 	var reroll_btn := Button.new()
 	reroll_btn.custom_minimum_size = Vector2(card_w, 62)
 	reroll_btn.size     = Vector2(card_w, 62)

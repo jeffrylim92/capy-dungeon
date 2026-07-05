@@ -116,7 +116,7 @@ func _build_ui() -> void:
 
 	var stash_lbl := Label.new()
 	stash_lbl.text = "Inventory Stash"
-	stash_lbl.add_theme_font_size_override("font_size", 34)
+	stash_lbl.add_theme_font_size_override("font_size", 40)
 	stash_lbl.add_theme_color_override("font_color", Color(0.78, 0.72, 0.60))
 	root.add_child(stash_lbl)
 
@@ -298,7 +298,7 @@ func _rebuild_stash() -> void:
 	if rows.is_empty():
 		var empty := Label.new()
 		empty.text = "No items in this filter."
-		empty.add_theme_font_size_override("font_size", 26)
+		empty.add_theme_font_size_override("font_size", 30)
 		empty.add_theme_color_override("font_color", Color(0.58, 0.54, 0.50))
 		empty.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_stash_grid.add_child(empty)
@@ -308,7 +308,7 @@ func _rebuild_stash() -> void:
 		var item_type: String = row_data["type"] as String
 		var data: Dictionary = row_data["data"] as Dictionary
 		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(0, 146 if item_type == "ring" else 130)
+		btn.custom_minimum_size = Vector2(0, 184 if item_type == "ring" else 168)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.add_theme_font_size_override("font_size", 1)
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -346,8 +346,8 @@ func _build_stash_row_content(item_type: String, data: Dictionary, title: String
 	if item_type == "ring":
 		var icon_rect := TextureRect.new()
 		icon_rect.texture = RingStore.ring_icon(data)
-		icon_rect.custom_minimum_size = Vector2(56, 56)
-		icon_rect.size = Vector2(56, 56)
+		icon_rect.custom_minimum_size = Vector2(72, 72)
+		icon_rect.size = Vector2(72, 72)
 		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -357,8 +357,8 @@ func _build_stash_row_content(item_type: String, data: Dictionary, title: String
 		if art_icon != null:
 			var art_icon_rect := TextureRect.new()
 			art_icon_rect.texture = art_icon
-			art_icon_rect.custom_minimum_size = Vector2(56, 56)
-			art_icon_rect.size = Vector2(56, 56)
+			art_icon_rect.custom_minimum_size = Vector2(72, 72)
+			art_icon_rect.size = Vector2(72, 72)
 			art_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			art_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			art_icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -375,7 +375,7 @@ func _build_stash_row_content(item_type: String, data: Dictionary, title: String
 		l1.text = "%s  [T%d]" % [title, int(data.get("tier", 1))]
 	else:
 		l1.text = "%s  [%s]" % [title, item_type.to_upper()]
-	l1.add_theme_font_size_override("font_size", 20)
+	l1.add_theme_font_size_override("font_size", 28)
 	l1.autowrap_mode = TextServer.AUTOWRAP_WORD
 	l1.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	labels.add_child(l1)
@@ -385,7 +385,7 @@ func _build_stash_row_content(item_type: String, data: Dictionary, title: String
 		l2.text = "%s  ·  %s" % [desc, _ring_bonus_text(data)]
 	else:
 		l2.text = desc
-	l2.add_theme_font_size_override("font_size", 16)
+	l2.add_theme_font_size_override("font_size", 23)
 	l2.add_theme_color_override("font_color", Color(0.80, 0.78, 0.86))
 	l2.autowrap_mode = TextServer.AUTOWRAP_WORD
 	l2.mouse_filter = Control.MOUSE_FILTER_IGNORE

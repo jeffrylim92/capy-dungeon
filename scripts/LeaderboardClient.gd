@@ -6,6 +6,7 @@ extends RefCounted
 
 const BASE_URL := "https://capy-dungeon.onrender.com"
 const GLOBAL_LIMIT_ALL := 0
+const GLOBAL_LIMIT_TOP20 := 20
 
 ## Submit the calling user's cumulative stats after each match.
 ## Fire-and-forget: errors are logged but not surfaced.
@@ -94,29 +95,31 @@ static func fetch_user_stats(host: Node, username: String, callback: Callable) -
 
 ## Fetch the global kill leaderboard.
 ## `callback` receives { entries:Array, user_entry:Dictionary/null, ok:bool }.
-static func fetch_kills(host: Node, callback: Callable) -> void:
-	_fetch_payload(host, BASE_URL + "/stats/leaderboard/kills", callback)
+static func fetch_kills(host: Node, callback: Callable, limit: int = GLOBAL_LIMIT_TOP20, character: String = "") -> void:
+	_fetch_payload(host, _leaderboard_url("kills", "", limit, character), callback)
 
 ## Fetch the global kill leaderboard plus this user's own best rank.
 ## `callback` receives { entries: Array, user_entry: Dictionary/null }.
-static func fetch_kills_with_user(host: Node, username: String, callback: Callable) -> void:
-	_fetch_payload(host, _leaderboard_url("kills", username, GLOBAL_LIMIT_ALL), callback)
+static func fetch_kills_with_user(host: Node, username: String, callback: Callable, limit: int = GLOBAL_LIMIT_TOP20, character: String = "") -> void:
+	_fetch_payload(host, _leaderboard_url("kills", username, limit, character), callback)
 
 ## Fetch the global survive leaderboard.
 ## `callback` receives { entries:Array, user_entry:Dictionary/null, ok:bool }.
-static func fetch_survive(host: Node, callback: Callable) -> void:
-	_fetch_payload(host, BASE_URL + "/stats/leaderboard/survive", callback)
+static func fetch_survive(host: Node, callback: Callable, limit: int = GLOBAL_LIMIT_TOP20, character: String = "") -> void:
+	_fetch_payload(host, _leaderboard_url("survive", "", limit, character), callback)
 
 ## Fetch the global survive leaderboard plus this user's own best rank.
 ## `callback` receives { entries: Array, user_entry: Dictionary/null }.
-static func fetch_survive_with_user(host: Node, username: String, callback: Callable) -> void:
-	_fetch_payload(host, _leaderboard_url("survive", username, GLOBAL_LIMIT_ALL), callback)
+static func fetch_survive_with_user(host: Node, username: String, callback: Callable, limit: int = GLOBAL_LIMIT_TOP20, character: String = "") -> void:
+	_fetch_payload(host, _leaderboard_url("survive", username, limit, character), callback)
 
-static func _leaderboard_url(kind: String, username: String, limit: int = GLOBAL_LIMIT_ALL) -> String:
+static func _leaderboard_url(kind: String, username: String, limit: int = GLOBAL_LIMIT_ALL, character: String = "") -> String:
 	var url := BASE_URL + "/stats/leaderboard/" + kind
 	var query: PackedStringArray = []
 	if not username.is_empty():
 		query.append("username=" + username.to_lower().uri_encode())
+	if not character.is_empty():
+		query.append("character=" + character.strip_edges().to_lower().uri_encode())
 	if limit != GLOBAL_LIMIT_ALL:
 		query.append("limit=" + str(limit))
 	if query.size() > 0:

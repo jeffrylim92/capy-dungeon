@@ -23,7 +23,7 @@ func _build_ui() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.position = Vector2(24, 18)
 	title.size = Vector2(_view.x - 48, 48)
-	title.add_theme_font_size_override("font_size", 44)
+	title.add_theme_font_size_override("font_size", 50)
 	title.add_theme_color_override("font_color", Color(1.0, 0.88, 0.40))
 	add_child(title)
 
@@ -56,7 +56,7 @@ func _build_ui() -> void:
 	back_btn.text = "Back"
 	back_btn.custom_minimum_size = Vector2(180, 60)
 	back_btn.position = Vector2(24, _view.y - 66)
-	back_btn.add_theme_font_size_override("font_size", 30)
+	back_btn.add_theme_font_size_override("font_size", 34)
 	back_btn.pressed.connect(func() -> void: back_requested.emit())
 	add_child(back_btn)
 
@@ -81,7 +81,7 @@ func _fill_ring_cards(parent: VBoxContainer) -> void:
 			continue
 		var head := Label.new()
 		head.text = rarity.capitalize()
-		head.add_theme_font_size_override("font_size", 30)
+		head.add_theme_font_size_override("font_size", 36)
 		head.add_theme_color_override("font_color", RingStore.RARITY_COLORS.get(rarity, Color(0.8, 0.8, 0.8)) as Color)
 		parent.add_child(head)
 		for item in items:
@@ -109,12 +109,13 @@ func _fill_ring_cards(parent: VBoxContainer) -> void:
 			var got: bool = obtained.has(ring_name)
 			var l1 := Label.new()
 			l1.text = ring_name
-			l1.add_theme_font_size_override("font_size", 24)
+			l1.add_theme_font_size_override("font_size", 28)
 			box.add_child(l1)
 			var l2 := Label.new()
 			l2.text = d2.get("desc", "") as String if got else "???"
-			l2.add_theme_font_size_override("font_size", 20)
+			l2.add_theme_font_size_override("font_size", 24)
 			l2.add_theme_color_override("font_color", Color(0.80, 0.78, 0.86))
+			l2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			box.add_child(l2)
 
 func _collectible_ring_entries() -> Array:
@@ -142,7 +143,7 @@ func _fill_artifact_cards(parent: VBoxContainer) -> void:
 			continue
 		var head := Label.new()
 		head.text = rarity.capitalize()
-		head.add_theme_font_size_override("font_size", 30)
+		head.add_theme_font_size_override("font_size", 36)
 		head.add_theme_color_override("font_color", ArtifactStore.RARITY_COLORS.get(rarity, Color(0.8, 0.8, 0.8)) as Color)
 		parent.add_child(head)
 		for item in items:
@@ -170,12 +171,13 @@ func _fill_artifact_cards(parent: VBoxContainer) -> void:
 			var got: bool = obtained.has(name)
 			var l1 := Label.new()
 			l1.text = name
-			l1.add_theme_font_size_override("font_size", 24)
+			l1.add_theme_font_size_override("font_size", 28)
 			box.add_child(l1)
 			var l2 := Label.new()
 			l2.text = d2.get("desc", "") as String if got else "???"
-			l2.add_theme_font_size_override("font_size", 20)
+			l2.add_theme_font_size_override("font_size", 24)
 			l2.add_theme_color_override("font_color", Color(0.80, 0.78, 0.86))
+			l2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			box.add_child(l2)
 
 func _ring_thumb(data: Dictionary, obtained: bool) -> Control:
@@ -200,6 +202,7 @@ func _ring_thumb(data: Dictionary, obtained: bool) -> Control:
 		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+		lbl.add_theme_font_size_override("font_size", 28)
 		panel.add_child(lbl)
 		return panel
 	return tex
@@ -241,7 +244,7 @@ func _artifact_thumb(data: Dictionary, obtained: bool) -> Control:
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
-	lbl.add_theme_font_size_override("font_size", 24)
+	lbl.add_theme_font_size_override("font_size", 28)
 	lbl.add_theme_color_override("font_color", Color(1.0, 0.95, 0.88))
 	panel.add_child(lbl)
 	return panel

@@ -222,6 +222,40 @@ def _row_best_kill(row) -> tuple[int, str]:
     return _best_kill_from_stats(stats, int(row["total_kills"] or 0), row["best_kill_char"] or "")
 
 
+def _row_char_entry(stats: dict, char_id: str) -> dict:
+    if not isinstance(stats, dict):
+        return {}
+    raw = stats.get(char_id, {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def _row_kill_for_char(row, char_id: str) -> int:
+    if not char_id:
+        kills, _ = _row_best_kill(row)
+        return kills
+    stats = {}
+    try:
+        if row["stats_json"]:
+            stats = _json.loads(row["stats_json"])
+    except Exception:
+        stats = {}
+    entry = _row_char_entry(stats, char_id)
+    return int(entry.get("total_kills", 0) or 0)
+
+
+def _row_survive_for_char(row, char_id: str) -> float:
+    if not char_id:
+        return float(row["best_survive_sec"] or 0.0)
+    stats = {}
+    try:
+        if row["stats_json"]:
+            stats = _json.loads(row["stats_json"])
+    except Exception:
+        stats = {}
+    entry = _row_char_entry(stats, char_id)
+    return float(entry.get("best_survive_seconds", 0.0) or 0.0)
+
+
 def _rings_for_character(row, char_id: str) -> dict:
     if not char_id:
         return {}
@@ -355,11 +389,12 @@ async def stats_user(username: str) -> dict:
 
 
 @app.get("/stats/leaderboard/kills")
-async def leaderboard_kills(limit: int = 10, username: str = "") -> dict:
+async def leaderboard_kills(limit: int = 20, username: str = "", character: str = "") -> dict:
     try:
         limit = _normalize_limit(limit)
         user_entry = None
         uname = username.strip().lower()
+        char_filter = character.strip().lower()
         with _db_lock:
             conn = _db_connect()
             rows = _fetchall(conn,
@@ -370,7 +405,10 @@ async def leaderboard_kills(limit: int = 10, username: str = "") -> dict:
 
         ranked = []
         for row in rows:
-            kills, char_id = _row_best_kill(row)
+            kills = _row_kill_for_char(row, char_filter)
+            char_id = char_filter
+            if not char_filter:
+                kills, char_id = _row_best_kill(row)
             if kills <= 0:
                 continue
             ranked.append({
@@ -397,51 +435,43 @@ async def leaderboard_kills(limit: int = 10, username: str = "") -> dict:
 
 
 @app.get("/stats/leaderboard/survive")
-async def leaderboard_survive(limit: int = 10, username: str = "") -> dict:
+async def leaderboard_survive(limit: int = 20, username: str = "", character: str = "") -> dict:
     try:
         limit = _normalize_limit(limit)
-        ph = _PH
         user_entry = None
         uname = username.strip().lower()
+        char_filter = character.strip().lower()
         with _db_lock:
             conn = _db_connect()
-            if limit == 0:
-                rows = _fetchall(conn,
-                    "SELECT username, display_name, best_survive_sec, best_survive_char, rings_json "
-                    "FROM leaderboard WHERE best_survive_sec > 0 ORDER BY best_survive_sec DESC",
-                    (),
-                )
-            else:
-                rows = _fetchall(conn,
-                    f"SELECT username, display_name, best_survive_sec, best_survive_char, rings_json "
-                    f"FROM leaderboard WHERE best_survive_sec > 0 ORDER BY best_survive_sec DESC LIMIT {ph}", (limit,)
-                )
-            if uname:
-                user_row = _fetchone(conn,
-                    f"SELECT username, display_name, best_survive_sec, best_survive_char, rings_json FROM leaderboard WHERE username = {ph}",
-                    (uname,),
-                )
-                if user_row and user_row["best_survive_sec"] > 0.0:
-                    rank_row = _fetchone(conn,
-                        f"SELECT COUNT(*) AS ahead FROM leaderboard WHERE best_survive_sec > {ph}",
-                        (user_row["best_survive_sec"],),
-                    )
-                    user_entry = {
-                        "rank": int(rank_row["ahead"]) + 1,
-                        "username": user_row["username"],
-                        "display_name": user_row["display_name"],
-                        "value": user_row["best_survive_sec"],
-                        "character": user_row["best_survive_char"],
-                        "rings": _rings_for_character(user_row, user_row["best_survive_char"]),
-                    }
+            rows = _fetchall(conn,
+                "SELECT username, display_name, best_survive_sec, best_survive_char, stats_json, rings_json FROM leaderboard",
+                (),
+            )
             conn.close()
+
+        ranked = []
+        for row in rows:
+            value = _row_survive_for_char(row, char_filter)
+            if value <= 0.0:
+                continue
+            char_id = char_filter if char_filter else (row["best_survive_char"] or "")
+            ranked.append({
+                "username": row["username"],
+                "display_name": row["display_name"],
+                "value": value,
+                "character": char_id,
+                "rings": _rings_for_character(row, char_id),
+            })
+
+        ranked.sort(key=lambda entry: entry["value"], reverse=True)
+        for i, entry in enumerate(ranked):
+            entry["rank"] = i + 1
+            if uname and entry["username"] == uname:
+                user_entry = dict(entry)
+
+        entries = ranked if limit == 0 else ranked[:limit]
         return {
-            "entries": [
-                {"rank": i + 1, "username": r["username"], "display_name": r["display_name"],
-                 "value": r["best_survive_sec"], "character": r["best_survive_char"],
-                 "rings": _rings_for_character(r, r["best_survive_char"])}
-                for i, r in enumerate(rows)
-            ],
+            "entries": entries,
             "user_entry": user_entry,
         }
     except Exception as exc:

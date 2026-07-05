@@ -25,12 +25,54 @@ var _global_kill_user_entry: Variant = null
 var _global_survive_user_entry: Variant = null
 var _global_kills_failed: bool    = false
 var _global_survive_failed: bool  = false
+var _global_kills_entries: Array = []
+var _global_survive_entries: Array = []
+var _global_filter_character: String = ""
 
 func _cloud_username_for_history() -> String:
 	var social_email: String = String(account.get("social_email", "")).strip_edges().to_lower()
 	if not social_email.is_empty():
 		return social_email
 	return String(account.get("username", "")).strip_edges().to_lower()
+
+func _global_filter_character_ids() -> Array[String]:
+	var ids: Array[String] = [""]
+	var seen: Dictionary = {"": true}
+	for cid in CHAR_ORDER:
+		var sid: String = String(cid)
+		if not seen.has(sid):
+			ids.append(sid)
+			seen[sid] = true
+	for c in CharacterLoader.load_all():
+		if c == null:
+			continue
+		var sid2: String = String((c as CharacterData).id)
+		if sid2.is_empty() or seen.has(sid2):
+			continue
+		ids.append(sid2)
+		seen[sid2] = true
+	return ids
+
+func _character_display_name(char_id: String) -> String:
+	if char_id.is_empty():
+		return "All Characters"
+	for c in CharacterLoader.load_all():
+		if c == null:
+			continue
+		var data := c as CharacterData
+		if String(data.id) == char_id:
+			return String(data.display_name)
+	return char_id.capitalize()
+
+func _on_global_character_filter_changed(index: int) -> void:
+	var filter_btn: OptionButton = _global_panel.get_node_or_null("GlobalFilterRow/GlobalCharacterFilter") as OptionButton
+	if filter_btn == null:
+		return
+	var value: Variant = filter_btn.get_item_metadata(index)
+	_global_filter_character = String(value if value != null else "").strip_edges().to_lower()
+	_global_loaded = false
+	if _tab_panels.size() > 2 and _tab_panels[2].visible:
+		_switch_tab(2)
 
 func _ready() -> void:
 	SettingsStore.apply(get_tree())
@@ -346,6 +388,34 @@ func _build_global_panel(y: float, h: float, w: float) -> Control:
 	vbox.name = "GlobalVBox"
 	scroll.add_child(vbox)
 
+	var filter_row := HBoxContainer.new()
+	filter_row.name = "GlobalFilterRow"
+	filter_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	filter_row.add_theme_constant_override("separation", 12)
+	vbox.add_child(filter_row)
+
+	var filter_label := Label.new()
+	filter_label.text = "Character"
+	filter_label.add_theme_font_size_override("font_size", 30)
+	filter_label.add_theme_color_override("font_color", Color(0.90, 0.86, 0.76))
+	filter_row.add_child(filter_label)
+
+	var filter_btn := OptionButton.new()
+	filter_btn.name = "GlobalCharacterFilter"
+	filter_btn.add_theme_font_size_override("font_size", 36)
+	filter_btn.custom_minimum_size = Vector2(420, 70)
+	filter_btn.focus_mode = Control.FOCUS_NONE
+	var filter_popup: PopupMenu = filter_btn.get_popup()
+	filter_popup.add_theme_font_size_override("font_size", 34)
+	for cid in _global_filter_character_ids():
+		filter_btn.add_item(_character_display_name(cid))
+		var item_idx: int = filter_btn.item_count - 1
+		filter_btn.set_item_metadata(item_idx, cid)
+		if cid == _global_filter_character:
+			filter_btn.select(item_idx)
+	filter_btn.item_selected.connect(_on_global_character_filter_changed)
+	filter_row.add_child(filter_btn)
+
 	vbox.add_child(_section_header("🗡️ Best Kill", Color(0.95, 0.78, 0.25)))
 	vbox.add_child(_loading_label("kills"))
 	vbox.add_child(_section_header("⏱️ Best Survive", Color(0.55, 0.85, 0.65)))
@@ -365,6 +435,31 @@ func _fetch_global_rankings() -> void:
 	for child in vbox.get_children():
 		vbox.remove_child(child)  # detach immediately so queue_free won't sweep new children
 		child.queue_free()
+	var filter_row := HBoxContainer.new()
+	filter_row.name = "GlobalFilterRow"
+	filter_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	filter_row.add_theme_constant_override("separation", 12)
+	vbox.add_child(filter_row)
+	var filter_label := Label.new()
+	filter_label.text = "Character"
+	filter_label.add_theme_font_size_override("font_size", 30)
+	filter_label.add_theme_color_override("font_color", Color(0.90, 0.86, 0.76))
+	filter_row.add_child(filter_label)
+	var filter_btn := OptionButton.new()
+	filter_btn.name = "GlobalCharacterFilter"
+	filter_btn.add_theme_font_size_override("font_size", 36)
+	filter_btn.custom_minimum_size = Vector2(420, 70)
+	filter_btn.focus_mode = Control.FOCUS_NONE
+	var filter_popup: PopupMenu = filter_btn.get_popup()
+	filter_popup.add_theme_font_size_override("font_size", 34)
+	for cid in _global_filter_character_ids():
+		filter_btn.add_item(_character_display_name(cid))
+		var item_idx: int = filter_btn.item_count - 1
+		filter_btn.set_item_metadata(item_idx, cid)
+		if cid == _global_filter_character:
+			filter_btn.select(item_idx)
+	filter_btn.item_selected.connect(_on_global_character_filter_changed)
+	filter_row.add_child(filter_btn)
 	vbox.add_child(_section_header("🗡️ Best Kill", Color(0.95, 0.78, 0.25)))
 	vbox.add_child(_loading_label("kills"))
 	vbox.add_child(_section_header("⏱️ Best Survive", Color(0.55, 0.85, 0.65)))
@@ -378,43 +473,65 @@ func _fetch_global_rankings() -> void:
 	_global_survive_user_entry = null
 	_global_kills_failed = false
 	_global_survive_failed = false
+	_global_kills_entries = []
+	_global_survive_entries = []
 
 	var cloud_username: String = _cloud_username_for_history()
 	LeaderboardClient.fetch_kills(self, func(payload: Dictionary) -> void:
 		var entries: Array = payload.get("entries", []) as Array
 		var ok: bool = payload.get("ok", false) as bool
 		_global_kills_failed = not ok
+		_global_kills_entries = entries
 		_populate_global_section("kills", entries, false, _global_kills_failed)
-	)
+	, LeaderboardClient.GLOBAL_LIMIT_TOP20, _global_filter_character)
 	LeaderboardClient.fetch_survive(self, func(payload: Dictionary) -> void:
 		var entries: Array = payload.get("entries", []) as Array
 		var ok: bool = payload.get("ok", false) as bool
 		_global_survive_failed = not ok
+		_global_survive_entries = entries
 		_populate_global_section("survive", entries, true, _global_survive_failed)
-	)
+	, LeaderboardClient.GLOBAL_LIMIT_TOP20, _global_filter_character)
 	LeaderboardClient.fetch_kills_with_user(self, cloud_username, func(payload: Dictionary) -> void:
 		_global_kills_done = true
 		var entries_for_match: Array = payload.get("entries", []) as Array
-		_global_kill_user_entry = _best_rank_entry(payload.get("user_entry", null), entries_for_match, false)
+		_global_kill_user_entry = _best_rank_entry(payload.get("user_entry", null), entries_for_match, false, _global_kills_entries)
 		_populate_global_best_detail()
-	)
+	, LeaderboardClient.GLOBAL_LIMIT_TOP20, _global_filter_character)
 	LeaderboardClient.fetch_survive_with_user(self, cloud_username, func(payload: Dictionary) -> void:
 		_global_survive_done = true
 		var entries_for_match: Array = payload.get("entries", []) as Array
-		_global_survive_user_entry = _best_rank_entry(payload.get("user_entry", null), entries_for_match, true)
+		_global_survive_user_entry = _best_rank_entry(payload.get("user_entry", null), entries_for_match, true, _global_survive_entries)
 		_populate_global_best_detail()
-	)
+	, LeaderboardClient.GLOBAL_LIMIT_TOP20, _global_filter_character)
 
-func _best_rank_entry(server_entry: Variant, entries: Array, is_survive: bool) -> Variant:
+func _best_rank_entry(server_entry: Variant, entries: Array, is_survive: bool, fallback_entries: Array = []) -> Variant:
+	var candidate: Variant = null
 	if typeof(server_entry) == TYPE_DICTIONARY:
-		return server_entry
-	var visible_entry: Variant = _matching_visible_rank_entry(entries)
-	if typeof(visible_entry) == TYPE_DICTIONARY:
-		return visible_entry
-	return _local_best_rank_entry(is_survive)
+		candidate = server_entry
+	else:
+		var visible_entry: Variant = _matching_visible_rank_entry(entries)
+		if typeof(visible_entry) == TYPE_DICTIONARY:
+			candidate = visible_entry
+		else:
+			candidate = _local_best_rank_entry(is_survive)
+
+	if typeof(candidate) != TYPE_DICTIONARY:
+		return null
+
+	var normalized: Dictionary = (candidate as Dictionary).duplicate(true)
+	var rank: int = int(normalized.get("rank", 0))
+	if rank <= 0:
+		var inferred_rank: int = _infer_rank_for_entry(normalized, entries, is_survive)
+		if inferred_rank <= 0 and not fallback_entries.is_empty():
+			inferred_rank = _infer_rank_for_entry(normalized, fallback_entries, is_survive)
+		if inferred_rank > 0:
+			normalized["rank"] = inferred_rank
+	return normalized
 
 func _matching_visible_rank_entry(entries: Array) -> Variant:
 	var username := String(account.get("username", "")).strip_edges().to_lower()
+	var social_email := String(account.get("social_email", "")).strip_edges().to_lower()
+	var cloud_username := _cloud_username_for_history()
 	var display_name := String(account.get("display_name", username)).strip_edges().to_lower()
 	for entry in entries:
 		if typeof(entry) != TYPE_DICTIONARY:
@@ -422,11 +539,45 @@ func _matching_visible_rank_entry(entries: Array) -> Variant:
 		var data: Dictionary = entry as Dictionary
 		var entry_user := String(data.get("username", "")).strip_edges().to_lower()
 		var entry_name := String(data.get("display_name", "")).strip_edges().to_lower()
-		if not entry_user.is_empty() and entry_user == username:
+		if not entry_user.is_empty() and (entry_user == cloud_username or entry_user == social_email or entry_user == username):
 			return entry
-		if not entry_name.is_empty() and (entry_name == display_name or entry_name == username):
+		if not entry_name.is_empty() and (entry_name == display_name or entry_name == username or entry_name == cloud_username):
 			return entry
 	return null
+
+func _infer_rank_for_entry(entry: Dictionary, entries: Array, is_survive: bool) -> int:
+	if entries.is_empty():
+		return 0
+
+	var username := String(account.get("username", "")).strip_edges().to_lower()
+	var social_email := String(account.get("social_email", "")).strip_edges().to_lower()
+	var cloud_username := _cloud_username_for_history()
+	var display_name := String(account.get("display_name", username)).strip_edges().to_lower()
+	var target_char := String(entry.get("character", "")).strip_edges().to_lower()
+	var target_value: float = float(entry.get("value", 0.0))
+
+	for i in entries.size():
+		var item: Variant = entries[i]
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		var data: Dictionary = item as Dictionary
+		var entry_user := String(data.get("username", "")).strip_edges().to_lower()
+		var entry_name := String(data.get("display_name", "")).strip_edges().to_lower()
+		var rank: int = int(data.get("rank", i + 1))
+		if not entry_user.is_empty() and (entry_user == cloud_username or entry_user == social_email or entry_user == username):
+			return rank
+		if not entry_name.is_empty() and (entry_name == display_name or entry_name == username):
+			return rank
+		var value: float = float(data.get("value", 0.0))
+		var char_id := String(data.get("character", "")).strip_edges().to_lower()
+		if not target_char.is_empty() and char_id == target_char:
+			if is_survive:
+				if abs(value - target_value) < 0.001:
+					return rank
+			else:
+				if int(value) == int(target_value):
+					return rank
+	return 0
 
 func _local_best_rank_entry(is_survive: bool) -> Variant:
 	var username := String(account.get("username", ""))
@@ -434,7 +585,20 @@ func _local_best_rank_entry(is_survive: bool) -> Variant:
 		return null
 	var all: Dictionary = StatsStore.get_all_for_user(username)
 	var best_value: float = 0.0
-	var best_char: String = ""
+	var best_char: String = _global_filter_character
+	if not _global_filter_character.is_empty():
+		var filtered_stats: Dictionary = all.get(_global_filter_character, {}) as Dictionary
+		if filtered_stats.is_empty():
+			return null
+		best_value = float(filtered_stats.get("best_survive_seconds", 0.0)) if is_survive else float(int(filtered_stats.get("total_kills", 0)))
+		if best_value <= 0.0:
+			return null
+		return {
+			"rank": 0,
+			"display_name": String(account.get("display_name", account.get("username", ""))),
+			"value": best_value,
+			"character": _global_filter_character,
+		}
 	for char_id in all:
 		var stats: Dictionary = all[char_id] as Dictionary
 		var value: float = float(stats.get("best_survive_seconds", 0.0)) if is_survive else float(int(stats.get("total_kills", 0)))
@@ -492,11 +656,15 @@ func _populate_global_section(section: String, entries: Array, is_survive: bool,
 			insert_idx += 1
 		return
 
+	var shown: int = 0
 	for entry in entries:
+		if shown >= LeaderboardClient.GLOBAL_LIMIT_TOP20:
+			break
 		var row := _global_rank_row(entry, is_survive)
 		vbox.add_child(row)
 		vbox.move_child(row, insert_idx)
 		insert_idx += 1
+		shown += 1
 
 func _populate_global_best_detail() -> void:
 	if not _global_kills_done or not _global_survive_done:
