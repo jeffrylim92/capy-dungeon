@@ -684,6 +684,17 @@ async def terms_page() -> HTMLResponse:
     )
     return HTMLResponse(content=html)
 
+
+@app.get("/delete-account")
+@app.get("/delete-account.html")
+async def delete_account_page() -> HTMLResponse:
+    html = _read_doc_html(
+        "delete-account.html",
+        "Delete Account",
+        "To request account deletion, please contact limweiye@hotmail.com.",
+    )
+    return HTMLResponse(content=html)
+
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
     return {"status": "ok", "service": "capy-oauth-relay"}
