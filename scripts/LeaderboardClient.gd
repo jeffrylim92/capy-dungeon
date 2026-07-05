@@ -10,11 +10,15 @@ const GLOBAL_LIMIT_TOP20 := 20
 
 ## Submit the calling user's cumulative stats after each match.
 ## Fire-and-forget: errors are logged but not surfaced.
-static func submit_stats(host: Node, username: String, display_name: String) -> void:
+static func submit_stats(host: Node, username: String, display_name: String, stats_username: String = "", latest_match: Dictionary = {}) -> void:
 	if username.is_empty():
 		return
-	var all := StatsStore.get_all_for_user(username)
+	var source_username: String = stats_username.strip_edges()
+	if source_username.is_empty():
+		source_username = username
+	var all := StatsStore.get_all_for_user(source_username)
 	if all.is_empty():
+		DebugLog.log("[LeaderboardClient] submit skipped: no stats for source '%s'" % source_username)
 		return
 
 	var best_character_kills: int = 0
@@ -33,19 +37,22 @@ static func submit_stats(host: Node, username: String, display_name: String) -> 
 			best_survive = survive
 			best_survive_char = cid
 
-	var body := JSON.stringify({
+	var body_payload: Dictionary = {
 		"username":              username,
 		"display_name":          display_name,
 		"total_kills":           best_character_kills,
 		"best_survive_seconds":  best_survive,
 		"best_kill_character":   best_kill_char,
 		"best_survive_character": best_survive_char,
-		"stats_json":            StatsStore.get_all_for_user(username),
-			"rings_json":            RingStore.load_equipped(username),
-			"ring_stash_json":       RingStore.load_stash(username),
-			"artifact_stash_json":   ArtifactStore.load_stash(username),
-			"artifact_equipped_json": ArtifactStore.load_equipped(username),
-	})
+		"stats_json":            StatsStore.get_all_for_user(source_username),
+			"rings_json":            RingStore.load_equipped(source_username),
+			"ring_stash_json":       RingStore.load_stash(source_username),
+			"artifact_stash_json":   ArtifactStore.load_stash(source_username),
+			"artifact_equipped_json": ArtifactStore.load_equipped(source_username),
+	}
+	if not latest_match.is_empty():
+		body_payload["latest_match"] = latest_match
+	var body := JSON.stringify(body_payload)
 
 	var http := HTTPRequest.new()
 	host.add_child(http)

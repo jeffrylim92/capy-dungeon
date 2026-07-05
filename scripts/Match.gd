@@ -7765,7 +7765,16 @@ func _on_death() -> void:
 			0, _elapsed, 0, _kills
 		)
 		var cloud_id: String = account_cloud_id if not account_cloud_id.is_empty() else account_username
-		LeaderboardClient.submit_stats(self, cloud_id, account_display_name)
+		var char_id: String = String(selected_player_character.id)
+		var latest_match: Dictionary = {
+			"character": char_id,
+			"kills": _kills,
+			"survive_seconds": _elapsed,
+			"ts": int(Time.get_unix_time_from_system()),
+			"rings": RingStore.get_equipped_rings(account_username, char_id),
+			"artifacts": ArtifactStore.get_equipped_artifacts(account_username, char_id),
+		}
+		LeaderboardClient.submit_stats(self, cloud_id, account_display_name, account_username, latest_match)
 
 	var view: Vector2 = get_viewport_rect().size
 	var layer := CanvasLayer.new()

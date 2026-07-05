@@ -145,6 +145,24 @@ def _db_init() -> None:
                 updated_at        TEXT    DEFAULT ''
             )
         """)
+        _execute(conn, """
+            CREATE TABLE IF NOT EXISTS leaderboard_runs (
+                username         TEXT NOT NULL,
+                display_name     TEXT NOT NULL,
+                character        TEXT DEFAULT '',
+                kills            INTEGER DEFAULT 0,
+                survive_sec      REAL DEFAULT 0.0,
+                match_ts         INTEGER DEFAULT 0,
+                rings_json       TEXT DEFAULT '{}',
+                artifacts_json   TEXT DEFAULT '{}',
+                created_at       TEXT DEFAULT '',
+                PRIMARY KEY (username, match_ts, character, kills, survive_sec)
+            )
+        """)
+        _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_kills ON leaderboard_runs(kills DESC)")
+        _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_survive ON leaderboard_runs(survive_sec DESC)")
+        _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_user ON leaderboard_runs(username)")
+        _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_character ON leaderboard_runs(character)")
         # Migrate older tables missing newer leaderboard columns.
         # Important for PostgreSQL: a failed ALTER aborts the transaction, so we
         # must detect column existence first or rollback between attempts.
@@ -193,6 +211,7 @@ class StatsSubmit(BaseModel):
     ring_stash_json: list = []
     artifact_stash_json: list = []
     artifact_equipped_json: dict = {}
+    latest_match: dict = {}
 
 
 def _best_kill_from_stats(stats: dict, fallback_kills: int = 0, fallback_char: str = "") -> tuple[int, str]:
@@ -270,6 +289,35 @@ def _rings_for_character(row, char_id: str) -> dict:
     return rings if isinstance(rings, dict) else {}
 
 
+def _json_blob(value: object, fallback: object):
+    if isinstance(value, (dict, list)):
+        return value
+    if not value:
+        return fallback
+    try:
+        parsed = _json.loads(value)
+        if isinstance(fallback, dict):
+            return parsed if isinstance(parsed, dict) else fallback
+        if isinstance(fallback, list):
+            return parsed if isinstance(parsed, list) else fallback
+        return parsed
+    except Exception:
+        return fallback
+
+
+def _run_entry_from_row(row, metric: str) -> dict:
+    value = float(row["survive_sec"] or 0.0) if metric == "survive" else int(row["kills"] or 0)
+    return {
+        "username": row["username"],
+        "display_name": row["display_name"],
+        "value": value,
+        "character": row["character"] or "",
+        "rings": _json_blob(row.get("rings_json") if isinstance(row, dict) else row["rings_json"], {}),
+        "artifacts": _json_blob(row.get("artifacts_json") if isinstance(row, dict) else row["artifacts_json"], {}),
+        "match_ts": int(row.get("match_ts", 0) if isinstance(row, dict) else row["match_ts"]),
+    }
+
+
 @app.post("/stats/submit")
 async def stats_submit(body: StatsSubmit) -> dict:
     username = body.username.strip().lower()
@@ -336,6 +384,23 @@ async def stats_submit(body: StatsSubmit) -> dict:
                  submitted_kill_char, body.best_survive_character, stats_blob, rings_blob,
                  ring_stash_blob, artifact_stash_blob, artifact_equipped_blob, now),
             )
+
+        latest: dict = body.latest_match if isinstance(body.latest_match, dict) else {}
+        if latest:
+            char_id: str = str(latest.get("character", "")).strip().lower()
+            survive_sec: float = float(latest.get("survive_seconds", 0.0) or 0.0)
+            kills: int = int(latest.get("kills", 0) or 0)
+            match_ts: int = int(latest.get("ts", 0) or 0)
+            rings_json = _json.dumps(latest.get("rings", {}) if isinstance(latest.get("rings", {}), dict) else {}, ensure_ascii=False)
+            artifacts_json = _json.dumps(latest.get("artifacts", {}) if isinstance(latest.get("artifacts", {}), dict) else {}, ensure_ascii=False)
+            if char_id and survive_sec > 0.0 and match_ts > 0:
+                _execute(
+                    conn,
+                    f"INSERT INTO leaderboard_runs (username, display_name, character, kills, survive_sec, match_ts, rings_json, artifacts_json, created_at) "
+                    f"VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph}) "
+                    f"ON CONFLICT DO NOTHING",
+                    (username, body.display_name, char_id, kills, survive_sec, match_ts, rings_json, artifacts_json, now),
+                )
         conn.commit()
         conn.close()
     return {"ok": True}
@@ -395,30 +460,31 @@ async def leaderboard_kills(limit: int = 20, username: str = "", character: str 
         user_entry = None
         uname = username.strip().lower()
         char_filter = character.strip().lower()
+        ph = _PH
         with _db_lock:
             conn = _db_connect()
-            rows = _fetchall(conn,
-                "SELECT username, display_name, total_kills, best_kill_char, stats_json, rings_json FROM leaderboard",
-                (),
-            )
+            if char_filter:
+                rows = _fetchall(
+                    conn,
+                    f"SELECT username, display_name, character, kills, survive_sec, match_ts, rings_json, artifacts_json "
+                    f"FROM leaderboard_runs WHERE character = {ph} ORDER BY kills DESC, match_ts ASC",
+                    (char_filter,),
+                )
+            else:
+                rows = _fetchall(
+                    conn,
+                    "SELECT username, display_name, character, kills, survive_sec, match_ts, rings_json, artifacts_json "
+                    "FROM leaderboard_runs ORDER BY kills DESC, match_ts ASC",
+                    (),
+                )
             conn.close()
 
         ranked = []
         for row in rows:
-            kills = _row_kill_for_char(row, char_filter)
-            char_id = char_filter
-            if not char_filter:
-                kills, char_id = _row_best_kill(row)
-            if kills <= 0:
+            entry = _run_entry_from_row(row, "kills")
+            if int(entry["value"]) < 0:
                 continue
-            ranked.append({
-                "username": row["username"],
-                "display_name": row["display_name"],
-                "value": kills,
-                "character": char_id,
-                "rings": _rings_for_character(row, char_id),
-            })
-        ranked.sort(key=lambda entry: entry["value"], reverse=True)
+            ranked.append(entry)
         for i, entry in enumerate(ranked):
             entry["rank"] = i + 1
             if uname and entry["username"] == uname:
@@ -441,29 +507,31 @@ async def leaderboard_survive(limit: int = 20, username: str = "", character: st
         user_entry = None
         uname = username.strip().lower()
         char_filter = character.strip().lower()
+        ph = _PH
         with _db_lock:
             conn = _db_connect()
-            rows = _fetchall(conn,
-                "SELECT username, display_name, best_survive_sec, best_survive_char, stats_json, rings_json FROM leaderboard",
-                (),
-            )
+            if char_filter:
+                rows = _fetchall(
+                    conn,
+                    f"SELECT username, display_name, character, kills, survive_sec, match_ts, rings_json, artifacts_json "
+                    f"FROM leaderboard_runs WHERE character = {ph} ORDER BY survive_sec DESC, match_ts ASC",
+                    (char_filter,),
+                )
+            else:
+                rows = _fetchall(
+                    conn,
+                    "SELECT username, display_name, character, kills, survive_sec, match_ts, rings_json, artifacts_json "
+                    "FROM leaderboard_runs ORDER BY survive_sec DESC, match_ts ASC",
+                    (),
+                )
             conn.close()
 
         ranked = []
         for row in rows:
-            value = _row_survive_for_char(row, char_filter)
-            if value <= 0.0:
+            entry = _run_entry_from_row(row, "survive")
+            if float(entry["value"]) <= 0.0:
                 continue
-            char_id = char_filter if char_filter else (row["best_survive_char"] or "")
-            ranked.append({
-                "username": row["username"],
-                "display_name": row["display_name"],
-                "value": value,
-                "character": char_id,
-                "rings": _rings_for_character(row, char_id),
-            })
-
-        ranked.sort(key=lambda entry: entry["value"], reverse=True)
+            ranked.append(entry)
         for i, entry in enumerate(ranked):
             entry["rank"] = i + 1
             if uname and entry["username"] == uname:

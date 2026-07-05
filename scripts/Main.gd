@@ -538,7 +538,7 @@ func _on_logged_in(account: Dictionary) -> void:
 	if not username.is_empty():
 		PurchaseStore.set_username(username)
 		_restore_cloud_progress_for_account(account)
-		LeaderboardClient.submit_stats(self, cloud_username, String(account.get("display_name", username)))
+		LeaderboardClient.submit_stats(self, cloud_username, String(account.get("display_name", username)), username)
 	_show_lobby()
 
 func _show_lobby() -> void:
@@ -654,7 +654,7 @@ func _restore_cloud_progress_for_account(account: Dictionary, done: Callable = C
 		LeaderboardClient.fetch_user_stats(self, username, func(legacy: Dictionary) -> void:
 			if _payload_has_progress(legacy):
 				_apply_cloud_payload(username, legacy)
-				LeaderboardClient.submit_stats(self, cloud_username, String(account.get("display_name", username)))
+				LeaderboardClient.submit_stats(self, cloud_username, String(account.get("display_name", username)), username)
 			if done.is_valid():
 				done.call()
 		)
