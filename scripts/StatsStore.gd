@@ -119,7 +119,7 @@ static func record_match(username: String, character_id: String, outcome: String
 	data[key] = per_char
 	_save_all(data)
 
-static func record_match_detail(username: String, character_id: String, kills: int, elapsed_seconds: float, rings: Dictionary, artifacts: Dictionary) -> void:
+static func record_match_detail(username: String, character_id: String, kills: int, elapsed_seconds: float, rings: Dictionary, artifacts: Dictionary, wave: int = 0) -> void:
 	if username.is_empty() or character_id.is_empty():
 		return
 	var key: String = username.to_lower()
@@ -137,6 +137,7 @@ static func record_match_detail(username: String, character_id: String, kills: i
 		"character": character_id,
 		"kills": kills,
 		"survive_seconds": elapsed_seconds,
+		"wave": wave,
 		"rings": rings.duplicate(true),
 		"artifacts": artifacts.duplicate(true),
 	})

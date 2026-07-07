@@ -9,6 +9,7 @@ signal back_to_menu
 
 const PORTRAIT_DIR := "res://assets/characters/"
 const PORTRAIT_EXTS: Array[String] = [".png", ".webp", ".jpg", ".svg"]
+const PREP_BG: Texture2D = preload("res://assets/backgrounds/bg_preparation_stage.png")
 const SKILL_NAMES: Dictionary = {
 	"orb": "Capy Orb", "bolt": "Capy Bolt", "aura": "Mud Aura",
 	"wave": "Squeal Wave", "regen": "Capy Calm", "magnet": "XP Magnet",
@@ -78,16 +79,8 @@ func _ready() -> void:
 
 func _build_background() -> void:
 	var view := get_viewport_rect().size
-	var g := Gradient.new()
-	g.set_color(0, Color(0.38, 0.30, 0.22))
-	g.set_color(1, Color(0.96, 0.92, 0.80))
-	var grad_tex := GradientTexture2D.new()
-	grad_tex.gradient = g
-	grad_tex.fill = GradientTexture2D.FILL_LINEAR
-	grad_tex.fill_from = Vector2(0.5, 0.0)
-	grad_tex.fill_to = Vector2(0.5, 1.0)
 	var bg := TextureRect.new()
-	bg.texture = grad_tex
+	bg.texture = PREP_BG
 	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	bg.stretch_mode = TextureRect.STRETCH_SCALE
 	bg.size = view

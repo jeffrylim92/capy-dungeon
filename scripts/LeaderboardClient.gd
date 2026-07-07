@@ -155,6 +155,16 @@ static func fetch_survive(host: Node, callback: Callable, limit: int = GLOBAL_LI
 static func fetch_survive_with_user(host: Node, username: String, callback: Callable, limit: int = GLOBAL_LIMIT_TOP20, character: String = "") -> void:
 	_fetch_payload(host, _leaderboard_url("survive", username, limit, character), callback)
 
+## Fetch the global furthest-wave leaderboard.
+## `callback` receives { entries:Array, user_entry:Dictionary/null, ok:bool }.
+static func fetch_wave(host: Node, callback: Callable, limit: int = GLOBAL_LIMIT_TOP20, character: String = "") -> void:
+	_fetch_payload(host, _leaderboard_url("wave", "", limit, character), callback)
+
+## Fetch the global furthest-wave leaderboard plus this user's own best rank.
+## `callback` receives { entries: Array, user_entry: Dictionary/null }.
+static func fetch_wave_with_user(host: Node, username: String, callback: Callable, limit: int = GLOBAL_LIMIT_TOP20, character: String = "") -> void:
+	_fetch_payload(host, _leaderboard_url("wave", username, limit, character), callback)
+
 static func _leaderboard_url(kind: String, username: String, limit: int = GLOBAL_LIMIT_ALL, character: String = "") -> String:
 	var url := BASE_URL + "/stats/leaderboard/" + kind
 	var query: PackedStringArray = []

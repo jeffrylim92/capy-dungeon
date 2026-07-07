@@ -57,11 +57,21 @@ static func artifact_icon_path(artifact: Dictionary) -> String:
 		if suffix.is_valid_int():
 			base_id = raw_id.substr(0, last_underscore)
 
+	var candidate_ids: Array[String] = []
+	candidate_ids.append(raw_id)
+	if base_id != raw_id:
+		candidate_ids.append(base_id)
+	if last_underscore > 0:
+		var trimmed_tail: String = raw_id.substr(0, last_underscore)
+		if not trimmed_tail.is_empty() and not candidate_ids.has(trimmed_tail):
+			candidate_ids.append(trimmed_tail)
+
 	for dir_path in ARTIFACT_ICON_DIRS:
-		for ext in ["png", "webp"]:
-			var path: String = "%s%s.%s" % [dir_path, base_id, ext]
-			if ResourceLoader.exists(path):
-				return path
+		for candidate in candidate_ids:
+			for ext in ["png", "webp"]:
+				var path: String = "%s%s.%s" % [dir_path, candidate, ext]
+				if ResourceLoader.exists(path):
+					return path
 	return ""
 
 static func artifact_icon(artifact: Dictionary) -> Texture2D:
@@ -81,16 +91,64 @@ static func load_stash(username: String) -> Array:
 		return _stash_cache[username] as Array
 	var path: String = _stash_path(username)
 	if not FileAccess.file_exists(path):
-		_stash_cache[username] = []
-		return []
+		var seeded: Array = []
+		if _is_devadmin(username):
+			seeded = _ensure_devadmin_artifact_stash([])
+		_stash_cache[username] = seeded
+		if not seeded.is_empty():
+			save_stash(username)
+		return _stash_cache[username] as Array
 	var f := FileAccess.open(path, FileAccess.READ)
 	var data: Variant = JSON.parse_string(f.get_as_text())
 	f.close()
 	if data is Array:
-		_stash_cache[username] = (data as Array)
+		var arr: Array = data as Array
+		if _is_devadmin(username):
+			arr = _ensure_devadmin_artifact_stash(arr)
+		_stash_cache[username] = arr
 	else:
-		_stash_cache[username] = []
+		var fallback: Array = []
+		if _is_devadmin(username):
+			fallback = _ensure_devadmin_artifact_stash([])
+		_stash_cache[username] = fallback
+	if _is_devadmin(username):
+		save_stash(username)
 	return _stash_cache[username] as Array
+
+static func _is_devadmin(username: String) -> bool:
+	return username.strip_edges().to_lower() == "devadmin"
+
+static func _ensure_devadmin_artifact_stash(stash: Array) -> Array:
+	var out: Array = []
+	var seen_base_ids: Dictionary = {}
+	var pool_base_ids: Array[String] = []
+	for i in ARTIFACT_POOL.size():
+		var pool_item: Dictionary = ARTIFACT_POOL[i] as Dictionary
+		pool_base_ids.append(String(pool_item.get("id", "")))
+	for item in stash:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		var art: Dictionary = (item as Dictionary).duplicate(true)
+		out.append(art)
+		var aid: String = String(art.get("id", ""))
+		if not aid.is_empty():
+			var base: String = aid
+			for known_base in pool_base_ids:
+				if aid == known_base or aid.begins_with("%s_" % known_base):
+					base = known_base
+					break
+			seen_base_ids[base] = true
+
+	for i in ARTIFACT_POOL.size():
+		var tpl: Dictionary = (ARTIFACT_POOL[i] as Dictionary).duplicate(true)
+		var base_id: String = String(tpl.get("id", "artifact"))
+		if seen_base_ids.has(base_id):
+			continue
+		tpl["id"] = "%s_devadmin" % base_id
+		out.append(tpl)
+		seen_base_ids[base_id] = true
+
+	return out
 
 static func save_stash(username: String) -> void:
 	var path: String = _stash_path(username)

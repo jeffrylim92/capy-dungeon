@@ -53,6 +53,19 @@ const ROOM_ROUTE: Array = [
 	{"id": "spike", "name": "Spike Corridors", "short": "HP regen suppressed", "col": Color(0.92, 0.18, 0.20), "desc": "Jagged spikes disrupt recovery — HP regeneration is fully suppressed."},
 	{"id": "darkness", "name": "Darkness Zones", "short": "Reduced vision", "col": Color(0.58, 0.42, 0.92), "desc": "Darkness closes in — vision range is drastically reduced."},
 ]
+const LAVA_ROOM_BG_PATH: String = "res://assets/backgrounds/bg_lava.png"
+const LAVA_ROOM_TILE_BG_PATH: String = "res://assets/backgrounds/bg_lava_tile.png"
+const FROZEN_ROOM_BG_PATH: String = "res://assets/backgrounds/bg_frozen.png"
+const FROZEN_ROOM_TILE_BG_PATH: String = "res://assets/backgrounds/bg_frozen_tile.png"
+const POISON_ROOM_BG_PATH: String = "res://assets/backgrounds/bg_poison.png"
+const POISON_ROOM_TILE_BG_PATH: String = "res://assets/backgrounds/bg_poison_tile.png"
+const SPIKE_ROOM_BG_PATH: String = "res://assets/backgrounds/bg_spike.png"
+const SPIKE_ROOM_TILE_BG_PATH: String = "res://assets/backgrounds/bg_spike_tile.png"
+const DARKNESS_ROOM_TILE_BG_PATH: String = "res://assets/backgrounds/bg_darkness_tile.png"
+const DARKNESS_ROOM_BG_PATH: String = "res://assets/backgrounds/bg_darkness.png"
+const PORTAL_ICON_PATH: String = "res://assets/icons/icon_portal.png"
+const NEXT_LEVEL_ICON_PATH: String = "res://assets/icons/icon_next_level.png"
+const HUD_LABEL_ICON_PATH: String = "res://assets/icons/icon_label.png"
 
 # ─── Skill definitions ────────────────────────────────────────────────────────
 const SKILL_DEFS: Dictionary = {
@@ -167,9 +180,9 @@ const SKILL_DEFS: Dictionary = {
 		"name": "Blizzard", "short": "Whole-screen ice storm",
 		"col": Color(0.78, 0.94, 1.0), "max_lvl": 3,
 		"lvl": [
-			{"dmg": 520.0, "cd": 20.0, "slow": 0.92, "note": "Screen-wide ice storm"},
-			{"dmg": 880.0, "cd": 18.0, "slow": 0.95, "note": "+damage, colder"},
-			{"dmg": 1400.0, "cd": 15.0, "slow": 0.98, "note": "ABSOLUTE ZERO"},
+			{"dmg": 620.0, "cd": 20.0, "slow": 0.92, "note": "Screen-wide ice storm"},
+			{"dmg": 980.0, "cd": 18.0, "slow": 0.95, "note": "+damage, colder"},
+			{"dmg": 1500.0, "cd": 15.0, "slow": 0.98, "note": "ABSOLUTE ZERO"},
 		],
 	},
 	# ── Archer skills ─────────────────────────────────────────────────────────
@@ -626,11 +639,11 @@ const SKILL_DEFS: Dictionary = {
 		"name": "Inferno Thunder", "short": "Plasma balls with chain lightning and EMP",
 		"col": Color(0.98, 0.86, 0.26), "max_lvl": 5,
 		"lvl": [
-			{"n": 2, "dmg": 28.0, "cd": 8.0, "spd": 500.0, "chain_dmg": 12.0, "chains": 2, "emp_r": 95.0, "emp_dmg": 18.0, "note": "Plasma balls chain lightning and EMP"},
-			{"n": 2, "dmg": 38.0, "cd": 7.5, "spd": 560.0, "chain_dmg": 16.0, "chains": 2, "emp_r": 110.0, "emp_dmg": 24.0, "note": "+damage and faster cycle"},
-			{"n": 3, "dmg": 50.0, "cd": 7.0, "spd": 620.0, "chain_dmg": 22.0, "chains": 3, "emp_r": 122.0, "emp_dmg": 32.0, "note": "3 plasma balls, stronger chains"},
-			{"n": 3, "dmg": 62.0, "cd": 6.4, "spd": 700.0, "chain_dmg": 28.0, "chains": 3, "emp_r": 136.0, "emp_dmg": 40.0, "note": "Heavy EMP bursts"},
-			{"n": 4, "dmg": 78.0, "cd": 5.8, "spd": 780.0, "chain_dmg": 36.0, "chains": 4, "emp_r": 152.0, "emp_dmg": 52.0, "note": "MAX: storm of plasma and lightning"},
+			{"n": 2, "dmg": 128.0, "cd": 8.0, "spd": 500.0, "chain_dmg": 64.0, "chains": 2, "emp_r": 95.0, "emp_dmg": 32.0, "note": "Plasma balls chain lightning and EMP"},
+			{"n": 2, "dmg": 238.0, "cd": 7.5, "spd": 560.0, "chain_dmg": 119.0, "chains": 2, "emp_r": 110.0, "emp_dmg": 59.0, "note": "+damage and faster cycle"},
+			{"n": 3, "dmg": 350.0, "cd": 7.0, "spd": 620.0, "chain_dmg": 175.0, "chains": 3, "emp_r": 122.0, "emp_dmg": 87.0, "note": "3 plasma balls, stronger chains"},
+			{"n": 3, "dmg": 462.0, "cd": 6.4, "spd": 700.0, "chain_dmg": 231.0, "chains": 3, "emp_r": 136.0, "emp_dmg": 116.0, "note": "Heavy EMP bursts"},
+			{"n": 4, "dmg": 578.0, "cd": 5.8, "spd": 780.0, "chain_dmg": 289.0, "chains": 4, "emp_r": 152.0, "emp_dmg": 145.0, "note": "MAX: storm of plasma and lightning"},
 		],
 	},
 	"frozen_lance": {
@@ -768,6 +781,18 @@ var _room_spike_tick_t: float = 0.0
 var _room_slide_velocity: Vector2 = Vector2.ZERO
 var _stand_still_t: float = 0.0
 var _idle_enemy_speed_boost_active: bool = false
+var _lava_room_bg_tex: Texture2D = null
+var _lava_room_tile_bg_tex: Texture2D = null
+var _frozen_room_bg_tex: Texture2D = null
+var _frozen_room_tile_bg_tex: Texture2D = null
+var _poison_room_bg_tex: Texture2D = null
+var _poison_room_tile_bg_tex: Texture2D = null
+var _spike_room_bg_tex: Texture2D = null
+var _spike_room_tile_bg_tex: Texture2D = null
+var _darkness_room_bg_tex: Texture2D = null
+var _darkness_room_overlay_tex: Texture2D = null
+var _portal_icon_tex: Texture2D = null
+var _next_level_icon_tex: Texture2D = null
 
 # ─── Enemy modifier system (post wave 10) ───────────────────────────────────
 const ENEMY_MOD_POOL: Array = ["fast", "giant", "armored", "explosive", "frozen_trail", "burn_trail"]
@@ -843,8 +868,20 @@ var _kill_lbl:       Label
 var _wave_lbl:       Label
 var _skill_icon_row: HBoxContainer
 var _joy_vis:        JoystickVisual
+var _time_chip: TextureRect
+var _room_chip: TextureRect
+var _keys_chip: TextureRect
 var _room_detail_lbl: Label
+var _room_effect_lbl: Label
+var _room_effect_chip: TextureRect
 var _enemy_mod_lbl:   Label
+var _affix_chip: TextureRect
+var _passive_panel:    PanelContainer
+var _passive_scroll:   ScrollContainer
+var _passive_list:     VBoxContainer
+var _passive_toggle_btn: Button
+var _passive_collapsed: bool = true
+var _passive_signature: String = ""
 
 # ─── Touch input ──────────────────────────────────────────────────────────────
 var _touch_id:     int     = -1
@@ -949,6 +986,31 @@ func _ready() -> void:
 		var tex_path: String = "res://assets/characters/" + String(selected_player_character.id) + ".png"
 		if ResourceLoader.exists(tex_path):
 			_player_tex = load(tex_path) as Texture2D
+
+	if ResourceLoader.exists(LAVA_ROOM_BG_PATH):
+		_lava_room_bg_tex = load(LAVA_ROOM_BG_PATH) as Texture2D
+	if ResourceLoader.exists(LAVA_ROOM_TILE_BG_PATH):
+		_lava_room_tile_bg_tex = load(LAVA_ROOM_TILE_BG_PATH) as Texture2D
+	if ResourceLoader.exists(FROZEN_ROOM_BG_PATH):
+		_frozen_room_bg_tex = load(FROZEN_ROOM_BG_PATH) as Texture2D
+	if ResourceLoader.exists(FROZEN_ROOM_TILE_BG_PATH):
+		_frozen_room_tile_bg_tex = load(FROZEN_ROOM_TILE_BG_PATH) as Texture2D
+	if ResourceLoader.exists(POISON_ROOM_BG_PATH):
+		_poison_room_bg_tex = load(POISON_ROOM_BG_PATH) as Texture2D
+	if ResourceLoader.exists(POISON_ROOM_TILE_BG_PATH):
+		_poison_room_tile_bg_tex = load(POISON_ROOM_TILE_BG_PATH) as Texture2D
+	if ResourceLoader.exists(SPIKE_ROOM_BG_PATH):
+		_spike_room_bg_tex = load(SPIKE_ROOM_BG_PATH) as Texture2D
+	if ResourceLoader.exists(SPIKE_ROOM_TILE_BG_PATH):
+		_spike_room_tile_bg_tex = load(SPIKE_ROOM_TILE_BG_PATH) as Texture2D
+	if ResourceLoader.exists(DARKNESS_ROOM_TILE_BG_PATH):
+		_darkness_room_bg_tex = load(DARKNESS_ROOM_TILE_BG_PATH) as Texture2D
+	if ResourceLoader.exists(DARKNESS_ROOM_BG_PATH):
+		_darkness_room_overlay_tex = load(DARKNESS_ROOM_BG_PATH) as Texture2D
+	if ResourceLoader.exists(PORTAL_ICON_PATH):
+		_portal_icon_tex = load(PORTAL_ICON_PATH) as Texture2D
+	if ResourceLoader.exists(NEXT_LEVEL_ICON_PATH):
+		_next_level_icon_tex = load(NEXT_LEVEL_ICON_PATH) as Texture2D
 
 	# ── Apply ring bonuses ────────────────────────────────────────────────
 	if not account_username.is_empty() and not _char_id.is_empty():
@@ -3889,8 +3951,8 @@ func _random_arena_edge_spawn_pos(center: Vector2, half: Vector2, inset: float =
 func _on_arena_boss_cleared() -> void:
 	_boss_intermission = {
 		"state": "await_ladder",
-		"door_pos": _player_pos + Vector2(420.0, 26.0),
-		"ladder_pos": _player_pos + Vector2(-420.0, 26.0),
+		"door_pos": _player_pos + Vector2(250.0, 20.0),
+		"ladder_pos": _player_pos + Vector2(-250.0, 20.0),
 		"arena_center": _player_pos,
 		"arena_half": BOSS_ARENA_HALF,
 		"last_boss_wave": _wave,
@@ -4779,8 +4841,8 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 			_enemies.clear()
 			_boss_intermission = {
 				"state": "await_choice",
-				"door_pos": _player_pos + Vector2(420.0, 26.0),
-				"ladder_pos": _player_pos + Vector2(-420.0, 26.0),
+				"door_pos": _player_pos + Vector2(250.0, 20.0),
+				"ladder_pos": _player_pos + Vector2(-250.0, 20.0),
 				"arena_center": _player_pos,
 				"arena_half": BOSS_ARENA_HALF,
 				"last_boss_wave": _wave,
@@ -5570,11 +5632,11 @@ func _draw() -> void:
 		var ec: Color      = e["col"] as Color
 		var ekind: String  = e.get("kind", "normal") as String
 		var efrozen: bool  = (e.get("iframes", 0.0) as float) > 0.0 and _has_skill("ice_orb")
-		var enraged: bool  = (e["alive_t"] as float) >= 8.0
+		var enraged: bool  = (e.get("alive_t", 0.0) as float) >= 8.0
 		var marked: bool   = (e.get("tg_mark_t", 0.0) as float) > 0.0
 		var poisoned: bool = (e.get("poison_t", 0.0) as float) > 0.0
 		# Walk animation — normals bob; bosses stay planted
-		var e_alive_t: float = e["alive_t"] as float
+		var e_alive_t: float = e.get("alive_t", 0.0) as float
 		var e_facing_x: int  = e.get("facing_x", 1) as int
 		var e_is_boss: bool  = _is_boss_kind(ekind)
 		var e_walk: float    = e_alive_t * 9.0
@@ -6365,20 +6427,36 @@ func _draw() -> void:
 		var perp: Vector2 = Vector2(-fbv.y, fbv.x)
 		var fblf: float   = clamp((fb["life"] as float) / 4.0, 0.0, 1.0)
 		var is_plasma: bool = (fb.get("kind", "fireball") as String) == "inferno_plasma"
-		# Flame tail — tapering behind the ball
-		var tail_pts: PackedVector2Array = PackedVector2Array()
-		for s in 10:
-			var td: float    = float(s + 1) * 9.0
-			var taper: float = float(10 - s) / 10.0
-			var jitter: float = sin(float(s) * 1.9 + _elapsed * 25.0) * taper * 5.0
-			tail_pts.append(fbp - fbv * td + perp * jitter)
 		if is_plasma:
-			draw_polyline(tail_pts, Color(0.42, 0.96, 1.0, 0.42), 10.0)
-			draw_polyline(tail_pts, Color(1.0, 0.90, 0.30, 0.70), 4.0)
-			draw_circle(fbp, 12.0 + sin(_elapsed * 24.0) * 1.8, Color(0.45, 1.0, 1.0, 0.46))
-			draw_circle(fbp, 9.0, Color(1.0, 0.92, 0.32))
-			draw_circle(fbp, 5.0, Color(0.95, 1.0, 1.0, 0.96))
+			# Inferno Thunder orb: no trail, pure fire + thunder swirling core.
+			var pulse: float = 0.86 + 0.14 * sin(_elapsed * 15.0 + fbp.x * 0.03)
+			draw_circle(fbp, 17.0 * pulse, Color(0.28, 0.66, 1.0, 0.28 * fblf))
+			draw_circle(fbp, 15.0 * pulse, Color(1.0, 0.34, 0.06, 0.36 * fblf))
+			# Fire half
+			draw_circle(fbp + Vector2(-3.2, 0.8), 11.0, Color(1.0, 0.42, 0.05, 0.86))
+			draw_circle(fbp + Vector2(-5.0, 1.8), 7.0, Color(1.0, 0.82, 0.18, 0.88))
+			# Thunder half
+			draw_circle(fbp + Vector2(3.2, -0.8), 11.0, Color(0.24, 0.54, 1.0, 0.88))
+			draw_circle(fbp + Vector2(5.0, -1.8), 7.0, Color(0.78, 0.88, 1.0, 0.92))
+			# Lightning cracks inside orb
+			for li in 3:
+				var a0: float = _elapsed * 9.0 + float(li) * TAU / 3.0
+				var p0: Vector2 = fbp + Vector2(cos(a0), sin(a0)) * 4.0
+				var p1: Vector2 = fbp + Vector2(cos(a0 + 0.7), sin(a0 + 0.7)) * 10.5
+				var p2: Vector2 = fbp + Vector2(cos(a0 + 1.2), sin(a0 + 1.2)) * 7.2
+				draw_polyline(PackedVector2Array([p0, p1, p2]), Color(0.90, 0.98, 1.0, 0.94 * fblf), 2.0)
+			# Fiery swirl rings
+			draw_arc(fbp, 10.8, _elapsed * 2.8, _elapsed * 2.8 + PI * 1.18, 22, Color(1.0, 0.72, 0.20, 0.78 * fblf), 2.1)
+			draw_arc(fbp, 9.2, _elapsed * 2.8 + PI, _elapsed * 2.8 + PI + PI * 0.98, 20, Color(0.62, 0.84, 1.0, 0.82 * fblf), 1.8)
+			draw_circle(fbp, 4.6, Color(1.0, 0.96, 0.86, 0.98))
 		else:
+			# Flame tail — tapering behind the ball
+			var tail_pts: PackedVector2Array = PackedVector2Array()
+			for s in 10:
+				var td: float    = float(s + 1) * 9.0
+				var taper: float = float(10 - s) / 10.0
+				var jitter: float = sin(float(s) * 1.9 + _elapsed * 25.0) * taper * 5.0
+				tail_pts.append(fbp - fbv * td + perp * jitter)
 			# Outer orange glow tail
 			draw_polyline(tail_pts, Color(1.0, 0.35, 0.02, 0.40), 10.0)
 			# Inner yellow core tail
@@ -6684,6 +6762,22 @@ func _draw() -> void:
 		draw_string(ThemeDB.fallback_font, warn_pos_2, warn_line_2, HORIZONTAL_ALIGNMENT_CENTER, warn_width, warn_font_size, Color(0.0, 0.0, 0.0, 0.70 * warn_flash))
 		draw_string(ThemeDB.fallback_font, warn_pos_2 + Vector2(0, -2), warn_line_2, HORIZONTAL_ALIGNMENT_CENTER, warn_width, warn_font_size, Color(1.0, 0.12, 0.08, 0.98 * warn_flash))
 
+	if (_current_room().get("id", "lava") as String) == "darkness":
+		var view: Vector2 = get_viewport_rect().size
+		_draw_darkness_overlay(Rect2(_player_pos - view * 0.5, view))
+	if (_current_room().get("id", "lava") as String) == "spike":
+		var view_spike: Vector2 = get_viewport_rect().size
+		_draw_spike_overlay(Rect2(_player_pos - view_spike * 0.5, view_spike))
+	if (_current_room().get("id", "lava") as String) == "lava":
+		var view_lava: Vector2 = get_viewport_rect().size
+		_draw_lava_overlay(Rect2(_player_pos - view_lava * 0.5, view_lava))
+	if (_current_room().get("id", "lava") as String) == "frozen":
+		var view_frozen: Vector2 = get_viewport_rect().size
+		_draw_frozen_overlay(Rect2(_player_pos - view_frozen * 0.5, view_frozen))
+	if (_current_room().get("id", "lava") as String) == "poison":
+		var view_poison: Vector2 = get_viewport_rect().size
+		_draw_poison_overlay(Rect2(_player_pos - view_poison * 0.5, view_poison))
+
 func _draw_bg() -> void:
 	var view: Vector2 = get_viewport_rect().size
 	var hw: float     = view.x * 0.5 + 128.0
@@ -6691,21 +6785,31 @@ func _draw_bg() -> void:
 	var cx: float     = _player_pos.x
 	var cy: float     = _player_pos.y
 	var room: Dictionary = _current_room()
+	var room_id: String = room.get("id", "lava") as String
+	var bg_view_rect: Rect2 = Rect2(cx - hw, cy - hh, hw * 2.0, hh * 2.0)
+	var room_bg_tex: Texture2D = _room_bg_texture(room_id)
+	if room_bg_tex != null:
+		if room_id == "darkness" or room_id == "spike" or room_id == "lava" or room_id == "frozen" or room_id == "poison":
+			_draw_room_bg_tiled(room_bg_tex, bg_view_rect)
+		else:
+			_draw_room_bg(room_bg_tex, bg_view_rect)
 	var room_color: Color = room.get("col", Color(0.14, 0.11, 0.08)) as Color
 	var base_col: Color = Color(0.14, 0.11, 0.08).lerp(room_color, 0.12)
-	draw_rect(Rect2(cx - hw, cy - hh, hw * 2.0, hh * 2.0), base_col)
+	if room_bg_tex != null:
+		base_col = Color(0.10, 0.08, 0.06, 0.10)
+	draw_rect(bg_view_rect, base_col)
 	const TILE: float = 100.0
-	var xl: float = floor((cx - hw) / TILE) * TILE
-	var yl: float = floor((cy - hh) / TILE) * TILE
-	var x: float = xl
-	while x <= cx + hw:
-		draw_line(Vector2(x, cy - hh), Vector2(x, cy + hh), Color(room_color.r, room_color.g, room_color.b, 0.05), 1.0)
-		x += TILE
-	var y: float = yl
-	while y <= cy + hh:
-		draw_line(Vector2(cx - hw, y), Vector2(cx + hw, y), Color(room_color.r, room_color.g, room_color.b, 0.05), 1.0)
-		y += TILE
-	var room_id: String = room.get("id", "lava") as String
+	if room_bg_tex == null:
+		var xl: float = floor((cx - hw) / TILE) * TILE
+		var yl: float = floor((cy - hh) / TILE) * TILE
+		var x: float = xl
+		while x <= cx + hw:
+			draw_line(Vector2(x, cy - hh), Vector2(x, cy + hh), Color(room_color.r, room_color.g, room_color.b, 0.05), 1.0)
+			x += TILE
+		var y: float = yl
+		while y <= cy + hh:
+			draw_line(Vector2(cx - hw, y), Vector2(cx + hw, y), Color(room_color.r, room_color.g, room_color.b, 0.05), 1.0)
+			y += TILE
 	var pulse: float = 0.5 + 0.5 * sin(_room_elapsed * 3.0)
 	if room_id == "spike":
 		var spike_col: Color = Color(0.92, 0.18, 0.20, 0.12 + pulse * 0.18)
@@ -6767,15 +6871,6 @@ func _draw_bg() -> void:
 			var sba: float = float(sbump) / 5.0 * TAU + _elapsed * 0.25 + smcp.y * 0.005
 			draw_circle(smcp + Vector2(cos(sba), sin(sba)) * (smcr * 0.52), smcr * 0.38 * smc_p, Color(0.58, 0.56, 0.64, 0.32 * smclf))
 
-	# Darkness rings drawn OVER everything (only in darkness rooms)
-	if (_current_room().get("id", "lava") as String) == "darkness":
-		var vis_r: float = 150.0
-		for s in 20:
-			var t: float     = float(s) / 19.0
-			var ring_r: float = vis_r + 55.0 + t * 820.0
-			var ring_a: float = 0.65 + t * t * 0.35
-			draw_arc(_player_pos, ring_r, 0.0, TAU, 40, Color(0.0, 0.0, 0.0, ring_a), 56.0)
-
 	# Boss intermission props + arena frame
 	var bi_state: String = _boss_intermission.get("state", "none") as String
 	if bi_state == "await_choice" or bi_state == "await_ladder":
@@ -6788,42 +6883,146 @@ func _draw_bg() -> void:
 			if bi_state == "await_ladder":
 				center_target = lp
 			var dir_to_center: Vector2 = (center_target - _player_pos).normalized()
-			var bounds_min: Vector2 = view_rect.position + Vector2(28.0, 28.0)
-			var bounds_max: Vector2 = view_rect.position + view_rect.size - Vector2(28.0, 28.0)
-			var edge_pos: Vector2 = _player_pos + dir_to_center * min(view_size.x, view_size.y) * 0.48
+			var bounds_min: Vector2 = view_rect.position + Vector2(44.0, 44.0)
+			var bounds_max: Vector2 = view_rect.position + view_rect.size - Vector2(44.0, 44.0)
+			var edge_pos: Vector2 = _player_pos + dir_to_center * min(view_size.x, view_size.y) * 0.28
 			edge_pos = Vector2(clamp(edge_pos.x, bounds_min.x, bounds_max.x), clamp(edge_pos.y, bounds_min.y, bounds_max.y))
 			var nrm: Vector2 = dir_to_center
 			var perp: Vector2 = Vector2(-nrm.y, nrm.x)
-			var tip: Vector2 = edge_pos + nrm * 11.0
-			var base_l: Vector2 = edge_pos - nrm * 8.0 + perp * 7.0
-			var base_r: Vector2 = edge_pos - nrm * 8.0 - perp * 7.0
+			var tip: Vector2 = edge_pos + nrm * 24.0
+			var base_l: Vector2 = edge_pos - nrm * 14.0 + perp * 16.0
+			var base_r: Vector2 = edge_pos - nrm * 14.0 - perp * 16.0
 			draw_colored_polygon(PackedVector2Array([tip, base_l, base_r]), Color(1.0, 0.92, 0.66, 0.96))
-			draw_colored_polygon(PackedVector2Array([tip - nrm * 3.0, base_l - nrm * 2.0, base_r - nrm * 2.0]), Color(0.58, 0.34, 0.10, 0.75))
+			draw_colored_polygon(PackedVector2Array([tip - nrm * 5.0, base_l - nrm * 4.0, base_r - nrm * 4.0]), Color(0.58, 0.34, 0.10, 0.75))
 		if bi_state == "await_choice":
-			var pr1: float = 90.0 + sin(_elapsed * 3.8) * 7.5
-			var pr2: float = 60.0 + cos(_elapsed * 4.6) * 5.0
-			draw_circle(dp, pr1, Color(0.42, 0.18, 0.76, 0.34))
-			draw_arc(dp, pr1, 0.0, TAU, 32, Color(0.78, 0.52, 1.0, 0.92), 4.0)
-			draw_arc(dp, pr2, 0.0, TAU, 28, Color(0.48, 0.90, 1.0, 0.84), 3.0)
-			for pi in 9:
-				var pa: float = float(pi) / 9.0 * TAU + _elapsed * 1.6
-				draw_circle(dp + Vector2(cos(pa), sin(pa)) * (pr2 - 10.0), 8.0, Color(0.90, 0.76, 1.0, 0.74))
-			# Key emblem on portal
-			draw_circle(dp + Vector2(0.0, -3.0), 8.0, Color(0.98, 0.86, 0.36, 0.92))
-			draw_circle(dp + Vector2(0.0, -3.0), 4.0, Color(0.46, 0.20, 0.06, 0.96))
-			draw_rect(Rect2(dp + Vector2(4.0, -5.0), Vector2(10.0, 4.0)), Color(0.98, 0.86, 0.36, 0.92), true)
-			draw_rect(Rect2(dp + Vector2(10.5, -5.0), Vector2(2.0, 7.0)), Color(0.98, 0.86, 0.36, 0.92), true)
-			draw_rect(Rect2(dp + Vector2(12.0, -1.0), Vector2(2.0, 3.0)), Color(0.98, 0.86, 0.36, 0.92), true)
-		draw_line(Vector2(lp.x - 35.0, lp.y - 85.0), Vector2(lp.x - 35.0, lp.y + 60.0), Color(0.64, 0.50, 0.28, 0.95), 10.0)
-		draw_line(Vector2(lp.x + 35.0, lp.y - 85.0), Vector2(lp.x + 35.0, lp.y + 60.0), Color(0.64, 0.50, 0.28, 0.95), 10.0)
-		for r in 6:
-			var ry: float = lp.y - 70.0 + float(r) * 25.0
-			draw_line(Vector2(lp.x - 30.0, ry), Vector2(lp.x + 30.0, ry), Color(0.78, 0.62, 0.36, 0.90), 6.0)
+			if _portal_icon_tex != null:
+				var portal_scale: float = 1.0 + sin(_elapsed * 3.4) * 0.08
+				var portal_size: Vector2 = Vector2(186.0, 186.0) * portal_scale
+				draw_texture_rect(_portal_icon_tex, Rect2(dp - portal_size * 0.5, portal_size), false, Color(1.0, 1.0, 1.0, 0.98))
+		if _next_level_icon_tex != null:
+			var ladder_scale: float = 1.0 + sin(_elapsed * 3.0 + 0.7) * 0.06
+			var ladder_size: Vector2 = Vector2(196.0, 196.0) * ladder_scale
+			draw_texture_rect(_next_level_icon_tex, Rect2(lp - ladder_size * 0.5, ladder_size), false, Color(1.0, 1.0, 1.0, 0.98))
 	if bi_state == "arena":
 		var ac: Vector2 = _boss_intermission.get("arena_center", _player_pos) as Vector2
 		var ah: Vector2 = _boss_intermission.get("arena_half", BOSS_ARENA_HALF) as Vector2
 		draw_rect(Rect2(ac.x - ah.x, ac.y - ah.y, ah.x * 2.0, ah.y * 2.0), Color(0.08, 0.06, 0.10, 0.18), true)
 		draw_rect(Rect2(ac.x - ah.x, ac.y - ah.y, ah.x * 2.0, ah.y * 2.0), Color(0.96, 0.70, 0.24, 0.88), false, 4.0)
+
+func _room_bg_texture(room_id: String) -> Texture2D:
+	match room_id:
+		"lava":
+			if _lava_room_tile_bg_tex != null:
+				return _lava_room_tile_bg_tex
+			return _lava_room_bg_tex
+		"frozen":
+			if _frozen_room_tile_bg_tex != null:
+				return _frozen_room_tile_bg_tex
+			return _frozen_room_bg_tex
+		"poison":
+			if _poison_room_tile_bg_tex != null:
+				return _poison_room_tile_bg_tex
+			return _poison_room_bg_tex
+		"spike":
+			if _spike_room_tile_bg_tex != null:
+				return _spike_room_tile_bg_tex
+			return _spike_room_bg_tex
+		"darkness":
+			return _darkness_room_bg_tex
+		_:
+			return null
+
+func _draw_room_bg(bg_tex: Texture2D, view_rect: Rect2) -> void:
+	if bg_tex == null:
+		return
+
+	var tex_w: float = float(bg_tex.get_width())
+	var tex_h: float = float(bg_tex.get_height())
+	if tex_w <= 4.0 or tex_h <= 4.0:
+		draw_texture_rect(bg_tex, view_rect, false, Color(1.0, 1.0, 1.0, 0.95))
+		return
+
+	# Preserve original art composition by center-cropping to viewport aspect.
+	var scale: float = max(view_rect.size.x / tex_w, view_rect.size.y / tex_h)
+	var src_w: float = view_rect.size.x / scale
+	var src_h: float = view_rect.size.y / scale
+	var src_x: float = (tex_w - src_w) * 0.5
+	var src_y: float = (tex_h - src_h) * 0.5
+	var src_rect: Rect2 = Rect2(src_x, src_y, src_w, src_h)
+	draw_texture_rect_region(bg_tex, view_rect, src_rect, Color(1.0, 1.0, 1.0, 0.95))
+
+func _draw_room_bg_tiled(bg_tex: Texture2D, view_rect: Rect2) -> void:
+	if bg_tex == null:
+		return
+	var tex_w: float = float(bg_tex.get_width())
+	var tex_h: float = float(bg_tex.get_height())
+	if tex_w <= 4.0 or tex_h <= 4.0:
+		draw_texture_rect(bg_tex, view_rect, true, Color(1.0, 1.0, 1.0, 0.95))
+		return
+	var start_x: float = floor(view_rect.position.x / tex_w) * tex_w
+	var start_y: float = floor(view_rect.position.y / tex_h) * tex_h
+	var x: float = start_x
+	while x < view_rect.end.x:
+		var y: float = start_y
+		while y < view_rect.end.y:
+			draw_texture_rect(bg_tex, Rect2(x, y, tex_w, tex_h), false, Color(1.0, 1.0, 1.0, 0.95))
+			y += tex_h
+		x += tex_w
+
+func _draw_darkness_overlay(view_rect: Rect2) -> void:
+	if _darkness_room_overlay_tex == null:
+		# Fallback: fully opaque darkness outside a small visible center.
+		var vis_r: float = 150.0
+		for s in 20:
+			var t: float     = float(s) / 19.0
+			var ring_r: float = vis_r + 55.0 + t * 820.0
+			var ring_a: float = 0.65 + t * t * 0.35
+			draw_arc(_player_pos, ring_r, 0.0, TAU, 40, Color(0.0, 0.0, 0.0, ring_a), 56.0)
+		return
+
+	var tex_w: float = float(_darkness_room_overlay_tex.get_width())
+	var tex_h: float = float(_darkness_room_overlay_tex.get_height())
+	if tex_w <= 4.0 or tex_h <= 4.0:
+		draw_texture_rect(_darkness_room_overlay_tex, view_rect, false, Color(1.0, 1.0, 1.0, 1.0))
+		return
+
+	# Keep darkness mask stationary in screen-space so only the tile background moves.
+	var scale: float = max(view_rect.size.x / tex_w, view_rect.size.y / tex_h)
+	var src_w: float = view_rect.size.x / scale
+	var src_h: float = view_rect.size.y / scale
+	var src_x: float = (tex_w - src_w) * 0.5
+	var src_y: float = (tex_h - src_h) * 0.5
+	var src_rect: Rect2 = Rect2(src_x, src_y, src_w, src_h)
+	draw_texture_rect_region(_darkness_room_overlay_tex, view_rect, src_rect, Color(1.0, 1.0, 1.0, 1.0))
+
+func _draw_stationary_overlay(overlay_tex: Texture2D, view_rect: Rect2) -> void:
+	if overlay_tex == null:
+		return
+	var tex_w: float = float(overlay_tex.get_width())
+	var tex_h: float = float(overlay_tex.get_height())
+	if tex_w <= 4.0 or tex_h <= 4.0:
+		draw_texture_rect(overlay_tex, view_rect, false, Color(1.0, 1.0, 1.0, 1.0))
+		return
+	var scale: float = max(view_rect.size.x / tex_w, view_rect.size.y / tex_h)
+	var src_w: float = view_rect.size.x / scale
+	var src_h: float = view_rect.size.y / scale
+	var src_x: float = (tex_w - src_w) * 0.5
+	var src_y: float = (tex_h - src_h) * 0.5
+	var src_rect: Rect2 = Rect2(src_x, src_y, src_w, src_h)
+	draw_texture_rect_region(overlay_tex, view_rect, src_rect, Color(1.0, 1.0, 1.0, 1.0))
+
+func _draw_lava_overlay(view_rect: Rect2) -> void:
+	_draw_stationary_overlay(_lava_room_bg_tex, view_rect)
+
+func _draw_frozen_overlay(view_rect: Rect2) -> void:
+	_draw_stationary_overlay(_frozen_room_bg_tex, view_rect)
+
+func _draw_poison_overlay(view_rect: Rect2) -> void:
+	_draw_stationary_overlay(_poison_room_bg_tex, view_rect)
+
+func _draw_spike_overlay(view_rect: Rect2) -> void:
+	# Keep spike overlay stationary in screen-space so only the tile background moves.
+	_draw_stationary_overlay(_spike_room_bg_tex, view_rect)
 
 func _draw_boss_name(pos: Vector2, boss_r: float, boss_name: String, color: Color) -> void:
 	var label_w: float = min(get_viewport_rect().size.x - 48.0, 620.0)
@@ -6897,47 +7096,101 @@ func _build_hud() -> void:
 	_level_lbl.position = Vector2(436, 38)
 	hud.add_child(_level_lbl)
 
-	# Time  — below XP bar
+	var info_chip_tex: Texture2D = load(HUD_LABEL_ICON_PATH) as Texture2D
+
+	# Time/Kills/Wave chip
+	_time_chip = TextureRect.new()
+	_time_chip.texture = info_chip_tex
+	_time_chip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_time_chip.stretch_mode = TextureRect.STRETCH_SCALE
+	_time_chip.position = Vector2(24, 120)
+	_time_chip.size = Vector2(520, 58)
+	hud.add_child(_time_chip)
+
+	# Time and kills
 	_time_lbl = Label.new()
-	_time_lbl.text = "0:00"
-	_time_lbl.add_theme_font_size_override("font_size", 40)
+	_time_lbl.text = "0:00   |   Kills: 0"
+	_time_lbl.add_theme_font_size_override("font_size", 36)
 	_time_lbl.add_theme_color_override("font_color", Color(0.90, 0.86, 0.76))
-	_time_lbl.position = Vector2(28, 120); _time_lbl.size = Vector2(860, 50)
+	_time_lbl.position = Vector2(52, 126); _time_lbl.size = Vector2(456, 44)
 	hud.add_child(_time_lbl)
 
-	# Kill count  — same row, right-aligned
-	_kill_lbl = Label.new()
-	_kill_lbl.text = "Kills: 0"
-	_kill_lbl.add_theme_font_size_override("font_size", 40)
-	_kill_lbl.add_theme_color_override("font_color", Color(0.75, 0.70, 0.60))
-	_kill_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_kill_lbl.position = Vector2(28, 120); _kill_lbl.size = Vector2(860, 50)
-	hud.add_child(_kill_lbl)
-
-	# Wave label  — second sub-row
+	# Wave label (hidden; merged into time chip)
 	_wave_lbl = Label.new()
-	_wave_lbl.text = "Wave 1"
-	_wave_lbl.add_theme_font_size_override("font_size", 40)
-	_wave_lbl.add_theme_color_override("font_color", Color(1.0, 0.80, 0.20))
-	_wave_lbl.position = Vector2(28, 170); _wave_lbl.size = Vector2(1080, 50)
+	_wave_lbl.visible = false
 	hud.add_child(_wave_lbl)
 
-	# Room effect detail  — third sub-row
+	# Room detail chip
+	_room_chip = TextureRect.new()
+	_room_chip.texture = info_chip_tex
+	_room_chip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_room_chip.stretch_mode = TextureRect.STRETCH_SCALE
+	_room_chip.position = Vector2(24, 186)
+	_room_chip.size = Vector2(520, 58)
+	hud.add_child(_room_chip)
+
+	# Room info row
 	_room_detail_lbl = Label.new()
 	_room_detail_lbl.text = ""
-	_room_detail_lbl.add_theme_font_size_override("font_size", 28)
+	_room_detail_lbl.add_theme_font_size_override("font_size", 36)
 	_room_detail_lbl.add_theme_color_override("font_color", Color(0.80, 0.76, 0.65))
-	_room_detail_lbl.position = Vector2(28, 224); _room_detail_lbl.size = Vector2(1220, 74)
-	_room_detail_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_room_detail_lbl.position = Vector2(56, 192); _room_detail_lbl.size = Vector2(456, 44)
+	_room_detail_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hud.add_child(_room_detail_lbl)
 
-	# Enemy modifier summary  — fourth sub-row
+	# Keys chip
+	_keys_chip = TextureRect.new()
+	_keys_chip.texture = info_chip_tex
+	_keys_chip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_keys_chip.stretch_mode = TextureRect.STRETCH_SCALE
+	_keys_chip.position = Vector2(24, 252)
+	_keys_chip.size = Vector2(260, 58)
+	hud.add_child(_keys_chip)
+
+	# Keys row
+	_kill_lbl = Label.new()
+	_kill_lbl.text = "Keys: 0"
+	_kill_lbl.add_theme_font_size_override("font_size", 36)
+	_kill_lbl.add_theme_color_override("font_color", Color(0.95, 0.80, 0.36))
+	_kill_lbl.position = Vector2(56, 258); _kill_lbl.size = Vector2(196, 44)
+	hud.add_child(_kill_lbl)
+
+	var bottom_left_y: float = view.y - 168.0
+
+	# Room effect chip
+	_room_effect_chip = TextureRect.new()
+	_room_effect_chip.texture = info_chip_tex
+	_room_effect_chip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_room_effect_chip.stretch_mode = TextureRect.STRETCH_SCALE
+	_room_effect_chip.position = Vector2(24, bottom_left_y)
+	_room_effect_chip.size = Vector2(420, 58)
+	hud.add_child(_room_effect_chip)
+
+	_room_effect_lbl = Label.new()
+	_room_effect_lbl.text = ""
+	_room_effect_lbl.add_theme_font_size_override("font_size", 32)
+	_room_effect_lbl.add_theme_color_override("font_color", Color(0.95, 0.84, 0.54))
+	_room_effect_lbl.position = Vector2(56, bottom_left_y + 6.0)
+	_room_effect_lbl.size = Vector2(356, 44)
+	_room_effect_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	hud.add_child(_room_effect_lbl)
+
+	# Floor affix chip
+	_affix_chip = TextureRect.new()
+	_affix_chip.texture = info_chip_tex
+	_affix_chip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_affix_chip.stretch_mode = TextureRect.STRETCH_SCALE
+	_affix_chip.position = Vector2(24, bottom_left_y + 66.0)
+	_affix_chip.size = Vector2(620, 58)
+	hud.add_child(_affix_chip)
+
+	# Enemy modifier summary
 	_enemy_mod_lbl = Label.new()
 	_enemy_mod_lbl.text = ""
-	_enemy_mod_lbl.add_theme_font_size_override("font_size", 27)
+	_enemy_mod_lbl.add_theme_font_size_override("font_size", 34)
 	_enemy_mod_lbl.add_theme_color_override("font_color", Color(1.0, 0.58, 0.20))
-	_enemy_mod_lbl.position = Vector2(28, 306); _enemy_mod_lbl.size = Vector2(1260, 62)
-	_enemy_mod_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_enemy_mod_lbl.position = Vector2(56, bottom_left_y + 72.0); _enemy_mod_lbl.size = Vector2(560, 44)
+	_enemy_mod_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hud.add_child(_enemy_mod_lbl)
 
 	# Skill icons row (bottom) — hidden during gameplay
@@ -6967,6 +7220,79 @@ func _build_hud() -> void:
 	pause_btn.add_theme_color_override("font_color", Color(0.95, 0.90, 0.75))
 	pause_btn.pressed.connect(_show_pause_menu)
 	hud.add_child(pause_btn)
+
+	# Passive attributes panel (top-right, collapsible)
+	var passive_w: float = clamp(view.x * 0.33, 320.0, 420.0)
+	_passive_panel = PanelContainer.new()
+	_passive_panel.custom_minimum_size = Vector2(passive_w, 0)
+	_passive_panel.position = Vector2(view.x - passive_w - 26.0, 126)
+	var pass_panel_style := StyleBoxFlat.new()
+	pass_panel_style.bg_color = Color(0.06, 0.05, 0.04, 0.92)
+	pass_panel_style.border_color = Color(0.78, 0.58, 0.22, 0.88)
+	pass_panel_style.set_border_width_all(3)
+	pass_panel_style.corner_radius_top_left = 14
+	pass_panel_style.corner_radius_top_right = 14
+	pass_panel_style.corner_radius_bottom_left = 14
+	pass_panel_style.corner_radius_bottom_right = 14
+	pass_panel_style.shadow_color = Color(0.0, 0.0, 0.0, 0.45)
+	pass_panel_style.shadow_size = 12
+	pass_panel_style.content_margin_left = 14
+	pass_panel_style.content_margin_right = 14
+	pass_panel_style.content_margin_top = 10
+	pass_panel_style.content_margin_bottom = 10
+	_passive_panel.add_theme_stylebox_override("panel", pass_panel_style)
+	hud.add_child(_passive_panel)
+
+	var pass_root := VBoxContainer.new()
+	pass_root.add_theme_constant_override("separation", 8)
+	_passive_panel.add_child(pass_root)
+
+	var pass_header := HBoxContainer.new()
+	pass_header.add_theme_constant_override("separation", 8)
+	pass_root.add_child(pass_header)
+
+	var pass_title := Label.new()
+	pass_title.text = "PASSIVE ATTRIBUTES"
+	pass_title.add_theme_font_size_override("font_size", 30)
+	pass_title.add_theme_color_override("font_color", Color(0.95, 0.76, 0.34))
+	pass_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pass_header.add_child(pass_title)
+
+	_passive_toggle_btn = Button.new()
+	_passive_toggle_btn.text = "▾" if _passive_collapsed else "▴"
+	_passive_toggle_btn.custom_minimum_size = Vector2(44, 34)
+	_passive_toggle_btn.add_theme_font_size_override("font_size", 28)
+	_passive_toggle_btn.focus_mode = Control.FOCUS_NONE
+	var tog_s := StyleBoxFlat.new()
+	tog_s.bg_color = Color(0.18, 0.14, 0.08, 0.90)
+	tog_s.corner_radius_top_left = 8
+	tog_s.corner_radius_top_right = 8
+	tog_s.corner_radius_bottom_left = 8
+	tog_s.corner_radius_bottom_right = 8
+	_passive_toggle_btn.add_theme_stylebox_override("normal", tog_s)
+	_passive_toggle_btn.add_theme_stylebox_override("hover", tog_s)
+	_passive_toggle_btn.add_theme_stylebox_override("pressed", tog_s)
+	_passive_toggle_btn.add_theme_color_override("font_color", Color(0.96, 0.84, 0.50))
+	_passive_toggle_btn.pressed.connect(func() -> void:
+		_passive_collapsed = not _passive_collapsed
+		if _passive_scroll != null:
+			_passive_scroll.visible = not _passive_collapsed
+		_passive_toggle_btn.text = "▾" if _passive_collapsed else "▴"
+	)
+	pass_header.add_child(_passive_toggle_btn)
+
+	_passive_scroll = ScrollContainer.new()
+	_passive_scroll.custom_minimum_size = Vector2(0, 260)
+	_passive_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_passive_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_passive_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_passive_scroll.visible = not _passive_collapsed
+	pass_root.add_child(_passive_scroll)
+
+	_passive_list = VBoxContainer.new()
+	_passive_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_passive_list.add_theme_constant_override("separation", 6)
+	_passive_scroll.add_child(_passive_list)
 
 	# Joystick visual
 	_joy_vis = JoystickVisual.new()
@@ -7141,37 +7467,162 @@ func _update_hud() -> void:
 	_hp_fill.size = Vector2(384.0 * clamp(_player_hp / _player_max_hp, 0.0, 1.0), 34)
 	_xp_fill.size = Vector2(386.0 * clamp(float(_xp) / float(_xp_next), 0.0, 1.0), 18)
 	_level_lbl.text = "LV %d" % _level
-	var m: int = int(_elapsed) / 60
-	var s: int = int(_elapsed) % 60
-	_time_lbl.text = "%d:%02d  |  Kills: %d" % [m, s, _kills]
-	_kill_lbl.text = ""  # merged into time label
 
 	var room: Dictionary = _current_room()
 	var room_name: String = room.get("name", "Room") as String
 	var room_desc: String = room.get("desc", "") as String
-	var room_pulse: float = 0.72 + 0.28 * sin(_room_elapsed * 4.0)
-	var room_color: Color = (room.get("col", Color(1.0, 1.0, 1.0)) as Color).lerp(Color(1.0, 1.0, 1.0), room_pulse)
+	var room_short: String = room.get("short", room_desc) as String
+	if room_name.length() > 18:
+		room_name = room_name.substr(0, 15) + "..."
 
-	if _wave_lbl != null:
-		_wave_lbl.add_theme_color_override("font_color", room_color)
-		match _wave_state:
-			"between":
-				_wave_lbl.text = "Wave %d — %s — Next: %.0fs" % [_wave, room_name, _between_t]
-			"waiting":
-				_wave_lbl.text = "Wave %d — %s — Clear!" % [_wave, room_name]
-			_:
-				_wave_lbl.text = "Wave %d — %s" % [_wave, room_name]
+	var m: int = int(_elapsed) / 60
+	var s: int = int(_elapsed) % 60
+	_time_lbl.text = "%d:%02d   |   Kills: %d" % [m, s, _kills]
+	_kill_lbl.text = "Keys: %d" % PurchaseStore.get_key_count(account_username)
+	_fit_hud_chip(_time_chip, _time_lbl, 96.0, 740.0)
+	_fit_hud_chip(_keys_chip, _kill_lbl, 160.0, 320.0)
 
 	if _room_detail_lbl != null:
 		_room_detail_lbl.add_theme_color_override("font_color", (room.get("col", Color(0.80, 0.76, 0.65)) as Color).lerp(Color(0.90, 0.86, 0.76), 0.4))
-		_room_detail_lbl.text = "%s\nStash Keys: %d" % [room_desc, PurchaseStore.get_key_count(account_username)]
+		_room_detail_lbl.text = "Wave %d - %s" % [_wave, room_name]
+		_fit_hud_chip(_room_chip, _room_detail_lbl, 220.0, 740.0)
+
+	if _room_effect_lbl != null:
+		_room_effect_lbl.add_theme_color_override("font_color", (room.get("col", Color(0.95, 0.84, 0.54)) as Color).lerp(Color(0.98, 0.90, 0.70), 0.25))
+		_room_effect_lbl.text = room_short.strip_edges()
+		_fit_hud_chip(_room_effect_chip, _room_effect_lbl, 240.0, 620.0)
 
 	if _enemy_mod_lbl != null:
-		_enemy_mod_lbl.position.y = _room_detail_lbl.position.y + 82.0
 		if _wave >= 10 and not _active_enemy_mod.is_empty():
-			_enemy_mod_lbl.text = "Floor affix: %s - %s" % [_active_enemy_mod_name, _active_enemy_mod_desc]
+			var affix_text: String = "Floor affix: %s" % _active_enemy_mod_name
+			if affix_text.length() > 40:
+				affix_text = affix_text.substr(0, 37) + "..."
+			_enemy_mod_lbl.text = affix_text
 		else:
 			_enemy_mod_lbl.text = "Floor affix: none"
+		_fit_hud_chip(_affix_chip, _enemy_mod_lbl, 260.0, get_viewport_rect().size.x - 48.0)
+
+	_refresh_passive_panel()
+
+func _fit_hud_chip(chip: TextureRect, label: Label, min_width: float, max_width: float) -> void:
+	if chip == null or label == null:
+		return
+	var text_width: float = label.get_combined_minimum_size().x
+	var width: float = clampf(text_width + 64.0, min_width, max_width)
+	chip.size.x = width
+	label.size.x = max(width - 64.0, 0.0)
+
+func _refresh_passive_panel() -> void:
+	if _passive_list == null:
+		return
+	var rows: Array[Dictionary] = _passive_rows_for_hud()
+	var sig_parts: Array[String] = []
+	for row_any in rows:
+		var row: Dictionary = row_any as Dictionary
+		sig_parts.append("%s|%s" % [String(row.get("label", "")), String(row.get("value", ""))])
+	var sig: String = "\n".join(sig_parts)
+	if sig == _passive_signature:
+		return
+	_passive_signature = sig
+
+	for c in _passive_list.get_children():
+		c.queue_free()
+
+	if rows.is_empty():
+		var empty_lbl := Label.new()
+		empty_lbl.text = "No passive bonuses"
+		empty_lbl.add_theme_font_size_override("font_size", 28)
+		empty_lbl.add_theme_color_override("font_color", Color(0.74, 0.68, 0.58))
+		_passive_list.add_child(empty_lbl)
+		return
+
+	for row_any in rows:
+		var row: Dictionary = row_any as Dictionary
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 8)
+		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_passive_list.add_child(line)
+
+		var icon_lbl := Label.new()
+		icon_lbl.text = String(row.get("icon", "✦"))
+		icon_lbl.add_theme_font_size_override("font_size", 24)
+		icon_lbl.add_theme_color_override("font_color", Color(0.94, 0.78, 0.34))
+		icon_lbl.custom_minimum_size = Vector2(28, 0)
+		line.add_child(icon_lbl)
+
+		var label_lbl := Label.new()
+		label_lbl.text = String(row.get("label", ""))
+		label_lbl.add_theme_font_size_override("font_size", 26)
+		label_lbl.add_theme_color_override("font_color", Color(0.95, 0.90, 0.78))
+		label_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		label_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.add_child(label_lbl)
+
+		var value_lbl := Label.new()
+		value_lbl.text = String(row.get("value", ""))
+		value_lbl.add_theme_font_size_override("font_size", 24)
+		value_lbl.add_theme_color_override("font_color", Color(0.98, 0.86, 0.48))
+		value_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		value_lbl.custom_minimum_size = Vector2(92, 0)
+		value_lbl.size_flags_horizontal = Control.SIZE_SHRINK_END
+		line.add_child(value_lbl)
+
+func _passive_rows_for_hud() -> Array[Dictionary]:
+	var totals: Dictionary = _ring_bonuses.duplicate(true)
+	totals["skill_dmg"] = float(totals.get("skill_dmg", 0.0)) + _artifact_wheel_skill_dmg
+	totals["move_speed_mul"] = float(totals.get("move_speed_mul", 0.0)) + _artifact_wheel_move_mul
+	totals["skill_cd"] = float(totals.get("skill_cd", 0.0)) - _artifact_wheel_cd
+
+	var order: Array[String] = [
+		"projectile_spd", "skill_dmg", "skill_cd", "move_speed_mul", "pickup_radius",
+		"crit_chance", "max_hp_pct", "xp_bonus", "luck", "ring_drop_rate", "projectile_homing"
+	]
+	var out: Array[Dictionary] = []
+	for key in order:
+		var v: float = float(totals.get(key, 0.0))
+		if abs(v) < 0.0001:
+			continue
+		out.append({
+			"icon": _passive_icon_for_key(key),
+			"label": _passive_label_for_key(key),
+			"value": _passive_value_for_key(key, v),
+		})
+	return out
+
+func _passive_label_for_key(key: String) -> String:
+	match key:
+		"projectile_spd": return "Projectile Speed"
+		"skill_dmg": return "Skill Damage"
+		"skill_cd": return "Cooldown"
+		"move_speed_mul": return "Move Speed"
+		"pickup_radius": return "Pickup Radius"
+		"crit_chance": return "Critical Chance"
+		"max_hp_pct": return "Maximum Health"
+		"xp_bonus": return "Experience Bonus"
+		"luck": return "Luck"
+		"ring_drop_rate": return "Ring Drop Rate"
+		"projectile_homing": return "Projectile Homing"
+		_: return key.replace("_", " ").capitalize()
+
+func _passive_value_for_key(key: String, value: float) -> String:
+	if key in ["projectile_spd", "skill_dmg", "skill_cd", "move_speed_mul", "pickup_radius", "crit_chance", "max_hp_pct", "xp_bonus", "luck", "ring_drop_rate", "projectile_homing"]:
+		return "%+d%%" % int(round(value * 100.0))
+	return "%+s" % String.num(value, 2)
+
+func _passive_icon_for_key(key: String) -> String:
+	match key:
+		"projectile_spd": return "➤"
+		"skill_dmg": return "✶"
+		"skill_cd": return "⌛"
+		"move_speed_mul": return "🦶"
+		"pickup_radius": return "🧲"
+		"crit_chance": return "✦"
+		"max_hp_pct": return "❤"
+		"xp_bonus": return "★"
+		"luck": return "☘"
+		"ring_drop_rate": return "◍"
+		"projectile_homing": return "↺"
+		_: return "✦"
 
 func _update_skill_icons() -> void:
 	for c in _skill_icon_row.get_children():
@@ -7756,7 +8207,8 @@ func _on_death() -> void:
 			_kills,
 			_elapsed,
 			RingStore.get_equipped_rings(account_username, String(selected_player_character.id)),
-			ArtifactStore.get_equipped_artifacts(account_username, String(selected_player_character.id))
+			ArtifactStore.get_equipped_artifacts(account_username, String(selected_player_character.id)),
+			_wave
 		)
 		StatsStore.record_match(
 			account_username,
@@ -7770,6 +8222,7 @@ func _on_death() -> void:
 			"character": char_id,
 			"kills": _kills,
 			"survive_seconds": _elapsed,
+			"wave": _wave,
 			"ts": int(Time.get_unix_time_from_system()),
 			"rings": RingStore.get_equipped_rings(account_username, char_id),
 			"artifacts": ArtifactStore.get_equipped_artifacts(account_username, char_id),

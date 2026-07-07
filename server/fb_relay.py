@@ -173,15 +173,17 @@ def _db_init() -> None:
                 character        TEXT DEFAULT '',
                 kills            INTEGER DEFAULT 0,
                 survive_sec      REAL DEFAULT 0.0,
+                wave             INTEGER DEFAULT 0,
                 match_ts         INTEGER DEFAULT 0,
                 rings_json       TEXT DEFAULT '{}',
                 artifacts_json   TEXT DEFAULT '{}',
                 created_at       TEXT DEFAULT '',
-                PRIMARY KEY (username, match_ts, character, kills, survive_sec)
+                PRIMARY KEY (username, match_ts, character, kills, survive_sec, wave)
             )
         """)
         _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_kills ON leaderboard_runs(kills DESC)")
         _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_survive ON leaderboard_runs(survive_sec DESC)")
+        _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_wave ON leaderboard_runs(wave DESC)")
         _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_user ON leaderboard_runs(username)")
         _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_character ON leaderboard_runs(character)")
         # Migrate older tables missing newer leaderboard columns.
@@ -194,6 +196,7 @@ def _db_init() -> None:
         _ensure_column(conn, "leaderboard", "ring_stash_json", "TEXT DEFAULT '[]'")
         _ensure_column(conn, "leaderboard", "artifact_stash_json", "TEXT DEFAULT '[]'")
         _ensure_column(conn, "leaderboard", "artifact_equipped_json", "TEXT DEFAULT '{}'")
+        _ensure_column(conn, "leaderboard_runs", "wave", "INTEGER DEFAULT 0")
         conn.commit()
         conn.close()
 
@@ -332,7 +335,12 @@ def _json_blob(value: object, fallback: object):
 
 
 def _run_entry_from_row(row, metric: str) -> dict:
-    value = float(row["survive_sec"] or 0.0) if metric == "survive" else int(row["kills"] or 0)
+    if metric == "survive":
+        value = float(row["survive_sec"] or 0.0)
+    elif metric == "wave":
+        value = int(row["wave"] or 0)
+    else:
+        value = int(row["kills"] or 0)
     return {
         "username": row["username"],
         "display_name": row["display_name"],
@@ -416,16 +424,17 @@ async def stats_submit(body: StatsSubmit) -> dict:
             char_id: str = str(latest.get("character", "")).strip().lower()
             survive_sec: float = float(latest.get("survive_seconds", 0.0) or 0.0)
             kills: int = int(latest.get("kills", 0) or 0)
+            wave: int = int(latest.get("wave", 0) or 0)
             match_ts: int = int(latest.get("ts", 0) or 0)
             rings_json = _json.dumps(latest.get("rings", {}) if isinstance(latest.get("rings", {}), dict) else {}, ensure_ascii=False)
             artifacts_json = _json.dumps(latest.get("artifacts", {}) if isinstance(latest.get("artifacts", {}), dict) else {}, ensure_ascii=False)
             if char_id and survive_sec > 0.0 and match_ts > 0:
                 _execute(
                     conn,
-                    f"INSERT INTO leaderboard_runs (username, display_name, character, kills, survive_sec, match_ts, rings_json, artifacts_json, created_at) "
-                    f"VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph}) "
+                    f"INSERT INTO leaderboard_runs (username, display_name, character, kills, survive_sec, wave, match_ts, rings_json, artifacts_json, created_at) "
+                    f"VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph}) "
                     f"ON CONFLICT DO NOTHING",
-                    (username, body.display_name, char_id, kills, survive_sec, match_ts, rings_json, artifacts_json, now),
+                    (username, body.display_name, char_id, kills, survive_sec, wave, match_ts, rings_json, artifacts_json, now),
                 )
         conn.commit()
         conn.close()
@@ -614,6 +623,53 @@ async def leaderboard_survive(limit: int = 20, username: str = "", character: st
         }
     except Exception as exc:
         logger.exception("leaderboard_survive failed")
+        return {"entries": [], "user_entry": None, "ok": False, "error": str(exc)}
+
+
+@app.get("/stats/leaderboard/wave")
+async def leaderboard_wave(limit: int = 20, username: str = "", character: str = "") -> dict:
+    try:
+        limit = _normalize_limit(limit)
+        user_entry = None
+        uname = username.strip().lower()
+        char_filter = character.strip().lower()
+        ph = _PH
+        with _db_lock:
+            conn = _db_connect()
+            if char_filter:
+                rows = _fetchall(
+                    conn,
+                    f"SELECT username, display_name, character, kills, survive_sec, wave, match_ts, rings_json, artifacts_json "
+                    f"FROM leaderboard_runs WHERE character = {ph} ORDER BY wave DESC, match_ts ASC",
+                    (char_filter,),
+                )
+            else:
+                rows = _fetchall(
+                    conn,
+                    "SELECT username, display_name, character, kills, survive_sec, wave, match_ts, rings_json, artifacts_json "
+                    "FROM leaderboard_runs ORDER BY wave DESC, match_ts ASC",
+                    (),
+                )
+            conn.close()
+
+        ranked = []
+        for row in rows:
+            entry = _run_entry_from_row(row, "wave")
+            if int(entry["value"]) <= 0:
+                continue
+            ranked.append(entry)
+        for i, entry in enumerate(ranked):
+            entry["rank"] = i + 1
+            if uname and entry["username"] == uname:
+                user_entry = dict(entry)
+
+        entries = ranked if limit == 0 else ranked[:limit]
+        return {
+            "entries": entries,
+            "user_entry": user_entry,
+        }
+    except Exception as exc:
+        logger.exception("leaderboard_wave failed")
         return {"entries": [], "user_entry": None, "ok": False, "error": str(exc)}
 
 # Config

@@ -57,6 +57,12 @@ const RING_ICON_FALLBACK_FILES: Dictionary = {
 	"revive_once": "second_chance_ring.png",
 	"timed_shield": "guardian_pulse_ring.png",
 }
+const DEVADMIN_EXTRA_RINGS: Array[Dictionary] = [
+	{"id": "ring_warlords_crest", "name": "Warlord's Crest", "attr": "skill_dmg", "value": 0.15, "rarity": "rare", "tier": 1, "desc": "Increases all skill damage/DPS. Store purchase only."},
+	{"id": "ring_haste_coil", "name": "Haste Coil", "attr": "skill_cd", "value": 0.12, "rarity": "rare", "tier": 1, "desc": "Reduces skill cooldowns. Store purchase only."},
+	{"id": "ring_second_chance", "name": "Second Chance Ring", "attr": "revive_once", "value": 1.0, "rarity": "legendary", "tier": 1, "desc": "Revives once per gameplay when equipped. Store purchase only."},
+	{"id": "ring_guardian_pulse", "name": "Guardian Pulse Ring", "attr": "timed_shield", "value": 1.0, "rarity": "legendary", "tier": 1, "desc": "Creates a shield for 1 second every 10 seconds. Store purchase only."},
+]
 
 static var _stash_cache: Dictionary = {}  # username -> Array[Dictionary]
 
@@ -113,8 +119,13 @@ static func load_stash(username: String) -> Array:
 		return _stash_cache[username] as Array
 	var path: String = _stash_path(username)
 	if not FileAccess.file_exists(path):
-		_stash_cache[username] = []
-		return []
+		var seeded: Array = []
+		if _is_devadmin(username):
+			seeded = _ensure_devadmin_ring_stash([])
+		_stash_cache[username] = seeded
+		if not seeded.is_empty():
+			save_stash(username)
+		return _stash_cache[username] as Array
 	var f := FileAccess.open(path, FileAccess.READ)
 	var data = JSON.parse_string(f.get_as_text())
 	f.close()
@@ -122,10 +133,65 @@ static func load_stash(username: String) -> Array:
 		var arr: Array = data as Array
 		for i in arr.size():
 			arr[i] = normalize_ring(arr[i] as Dictionary)
+		if _is_devadmin(username):
+			arr = _ensure_devadmin_ring_stash(arr)
 		_stash_cache[username] = arr
 	else:
-		_stash_cache[username] = []
+		var fallback: Array = []
+		if _is_devadmin(username):
+			fallback = _ensure_devadmin_ring_stash([])
+		_stash_cache[username] = fallback
+	if _is_devadmin(username):
+		save_stash(username)
 	return _stash_cache[username] as Array
+
+static func _is_devadmin(username: String) -> bool:
+	return username.strip_edges().to_lower() == "devadmin"
+
+static func _ensure_devadmin_ring_stash(stash: Array) -> Array:
+	var out: Array = []
+	var key_counts: Dictionary = {}
+	for item in stash:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		var ring: Dictionary = normalize_ring(item as Dictionary)
+		out.append(ring)
+		var existing_key: String = ring_merge_key(ring)
+		key_counts[existing_key] = int(key_counts.get(existing_key, 0)) + 1
+
+	for i in RING_POOL.size():
+		var tpl: Dictionary = RING_POOL[i] as Dictionary
+		var rarity: String = String(tpl.get("rarity", "common")).to_lower()
+		if rarity not in ["common", "rare", "epic"]:
+			continue
+		var vr: Array = tpl.get("value_range", [0.0, 0.0]) as Array
+		var min_v: float = float(vr[0]) if vr.size() > 0 else 0.0
+		var max_v: float = float(vr[1]) if vr.size() > 1 else min_v
+		var seeded_base: Dictionary = normalize_ring({
+			"id": "devadmin_ring_%d_0" % i,
+			"name": tpl.get("name", "Ring"),
+			"attr": tpl.get("attr", ""),
+			"value": (min_v + max_v) * 0.5,
+			"rarity": rarity,
+			"tier": 1,
+			"desc": tpl.get("desc", ""),
+		})
+		var key: String = ring_merge_key(seeded_base)
+		var have: int = int(key_counts.get(key, 0))
+		for copy_idx in range(have, 3):
+			var seeded_copy: Dictionary = seeded_base.duplicate(true)
+			seeded_copy["id"] = "devadmin_ring_%d_%d" % [i, copy_idx]
+			out.append(seeded_copy)
+			key_counts[key] = int(key_counts.get(key, 0)) + 1
+
+	for extra in DEVADMIN_EXTRA_RINGS:
+		var ex: Dictionary = normalize_ring((extra as Dictionary).duplicate(true))
+		var ex_key: String = ring_merge_key(ex)
+		if int(key_counts.get(ex_key, 0)) <= 0:
+			out.append(ex)
+			key_counts[ex_key] = 1
+
+	return out
 
 static func save_stash(username: String) -> void:
 	var path: String = _stash_path(username)
@@ -194,8 +260,8 @@ static func resolve_equipped_ring(username: String, ring: Dictionary) -> Diction
 static func ring_merge_key(ring: Dictionary) -> String:
 	var normalized: Dictionary = normalize_ring(ring)
 	return "%s|%s|%d" % [
-		normalized.get("attr", "") as String,
-		normalized.get("rarity", "common") as String,
+		(normalized.get("attr", "") as String).to_lower(),
+		(normalized.get("rarity", "common") as String).to_lower(),
 		int(normalized.get("tier", 1)),
 	]
 
@@ -209,9 +275,13 @@ static func count_merge_matches(stash: Array, ring: Dictionary) -> int:
 	return count
 
 static func can_merge_from_stash(stash: Array, ring: Dictionary) -> bool:
+	if String(normalize_ring(ring).get("rarity", "common")).to_lower() == "legendary":
+		return false
 	return count_merge_matches(stash, ring) >= 3
 
 static func merge_matching_from_stash(username: String, ring: Dictionary) -> Dictionary:
+	if String(normalize_ring(ring).get("rarity", "common")).to_lower() == "legendary":
+		return {}
 	load_stash(username)
 	var arr: Array = _stash_cache[username] as Array
 	var target_key: String = ring_merge_key(ring)
