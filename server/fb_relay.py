@@ -181,6 +181,7 @@ def _db_init() -> None:
                 PRIMARY KEY (username, match_ts, character, kills, survive_sec, wave)
             )
         """)
+        _ensure_column(conn, "leaderboard_runs", "wave", "INTEGER DEFAULT 0")
         _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_kills ON leaderboard_runs(kills DESC)")
         _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_survive ON leaderboard_runs(survive_sec DESC)")
         _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_wave ON leaderboard_runs(wave DESC)")
@@ -196,7 +197,6 @@ def _db_init() -> None:
         _ensure_column(conn, "leaderboard", "ring_stash_json", "TEXT DEFAULT '[]'")
         _ensure_column(conn, "leaderboard", "artifact_stash_json", "TEXT DEFAULT '[]'")
         _ensure_column(conn, "leaderboard", "artifact_equipped_json", "TEXT DEFAULT '{}'")
-        _ensure_column(conn, "leaderboard_runs", "wave", "INTEGER DEFAULT 0")
         conn.commit()
         conn.close()
 
