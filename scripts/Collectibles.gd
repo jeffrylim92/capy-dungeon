@@ -9,6 +9,7 @@ var _current_tab: String = "rings"
 var _tab_buttons: Dictionary = {}
 var _rings_scroll: ScrollContainer
 var _artifacts_scroll: ScrollContainer
+var _active_swipe_scroll: ScrollContainer = null
 
 var _bg_tex: Texture2D = preload("res://assets/backgrounds/bg_preparation_stage.png")
 var _label_chip_tex: Texture2D = preload("res://assets/icons/icon_label.png")
@@ -18,6 +19,27 @@ func _ready() -> void:
 	if not account_username.is_empty():
 		PurchaseStore.set_username(account_username)
 	_build_ui()
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if touch.pressed:
+			_active_swipe_scroll = _scroll_for_point(touch.position)
+		else:
+			_active_swipe_scroll = null
+		return
+	if event is InputEventScreenDrag:
+		var drag := event as InputEventScreenDrag
+		if _active_swipe_scroll != null and is_instance_valid(_active_swipe_scroll):
+			_active_swipe_scroll.scroll_vertical = maxi(0, _active_swipe_scroll.scroll_vertical - int(round(drag.relative.y)))
+			get_viewport().set_input_as_handled()
+
+func _scroll_for_point(point: Vector2) -> ScrollContainer:
+	if _rings_scroll != null and is_instance_valid(_rings_scroll) and _rings_scroll.visible and _rings_scroll.get_global_rect().has_point(point):
+		return _rings_scroll
+	if _artifacts_scroll != null and is_instance_valid(_artifacts_scroll) and _artifacts_scroll.visible and _artifacts_scroll.get_global_rect().has_point(point):
+		return _artifacts_scroll
+	return null
 
 func _build_ui() -> void:
 	var bg := TextureRect.new()
@@ -103,12 +125,12 @@ func _build_ui() -> void:
 	_fill_artifact_cards(artifacts_box)
 
 	var back_btn := Button.new()
-	back_btn.text = "<  BACK"
+	back_btn.text = "BACK"
 	back_btn.custom_minimum_size = Vector2(320, 74)
 	back_btn.position = Vector2((_view.x - 320.0) * 0.5, _view.y - 102)
 	back_btn.add_theme_font_size_override("font_size", 34)
 	back_btn.focus_mode = Control.FOCUS_NONE
-	_apply_button_style(back_btn, Color(0.84, 0.66, 0.24, 0.96), Color(0.16, 0.12, 0.08, 0.94), Color(0.98, 0.86, 0.50), 18)
+	_apply_button_style(back_btn, Color(0.84, 0.66, 0.24, 0.96), Color(0.16, 0.12, 0.08, 0.94), Color(1.0, 1.0, 1.0), 18)
 	back_btn.pressed.connect(func() -> void: back_requested.emit())
 	add_child(back_btn)
 
@@ -146,10 +168,24 @@ func _fill_ring_cards(parent: VBoxContainer) -> void:
 func _collectible_ring_entries() -> Array:
 	var out: Array = []
 	for e in RingStore.RING_POOL:
-		out.append((e as Dictionary).duplicate(true))
+		out.append(_normalize_collectible_ring_entry((e as Dictionary).duplicate(true)))
 	for product_id in PurchaseStore.RING_PRODUCTS.keys():
-		out.append(PurchaseStore.ring_product_to_ring(product_id as String))
+		out.append(_normalize_collectible_ring_entry(PurchaseStore.ring_product_to_ring(product_id as String)))
 	return out
+
+func _normalize_collectible_ring_entry(ring: Dictionary) -> Dictionary:
+	var normalized: Dictionary = ring.duplicate(true)
+	if not normalized.has("value"):
+		var vr: Array = normalized.get("value_range", []) as Array
+		if vr.size() >= 2:
+			normalized["value"] = (float(vr[0]) + float(vr[1])) * 0.5
+		elif vr.size() == 1:
+			normalized["value"] = float(vr[0])
+		else:
+			normalized["value"] = 0.0
+	if not normalized.has("tier"):
+		normalized["tier"] = 1
+	return normalized
 
 func _fill_artifact_cards(parent: VBoxContainer) -> void:
 	var obtained: Dictionary = {}
@@ -290,21 +326,21 @@ func _make_collectible_card(item_type: String, data: Dictionary, obtained: bool)
 
 	var name_lbl := Label.new()
 	name_lbl.text = String(data.get("name", "Collectible"))
-	name_lbl.add_theme_font_size_override("font_size", 32)
+	name_lbl.add_theme_font_size_override("font_size", 36)
 	name_lbl.add_theme_color_override("font_color", Color(0.96, 0.94, 0.90))
 	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top_row.add_child(name_lbl)
 
 	var tag_lbl := Label.new()
 	tag_lbl.text = "OWNED" if obtained else "HIDDEN"
-	tag_lbl.add_theme_font_size_override("font_size", 18)
+	tag_lbl.add_theme_font_size_override("font_size", 20)
 	tag_lbl.add_theme_color_override("font_color", Color(0.98, 0.88, 0.68) if obtained else Color(0.76, 0.78, 0.82))
 	tag_lbl.add_theme_stylebox_override("normal", _ornate_panel_style(Color(accent.r, accent.g, accent.b, 0.60), Color(0.12, 0.12, 0.14, 0.88), 8, 1))
 	top_row.add_child(tag_lbl)
 
 	var desc_lbl := Label.new()
-	desc_lbl.text = String(data.get("desc", "")) if obtained else "???"
-	desc_lbl.add_theme_font_size_override("font_size", 22)
+	desc_lbl.text = _ring_inventory_desc(data) if item_type == "ring" else (_collectible_artifact_desc(data) if obtained else "???")
+	desc_lbl.add_theme_font_size_override("font_size", 26)
 	desc_lbl.add_theme_color_override("font_color", Color(0.82, 0.82, 0.88))
 	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -340,6 +376,72 @@ func _apply_button_style(btn: Button, border_col: Color, bg_col: Color, font_col
 	btn.add_theme_stylebox_override("hover", hover)
 	btn.add_theme_stylebox_override("pressed", pressed)
 	btn.add_theme_color_override("font_color", font_col)
+
+func _ring_inventory_desc(ring: Dictionary) -> String:
+	var attr: String = String(ring.get("attr", ""))
+	var value: float = float(ring.get("value", 0.0))
+	if attr in ["potion_drop_rate", "xp_bonus", "ring_drop_rate", "skill_dmg", "skill_cd", "aoe_radius", "projectile_spd", "crit_chance", "boss_dmg"]:
+		return "%s %s" % [_format_percent_value(value), _pretty_stat_label(attr)]
+	if attr == "regen":
+		return "+%.1f Health per second" % value
+	if attr == "revive_once":
+		return "Revive once"
+	if attr == "timed_shield":
+		return "Timed Shield"
+	return "+%.0f %s" % [value, _pretty_stat_label(attr)]
+
+func _format_percent_value(value: float) -> String:
+	var pct: float = value * 100.0
+	if abs(pct) < 1.0 and abs(pct) > 0.0:
+		return "%+.1f%%" % pct
+	return "%+d%%" % int(round(pct))
+
+func _pretty_stat_label(stat_key: String) -> String:
+	match stat_key:
+		"skill_dmg": return "Skill Damage"
+		"skill_cd": return "Skill Cooldown"
+		"projectile_spd": return "Projectile Speed"
+		"projectile_dmg", "projectile_damage": return "Projectile Damage"
+		"crit_chance": return "Critical Chance"
+		"crit_dmg": return "Critical Damage"
+		"xp_bonus": return "XP Bonus"
+		"max_hp": return "Maximum Health"
+		"max_hp_pct": return "Maximum Health"
+		"regen": return "Health Regeneration"
+		"timed_shield": return "Timed Shield"
+		"luck": return "Luck"
+		"ring_drop_rate": return "Ring Drop Rate"
+		"potion_drop_rate": return "Potion Drop Rate"
+		"aoe_radius": return "Area of Effect Radius"
+		"boss_dmg": return "Boss Damage"
+		_:
+			return stat_key.replace("_", " ").capitalize()
+
+func _collectible_artifact_desc(artifact: Dictionary) -> String:
+	var base_desc: String = String(artifact.get("desc", "")).strip_edges()
+	var extras: Array[String] = _collectible_artifact_special_lines(artifact)
+	if extras.is_empty():
+		return base_desc
+	if base_desc.is_empty():
+		return "\n".join(extras)
+	return base_desc + "\n" + "\n".join(extras)
+
+func _collectible_artifact_special_lines(artifact: Dictionary) -> Array[String]:
+	var aid: String = String(artifact.get("id", "")).to_lower()
+	var aname: String = String(artifact.get("name", "")).to_lower()
+	if aid.find("capy_mystery_box") != -1 or aname.find("mystery box") != -1:
+		return [
+			"✦ Each run rolls 2 random tradeoff effects",
+			"⚔ Skill Damage +12% or -10%, Maximum Health +12% or -10%",
+			"⏩ Movement Speed +10% or -10%, Experience Bonus +15% or -10%",
+		]
+	if aid.find("wheel_of_fate") != -1 or aname.find("wheel of fate") != -1:
+		return [
+			"✦ Every 50 seconds: 1 random effect for 12 seconds",
+			"⚔ Skill Damage +12% or -8%, Movement Speed +15% or -12%",
+			"◴ Skill Cooldown -10% or +10%",
+		]
+	return []
 
 func _ring_thumb(data: Dictionary, obtained: bool) -> Control:
 	var tex := TextureRect.new()

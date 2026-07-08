@@ -35,6 +35,9 @@ var _global_wave_failed: bool     = false
 var _global_kills_entries: Array = []
 var _global_survive_entries: Array = []
 var _global_wave_entries: Array = []
+var _history_scroll: ScrollContainer = null
+var _global_list_scroll: ScrollContainer = null
+var _active_swipe_scroll: ScrollContainer = null
 
 const TAB_DEFS: Array[Dictionary] = [
 	{"title": "History", "icon": "icon_run.png"},
@@ -50,6 +53,27 @@ func _cloud_username_for_history() -> String:
 func _ready() -> void:
 	SettingsStore.apply(get_tree())
 	_build_ui()
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if touch.pressed:
+			_active_swipe_scroll = _scroll_for_point(touch.position)
+		else:
+			_active_swipe_scroll = null
+		return
+	if event is InputEventScreenDrag:
+		var drag := event as InputEventScreenDrag
+		if _active_swipe_scroll != null and is_instance_valid(_active_swipe_scroll):
+			_active_swipe_scroll.scroll_vertical = maxi(0, _active_swipe_scroll.scroll_vertical - int(round(drag.relative.y)))
+			get_viewport().set_input_as_handled()
+
+func _scroll_for_point(point: Vector2) -> ScrollContainer:
+	if _history_scroll != null and is_instance_valid(_history_scroll) and _history_scroll.visible and _history_scroll.get_global_rect().has_point(point):
+		return _history_scroll
+	if _global_list_scroll != null and is_instance_valid(_global_list_scroll) and _global_list_scroll.visible and _global_list_scroll.get_global_rect().has_point(point):
+		return _global_list_scroll
+	return null
 
 func _build_ui() -> void:
 	var view := get_viewport_rect().size
@@ -226,6 +250,7 @@ func _build_history_panel(y: float, h: float, w: float) -> Control:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_history_scroll = scroll
 	vbox.add_child(scroll)
 
 	var list := VBoxContainer.new()
@@ -334,6 +359,7 @@ func _build_global_panel(y: float, h: float, w: float) -> Control:
 	list_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	list_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_global_list_scroll = list_scroll
 	leaderboard_frame.add_child(list_scroll)
 
 	var list := VBoxContainer.new()
@@ -556,7 +582,7 @@ func _refresh_global_view() -> void:
 	pinned_root.add_child(row)
 
 	var rank_badge := Label.new()
-	rank_badge.text = "#%d" % user_rank if user_rank > 0 else "#—"
+	rank_badge.text = "%d" % user_rank if user_rank > 0 else "—"
 	rank_badge.custom_minimum_size = Vector2(120, 96)
 	rank_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	rank_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -655,7 +681,7 @@ func _global_progress_card(title: String, text: String) -> Control:
 
 func _global_nearest_higher_text(user_rank: int, user_value: float, entries: Array, mode: String) -> String:
 	if user_rank <= 1:
-		return "You are Rank #1"
+		return "You are Rank 1"
 	var higher: Dictionary = {}
 	for entry in entries:
 		if typeof(entry) != TYPE_DICTIONARY:
@@ -670,12 +696,12 @@ func _global_nearest_higher_text(user_rank: int, user_value: float, entries: Arr
 	var higher_value: float = float(higher.get("value", 0.0))
 	if mode == "survive":
 		var diff_secs: float = max(0.1, higher_value - user_value + 1.0)
-		return "Need +%s to pass Rank #%d" % [StatsStore.format_seconds(diff_secs), higher_rank]
+		return "Need +%s to pass Rank %d" % [StatsStore.format_seconds(diff_secs), higher_rank]
 	if mode == "wave":
 		var diff_wave: int = maxi(1, int(round(higher_value)) - int(round(user_value)) + 1)
-		return "Need +%d wave%s to pass Rank #%d" % [diff_wave, "s" if diff_wave != 1 else "", higher_rank]
+		return "Need +%d wave%s to pass Rank %d" % [diff_wave, "s" if diff_wave != 1 else "", higher_rank]
 	var diff_kills: int = maxi(1, int(higher_value) - int(user_value) + 1)
-	return "Need +%d kills to pass Rank #%d" % [diff_kills, higher_rank]
+	return "Need +%d kills to pass Rank %d" % [diff_kills, higher_rank]
 
 func _global_top20_target_text(user_rank: int, user_value: float, entries: Array, mode: String) -> String:
 	if user_rank > 0 and user_rank <= 20:
@@ -880,7 +906,7 @@ func _global_rank_row(entry: Dictionary, mode: String) -> Control:
 
 	var rank_lbl := Label.new()
 	rank_lbl.text = str(rank)
-	rank_lbl.add_theme_font_size_override("font_size", 36)
+	rank_lbl.add_theme_font_size_override("font_size", 40)
 	rank_lbl.add_theme_color_override("font_color",
 		Color(0.95, 0.78, 0.25) if rank == 1 else
 		(Color(0.75, 0.75, 0.78) if rank == 2 else
@@ -895,7 +921,7 @@ func _global_rank_row(entry: Dictionary, mode: String) -> Control:
 	var name_lbl := Label.new()
 	name_lbl.text = player
 	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_lbl.add_theme_font_size_override("font_size", 32)
+	name_lbl.add_theme_font_size_override("font_size", 36)
 	name_lbl.add_theme_color_override("font_color", Color(0.97, 0.94, 0.86))
 	name_lbl.add_theme_color_override("font_outline_color", Color(0.10, 0.05, 0.02, 0.80))
 	name_lbl.add_theme_constant_override("outline_size", 3)
@@ -907,14 +933,14 @@ func _global_rank_row(entry: Dictionary, mode: String) -> Control:
 	val_lbl.custom_minimum_size = Vector2(180, 0)
 	val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	val_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	val_lbl.add_theme_font_size_override("font_size", 30)
+	val_lbl.add_theme_font_size_override("font_size", 34)
 	val_lbl.add_theme_color_override("font_color", value_color)
 	hbox.add_child(val_lbl)
 
 	var detail_btn := Button.new()
 	detail_btn.text = "View Run Details"
 	detail_btn.custom_minimum_size = Vector2(210, 54)
-	detail_btn.add_theme_font_size_override("font_size", 24)
+	detail_btn.add_theme_font_size_override("font_size", 26)
 	_style_match_detail_btn(detail_btn)
 	var detail_entry: Dictionary = _detail_entry_from_global_entry(entry, mode)
 	if detail_entry.is_empty():
@@ -1159,20 +1185,20 @@ func _make_char_card(data: CharacterData, stats: Dictionary, card_w: float) -> P
 
 	var runs_lbl := Label.new()
 	runs_lbl.text = "%d run%s" % [matches, "s" if matches != 1 else ""]
-	runs_lbl.add_theme_font_size_override("font_size", 26)
+	runs_lbl.add_theme_font_size_override("font_size", 32)
 	runs_lbl.add_theme_color_override("font_color", Color(0.36, 0.26, 0.14))
 	text_col.add_child(runs_lbl)
 
 	var line_time := Label.new()
 	line_time.text = "%s played" % [StatsStore.format_seconds(total_time)]
-	line_time.add_theme_font_size_override("font_size", 21)
+	line_time.add_theme_font_size_override("font_size", 27)
 	line_time.add_theme_color_override("font_color", Color(0.40, 0.30, 0.18))
 	line_time.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	text_col.add_child(line_time)
 
 	var line_last := Label.new()
 	line_last.text = "Last: %s" % _short_date(last_played)
-	line_last.add_theme_font_size_override("font_size", 20)
+	line_last.add_theme_font_size_override("font_size", 26)
 	line_last.add_theme_color_override("font_color", Color(0.40, 0.30, 0.18))
 	line_last.autowrap_mode = TextServer.AUTOWRAP_WORD
 	line_last.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1314,6 +1340,7 @@ func _detail_entry_from_global_entry(entry: Dictionary, mode: String) -> Diction
 	var is_survive: bool = mode == "survive"
 	var out: Dictionary = {
 		"character": char_id,
+		"rank": int(entry.get("rank", 0)),
 		"kills": int(entry.get("value", 0)) if not is_survive else int(local.get("kills", 0)),
 		"survive_seconds": float(entry.get("value", 0.0)) if is_survive else float(local.get("survive_seconds", 0.0)),
 		"rings": entry.get("rings", local.get("rings", {})),
@@ -1432,7 +1459,7 @@ func _show_match_detail_modal(record: Dictionary) -> void:
 	hero.add_child(left_col)
 
 	var badge := Label.new()
-	badge.text = str(rank_num) if rank_num > 0 else "-"
+	badge.text = str(rank_num) if rank_num > 0 else "—"
 	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	badge.add_theme_font_size_override("font_size", 44)
 	badge.add_theme_color_override("font_color", Color(0.99, 0.82, 0.28))
@@ -1854,8 +1881,8 @@ func _make_record_right_stat(label_text: String, value_text: String, icon: Textu
 	if icon != null:
 		var icon_rect := TextureRect.new()
 		icon_rect.texture = icon
-		icon_rect.custom_minimum_size = Vector2(56, 56)
-		icon_rect.size = Vector2(56, 56)
+		icon_rect.custom_minimum_size = Vector2(64, 64)
+		icon_rect.size = Vector2(64, 64)
 		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1863,13 +1890,13 @@ func _make_record_right_stat(label_text: String, value_text: String, icon: Textu
 
 	var lbl := Label.new()
 	lbl.text = label_text
-	lbl.add_theme_font_size_override("font_size", 16)
+	lbl.add_theme_font_size_override("font_size", 24)
 	lbl.add_theme_color_override("font_color", Color(0.45, 0.35, 0.22))
 	head.add_child(lbl)
 
 	var val := Label.new()
 	val.text = value_text
-	val.add_theme_font_size_override("font_size", 31)
+	val.add_theme_font_size_override("font_size", 42)
 	val.add_theme_color_override("font_color", Color(0.20, 0.14, 0.08))
 	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(val)

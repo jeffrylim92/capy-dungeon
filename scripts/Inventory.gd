@@ -356,7 +356,7 @@ func _build_ui() -> void:
 	play_btn.text = "Play"
 	play_btn.custom_minimum_size = Vector2(320, 74)
 	play_btn.add_theme_font_size_override("font_size", 36)
-	_apply_button_skin(play_btn, Color(0.90, 0.70, 0.24, 0.98), Color(0.42, 0.26, 0.08), Color(0.16, 0.10, 0.02), 3)
+	_apply_button_skin(play_btn, Color(0.98, 0.82, 0.14, 0.98), Color(0.42, 0.26, 0.08), Color(0.02, 0.02, 0.02), 3)
 	play_btn.pressed.connect(func() -> void: inventory_confirmed.emit(selected_character))
 	bottom.add_child(play_btn)
 
@@ -603,15 +603,22 @@ func _item_stat_lines(item_type: String, data: Dictionary, max_lines: int = 3) -
 	else:
 		var special_lines: Array[String] = _artifact_special_description_lines(data)
 		if not special_lines.is_empty():
-			if special_lines.size() > max_lines:
-				return special_lines.slice(0, max_lines)
-			return special_lines
-		var effects: Dictionary = data.get("effects", {}) as Dictionary
-		for key in effects.keys():
-			var stat_key: String = String(key)
-			var stat_value: float = float(effects[key])
-			var text_value: String = _format_stat_value(stat_key, stat_value)
-			lines.append("%s %s %s" % [_stat_icon(stat_key), text_value, _pretty_stat_label(stat_key)])
+			for s in special_lines:
+				lines.append(s)
+		var desc_text: String = String(data.get("desc", "")).strip_edges()
+		if not desc_text.is_empty():
+			var raw_lines: PackedStringArray = desc_text.split("\n", false)
+			for raw in raw_lines:
+				var line_text: String = String(raw).strip_edges()
+				if not line_text.is_empty():
+					lines.append("✦ %s" % line_text)
+		else:
+			var effects: Dictionary = data.get("effects", {}) as Dictionary
+			for key in effects.keys():
+				var stat_key: String = String(key)
+				var stat_value: float = float(effects[key])
+				var text_value: String = _format_stat_value(stat_key, stat_value)
+				lines.append("%s %s %s" % [_stat_icon(stat_key), text_value, _pretty_stat_label(stat_key)])
 
 	if lines.is_empty():
 		lines.append("✦ %s" % (data.get("desc", "No bonus") as String))
@@ -684,7 +691,7 @@ func _pretty_stat_label(stat_key: String) -> String:
 
 func _format_stat_value(stat_key: String, stat_value: float) -> String:
 	if stat_key in ["skill_dmg", "projectile_spd", "projectile_dmg", "projectile_damage", "max_hp_pct", "xp_bonus", "crit_chance", "crit_dmg", "luck", "ring_drop_rate", "damage_taken_mul", "enemy_hp_mul", "move_speed_mul", "healing_efficiency", "freeze_duration", "ice_dmg", "lightning_dmg", "burn_duration", "pickup_radius", "projectile_homing", "proj_dup_chance", "regen_pulse_pct", "potion_drop_rate", "aoe_radius", "boss_dmg"]:
-		return "%+d%%" % int(round(stat_value * 100.0))
+		return _format_percent_value(stat_value)
 	if stat_key in ["blink_interval", "wheel_interval", "wheel_duration", "regen_pulse_interval"]:
 		return "%s seconds" % String.num(stat_value, 0)
 	if stat_key == "blink_dist":
@@ -696,6 +703,12 @@ func _format_stat_value(stat_key: String, stat_value: float) -> String:
 	if stat_key == "regen":
 		return "%s health per second" % String.num(stat_value, 1)
 	return "%+s" % String.num(stat_value, 2)
+
+func _format_percent_value(value: float) -> String:
+	var pct: float = value * 100.0
+	if abs(pct) < 1.0 and abs(pct) > 0.0:
+		return "%+.1f%%" % pct
+	return "%+d%%" % int(round(pct))
 
 func _stat_icon(stat_key: String) -> String:
 	match stat_key:
@@ -1387,9 +1400,9 @@ func _equip_item_from_stash(item_type: String, data: Dictionary) -> void:
 
 func _ring_bonus_text(ring: Dictionary) -> String:
 	var attr: String = ring.get("attr", "") as String
-	var value: float = float(ring.get("value", 0.0))
+	var value: float = _ring_base_t1_value(attr, float(ring.get("value", 0.0)))
 	if attr in ["potion_drop_rate", "xp_bonus", "ring_drop_rate", "skill_dmg", "skill_cd", "aoe_radius", "projectile_spd", "crit_chance", "boss_dmg"]:
-		return "+%d%% %s" % [int(round(value * 100.0)), _pretty_stat_label(attr)]
+		return "%s %s" % [_format_percent_value(value), _pretty_stat_label(attr)]
 	if attr == "regen":
 		return "+%.1f Health per second" % value
 	if attr == "revive_once":
@@ -1397,6 +1410,33 @@ func _ring_bonus_text(ring: Dictionary) -> String:
 	if attr == "timed_shield":
 		return "Timed Shield"
 	return "+%.0f %s" % [value, _pretty_stat_label(attr)]
+
+func _ring_base_t1_value(attr: String, fallback: float) -> float:
+	for entry_any in RingStore.RING_POOL:
+		if typeof(entry_any) != TYPE_DICTIONARY:
+			continue
+		var entry: Dictionary = entry_any as Dictionary
+		if String(entry.get("attr", "")) != attr:
+			continue
+		var vr: Array = entry.get("value_range", []) as Array
+		if vr.size() >= 2:
+			return (float(vr[0]) + float(vr[1])) * 0.5
+		if vr.size() == 1:
+			return float(vr[0])
+		if entry.has("value"):
+			return float(entry.get("value", fallback))
+		return fallback
+	match attr:
+		"skill_dmg":
+			return 0.15
+		"skill_cd":
+			return 0.12
+		"revive_once":
+			return 1.0
+		"timed_shield":
+			return 1.0
+		_:
+			return fallback
 
 func _item_effect_text(item_type: String, data: Dictionary) -> String:
 	if item_type == "ring":

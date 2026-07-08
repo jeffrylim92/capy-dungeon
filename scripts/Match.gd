@@ -7249,6 +7249,7 @@ func _build_hud() -> void:
 
 	var pass_header := HBoxContainer.new()
 	pass_header.add_theme_constant_override("separation", 8)
+	pass_header.mouse_filter = Control.MOUSE_FILTER_STOP
 	pass_root.add_child(pass_header)
 
 	var pass_title := Label.new()
@@ -7256,6 +7257,7 @@ func _build_hud() -> void:
 	pass_title.add_theme_font_size_override("font_size", 30)
 	pass_title.add_theme_color_override("font_color", Color(0.95, 0.76, 0.34))
 	pass_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pass_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pass_header.add_child(pass_title)
 
 	_passive_toggle_btn = Button.new()
@@ -7263,6 +7265,7 @@ func _build_hud() -> void:
 	_passive_toggle_btn.custom_minimum_size = Vector2(44, 34)
 	_passive_toggle_btn.add_theme_font_size_override("font_size", 28)
 	_passive_toggle_btn.focus_mode = Control.FOCUS_NONE
+	_passive_toggle_btn.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var tog_s := StyleBoxFlat.new()
 	tog_s.bg_color = Color(0.18, 0.14, 0.08, 0.90)
 	tog_s.corner_radius_top_left = 8
@@ -7273,13 +7276,17 @@ func _build_hud() -> void:
 	_passive_toggle_btn.add_theme_stylebox_override("hover", tog_s)
 	_passive_toggle_btn.add_theme_stylebox_override("pressed", tog_s)
 	_passive_toggle_btn.add_theme_color_override("font_color", Color(0.96, 0.84, 0.50))
-	_passive_toggle_btn.pressed.connect(func() -> void:
-		_passive_collapsed = not _passive_collapsed
-		if _passive_scroll != null:
-			_passive_scroll.visible = not _passive_collapsed
-		_passive_toggle_btn.text = "▾" if _passive_collapsed else "▴"
-	)
 	pass_header.add_child(_passive_toggle_btn)
+	pass_header.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton:
+			var mb := event as InputEventMouseButton
+			if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
+				_toggle_passive_panel()
+		elif event is InputEventScreenTouch:
+			var touch := event as InputEventScreenTouch
+			if touch.pressed:
+				_toggle_passive_panel()
+	)
 
 	_passive_scroll = ScrollContainer.new()
 	_passive_scroll.custom_minimum_size = Vector2(0, 260)
@@ -7297,6 +7304,13 @@ func _build_hud() -> void:
 	# Joystick visual
 	_joy_vis = JoystickVisual.new()
 	hud.add_child(_joy_vis)
+
+func _toggle_passive_panel() -> void:
+	_passive_collapsed = not _passive_collapsed
+	if _passive_scroll != null:
+		_passive_scroll.visible = not _passive_collapsed
+	if _passive_toggle_btn != null:
+		_passive_toggle_btn.text = "▾" if _passive_collapsed else "▴"
 
 func _show_pause_menu() -> void:
 	if _game_over:
