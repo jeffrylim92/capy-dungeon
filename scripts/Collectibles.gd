@@ -380,14 +380,24 @@ func _apply_button_style(btn: Button, border_col: Color, bg_col: Color, font_col
 func _ring_inventory_desc(ring: Dictionary) -> String:
 	var attr: String = String(ring.get("attr", ""))
 	var value: float = float(ring.get("value", 0.0))
+	var vr: Array = ring.get("value_range", []) as Array
+	var has_range: bool = vr.size() >= 2
+	var min_v: float = float(vr[0]) if has_range else value
+	var max_v: float = float(vr[1]) if has_range else value
 	if attr in ["potion_drop_rate", "xp_bonus", "ring_drop_rate", "skill_dmg", "skill_cd", "aoe_radius", "projectile_spd", "crit_chance", "boss_dmg"]:
+		if has_range:
+			return "%s to %s %s" % [_format_percent_value(min_v), _format_percent_value(max_v), _pretty_stat_label(attr)]
 		return "%s %s" % [_format_percent_value(value), _pretty_stat_label(attr)]
 	if attr == "regen":
+		if has_range:
+			return "%s to %s Health per second" % [_format_signed_value(min_v, 1), _format_signed_value(max_v, 1)]
 		return "+%.1f Health per second" % value
 	if attr == "revive_once":
 		return "Revive once"
 	if attr == "timed_shield":
 		return "Timed Shield"
+	if has_range:
+		return "%s to %s %s" % [_format_signed_value(min_v, 0), _format_signed_value(max_v, 0), _pretty_stat_label(attr)]
 	return "+%.0f %s" % [value, _pretty_stat_label(attr)]
 
 func _format_percent_value(value: float) -> String:
@@ -395,6 +405,12 @@ func _format_percent_value(value: float) -> String:
 	if abs(pct) < 1.0 and abs(pct) > 0.0:
 		return "%+.1f%%" % pct
 	return "%+d%%" % int(round(pct))
+
+func _format_signed_value(value: float, decimals: int) -> String:
+	var fmt_value: String = String.num(value, decimals)
+	if value >= 0.0:
+		return "+%s" % fmt_value
+	return fmt_value
 
 func _pretty_stat_label(stat_key: String) -> String:
 	match stat_key:

@@ -23,7 +23,7 @@ const RING_POOL: Array[Dictionary] = [
 ]
 
 const RARITY_WEIGHTS: Dictionary = { "common": 60, "rare": 30, "epic": 10 }
-const MERGE_VALUE_MULT: float = 1.20
+const MERGE_VALUE_MULT: float = 1.25
 const RARITY_COLORS: Dictionary  = {
 	"common": Color(0.80, 0.80, 0.80),
 	"rare":   Color(0.30, 0.55, 1.0),
