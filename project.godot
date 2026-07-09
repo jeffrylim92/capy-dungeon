@@ -11,7 +11,9 @@ config_version=5
 [admob]
 
 "##AdMobAppIDsâreplacewithyourrealAppIDsbeforepublishing.##TestAppIDs(safetouseduringdevelopment):##Android:ca-app-pub-3940256099942544~3347511713##iOS:ca-app-pub-3940256099942544~1458002511##â ï¸RealAppIDsarefoundinAdMobconsoleâAppsâAppsettings.android/app_id"="ca-app-pub-3940256099942544~3347511713"
-ios/app_id="ca-app-pub-3940256099942544~1458002511"
+ios/app_id="ca-app-pub-9375037645592356~4336379564"
+ios/rewarded_unit_id="ca-app-pub-9375037645592356/7548067502"
+ios/interstitial_unit_id="ca-app-pub-9375037645592356/4808976683"
 android/app_id="ca-app-pub-9375037645592356~3477746977"
 
 [animation]

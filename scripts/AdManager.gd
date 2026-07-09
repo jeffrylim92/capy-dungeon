@@ -119,14 +119,24 @@ func _build_interstitial_callback() -> void:
 		_interstitial_ad.full_screen_content_callback = fsc
 
 func _preload_rewarded() -> void:
-	var unit_id := AD_UNIT_REWARDED_ANDROID if OS.get_name() == "Android" \
-		else AD_UNIT_REWARDED_IOS
+	var unit_id := _get_rewarded_unit_id()
 	ClassDB.instantiate("RewardedAdLoader").load(unit_id, ClassDB.instantiate("AdRequest"), _rewarded_load_cb)
 
 func _preload_interstitial() -> void:
-	var unit_id := AD_UNIT_INTERSTITIAL_ANDROID if OS.get_name() == "Android" \
-		else AD_UNIT_INTERSTITIAL_IOS
+	var unit_id := _get_interstitial_unit_id()
 	ClassDB.instantiate("InterstitialAdLoader").load(unit_id, ClassDB.instantiate("AdRequest"), _interstitial_load_cb)
+
+func _get_rewarded_unit_id() -> String:
+	if OS.get_name() == "Android":
+		return AD_UNIT_REWARDED_ANDROID
+	var configured := str(ProjectSettings.get_setting("admob/ios/rewarded_unit_id", ""))
+	return configured if not configured.is_empty() else AD_UNIT_REWARDED_IOS
+
+func _get_interstitial_unit_id() -> String:
+	if OS.get_name() == "Android":
+		return AD_UNIT_INTERSTITIAL_ANDROID
+	var configured := str(ProjectSettings.get_setting("admob/ios/interstitial_unit_id", ""))
+	return configured if not configured.is_empty() else AD_UNIT_INTERSTITIAL_IOS
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
