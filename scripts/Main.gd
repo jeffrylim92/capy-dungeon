@@ -461,7 +461,7 @@ func _begin_startup_checks() -> void:
 			if required:
 				_gate_mode = "force_update"
 				_update_url_pending = String(info.get("url", _default_update_url_for_platform()))
-				_show_gate_message("Update required", String(info.get("message", "A newer app version is available. Please update to continue.")), _update_button_text_for_platform(), "Quit")
+				_show_gate_message("Update required", String(info.get("message", "A newer app version is available. Please update to continue.")), _update_button_text_for_url(_update_url_pending), "Quit")
 				return
 			_gate_mode = "none"
 			_hide_gate()
@@ -644,11 +644,14 @@ func _check_ios_update(callback: Callable) -> void:
 		callback.call({"checked": true, "required": false, "url": _default_update_url_for_platform(), "message": ""})
 		return
 	var current_short: String = _get_ios_short_version()
+	if current_short.is_empty():
+		current_short = String(ProjectSettings.get_setting("application/config/version", "0.0.0")).strip_edges()
+	if current_short.is_empty():
+		current_short = "0.0.0"
 	var current_build: int = _get_ios_build_code()
-	if current_short.is_empty() or current_build <= 0:
-		DebugLog.log("[Main] _check_ios_update: invalid local version short='%s' build=%d" % [current_short, current_build])
-		callback.call({"checked": false, "required": false, "url": _default_update_url_for_platform(), "message": ""})
-		return
+	if current_build <= 0:
+		current_build = max(int(ProjectSettings.get_setting("application/config/version_code", 0)), 0)
+	DebugLog.log("[Main] _check_ios_update: local short='%s' build=%d" % [current_short, current_build])
 	var query_url := "%s?current_short_version=%s&current_build=%d" % [
 		IOS_VERSION_CHECK_URL,
 		current_short.uri_encode(),
@@ -724,6 +727,15 @@ func _update_button_text_for_platform() -> String:
 		return "Open App Store"
 	return "Open Store"
 
+func _update_button_text_for_url(url: String) -> String:
+	if OS.get_name() == "iOS":
+		var lowered: String = url.to_lower()
+		if lowered.find("testflight.apple.com") != -1:
+			return "Open TestFlight"
+		if lowered.find("apps.apple.com") != -1:
+			return "Open App Store"
+	return _update_button_text_for_platform()
+
 func _get_ios_short_version() -> String:
 	var raw: Variant = ProjectSettings.get_setting("application/config/version", "")
 	return String(raw).strip_edges()
@@ -743,9 +755,9 @@ func _get_ios_build_code() -> int:
 	return max(fallback, 0)
 
 func _compare_semver(a: String, b: String) -> int:
-	var a_parts := a.split(".", false)
-	var b_parts := b.split(".", false)
-	var max_len := max(a_parts.size(), b_parts.size())
+	var a_parts: PackedStringArray = a.split(".", false)
+	var b_parts: PackedStringArray = b.split(".", false)
+	var max_len: int = maxi(a_parts.size(), b_parts.size())
 	for i in range(max_len):
 		var ai: int = 0
 		var bi: int = 0
