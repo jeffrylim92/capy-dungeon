@@ -4825,8 +4825,8 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 		if is_boss:
 			_boss_keys += 1
 			_try_drop_dungeon_key(ep, ekind)
-		# Ring drop: boosted chance from any boss.
-		var ring_rate: float = 0.15 + _ring_bonus("ring_drop_rate")
+		# Ring drop: 60% base chance from any boss (+ ring bonus, clamped).
+		var ring_rate: float = min(1.0, 0.60 + _ring_bonus("ring_drop_rate"))
 		if is_boss and randf() < ring_rate:
 			var ring: Dictionary = RingStore.roll_ring()
 			_ring_drops.append({"pos": ep + Vector2(randf_range(-30, 30), randf_range(-30, 30)), "life": 20.0, "ring": ring})
@@ -7225,7 +7225,7 @@ func _build_hud() -> void:
 	var passive_w: float = clamp(view.x * 0.33, 320.0, 420.0)
 	_passive_panel = PanelContainer.new()
 	_passive_panel.custom_minimum_size = Vector2(passive_w, 0)
-	_passive_panel.position = Vector2(view.x - passive_w - 26.0, 126)
+	_passive_panel.position = Vector2(view.x - passive_w - 46.0, 126)
 	var pass_panel_style := StyleBoxFlat.new()
 	pass_panel_style.bg_color = Color(0.06, 0.05, 0.04, 0.92)
 	pass_panel_style.border_color = Color(0.78, 0.58, 0.22, 0.88)
@@ -7250,7 +7250,7 @@ func _build_hud() -> void:
 	var pass_header := HBoxContainer.new()
 	pass_header.add_theme_constant_override("separation", 8)
 	pass_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pass_header.custom_minimum_size = Vector2(0, 42)
+	pass_header.custom_minimum_size = Vector2(0, 56)
 	pass_header.mouse_filter = Control.MOUSE_FILTER_STOP
 	pass_header.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	pass_root.add_child(pass_header)
@@ -7261,12 +7261,11 @@ func _build_hud() -> void:
 	pass_title.add_theme_color_override("font_color", Color(0.95, 0.76, 0.34))
 	pass_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pass_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pass_header.add_child(pass_title)
 
 	_passive_toggle_btn = Button.new()
 	_passive_toggle_btn.text = "▾" if _passive_collapsed else "▴"
-	_passive_toggle_btn.custom_minimum_size = Vector2(64, 42)
-	_passive_toggle_btn.add_theme_font_size_override("font_size", 28)
+	_passive_toggle_btn.custom_minimum_size = Vector2(54, 38)
+	_passive_toggle_btn.add_theme_font_size_override("font_size", 18)
 	_passive_toggle_btn.focus_mode = Control.FOCUS_NONE
 	_passive_toggle_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	var tog_s := StyleBoxFlat.new()
@@ -7281,7 +7280,9 @@ func _build_hud() -> void:
 	_passive_toggle_btn.add_theme_color_override("font_color", Color(0.96, 0.84, 0.50))
 	_passive_toggle_btn.pressed.connect(_toggle_passive_panel)
 	pass_header.add_child(_passive_toggle_btn)
+	pass_header.add_child(pass_title)
 	pass_header.gui_input.connect(func(event: InputEvent) -> void:
+		# Handle touches directly on header row (child controls consume input first on mobile).
 		if event is InputEventMouseButton:
 			var mb := event as InputEventMouseButton
 			if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
@@ -8591,6 +8592,17 @@ func _start_revive_ad(death_layer: Node, revive_btn: Button = null, status_lbl: 
 	if status_lbl != null and is_instance_valid(status_lbl):
 		status_lbl.text = "Please wait..."
 
+	# iOS/no-fill path: do not attempt show until a rewarded ad is actually ready.
+	if _ad_manager.has_method("is_rewarded_ready") and not bool(_ad_manager.call("is_rewarded_ready")):
+		if _ad_manager.has_method("request_rewarded_ad"):
+			_ad_manager.call("request_rewarded_ad")
+		if revive_btn != null and is_instance_valid(revive_btn):
+			revive_btn.disabled = false
+			revive_btn.text = "📺  Watch Ad to Revive"
+		if status_lbl != null and is_instance_valid(status_lbl):
+			status_lbl.text = "Ad is loading. Please try again in a few seconds."
+		return
+
 	var ad_state := {"done": false}
 	_ad_manager.rewarded_ad_completed.connect(func() -> void:
 		ad_state["done"] = true
@@ -8604,6 +8616,15 @@ func _start_revive_ad(death_layer: Node, revive_btn: Button = null, status_lbl: 
 		if status_lbl != null and is_instance_valid(status_lbl):
 			status_lbl.text = "Ad closed or unavailable. Try again."
 	, CONNECT_ONE_SHOT)
+	if _ad_manager.has_signal("rewarded_ad_unavailable"):
+		_ad_manager.rewarded_ad_unavailable.connect(func() -> void:
+			ad_state["done"] = true
+			if revive_btn != null and is_instance_valid(revive_btn):
+				revive_btn.disabled = false
+				revive_btn.text = "📺  Watch Ad to Revive"
+			if status_lbl != null and is_instance_valid(status_lbl):
+				status_lbl.text = "No ad available right now. Please try again shortly."
+		, CONNECT_ONE_SHOT)
 	_ad_manager.show_rewarded_ad()
 
 	# Some mobile SDK failure paths never call callbacks; avoid dead button state.

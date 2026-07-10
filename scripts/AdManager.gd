@@ -32,6 +32,8 @@ const AD_UNIT_INTERSTITIAL_IOS:     String = "ca-app-pub-3940256099942544/441146
 signal rewarded_ad_completed
 ## Emitted when a rewarded ad is dismissed without completing (no reward).
 signal rewarded_ad_skipped
+## Emitted when rewarded ad cannot be shown (not ready / failed to load/show).
+signal rewarded_ad_unavailable
 ## Emitted when an interstitial ad closes (used for post-match / between screens).
 signal interstitial_closed
 
@@ -48,6 +50,7 @@ var _reward_earned: bool = false
 ## Re-usable load callbacks (created once in _ready, never replaced).
 var _rewarded_load_cb     = null
 var _interstitial_load_cb = null
+var _rewarded_retry_timer: Timer = null
 
 # ── Fake-ad state (desktop / dev only) ───────────────────────────────────────
 const FAKE_AD_DURATION: float = 3.0
@@ -61,6 +64,11 @@ var _fake_layer: CanvasLayer = null
 func _ready() -> void:
 	_plugin_available = Engine.has_singleton("MobileAds")
 	_can_simulate_ads = OS.has_feature("editor") or OS.get_name() in ["Windows", "macOS", "Linux"]
+	_rewarded_retry_timer = Timer.new()
+	_rewarded_retry_timer.one_shot = true
+	_rewarded_retry_timer.wait_time = 2.0
+	_rewarded_retry_timer.timeout.connect(_preload_rewarded)
+	add_child(_rewarded_retry_timer)
 	if _plugin_available:
 		_init_plugin()
 	else:
@@ -84,6 +92,9 @@ func _build_rewarded_callback() -> void:
 	_rewarded_load_cb = ClassDB.instantiate("RewardedAdLoadCallback")
 	_rewarded_load_cb.on_ad_failed_to_load = func(error) -> void:
 		push_warning("AdManager: rewarded ad failed to load — " + error.message)
+		_rewarded_ad = null
+		if _rewarded_retry_timer != null:
+			_rewarded_retry_timer.start()
 	_rewarded_load_cb.on_ad_loaded = func(ad) -> void:
 		_rewarded_ad = ad
 		var fsc = ClassDB.instantiate("FullScreenContentCallback")
@@ -97,7 +108,7 @@ func _build_rewarded_callback() -> void:
 			_preload_rewarded()          # pre-load for next show
 		fsc.on_ad_failed_to_show_full_screen_content = func(error) -> void:
 			push_warning("AdManager: rewarded ad failed to show — " + error.message)
-			rewarded_ad_skipped.emit()
+			rewarded_ad_unavailable.emit()
 			_rewarded_ad = null
 			_preload_rewarded()
 		_rewarded_ad.full_screen_content_callback = fsc
@@ -155,7 +166,7 @@ func show_rewarded_ad() -> void:
 	elif _can_simulate_ads:
 		_show_fake_ad(true)
 	else:
-		rewarded_ad_skipped.emit()
+		rewarded_ad_unavailable.emit()
 
 ## Show an interstitial ad (no reward). Emits interstitial_closed when done.
 func show_interstitial_ad() -> void:
@@ -170,14 +181,24 @@ func show_interstitial_ad() -> void:
 
 func _show_real_rewarded_ad() -> void:
 	if _rewarded_ad == null:
-		push_warning("AdManager: rewarded ad not ready yet — falling back to fake")
-		_show_fake_ad(true)
+		push_warning("AdManager: rewarded ad not ready yet")
+		_preload_rewarded()
+		rewarded_ad_unavailable.emit()
 		return
+	if _rewarded_retry_timer != null:
+		_rewarded_retry_timer.stop()
+	_reward_earned = false
 	var listener = ClassDB.instantiate("OnUserEarnedRewardListener")
 	# _reward_earned is read by the FullScreenContentCallback dismissal handler.
 	listener.on_user_earned_reward = func(_reward) -> void:
 		_reward_earned = true
 	_rewarded_ad.show(listener)
+
+func is_rewarded_ready() -> bool:
+	return _rewarded_ad != null
+
+func request_rewarded_ad() -> void:
+	_preload_rewarded()
 
 func _show_real_interstitial_ad() -> void:
 	if _interstitial_ad == null:

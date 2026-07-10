@@ -1426,7 +1426,7 @@ func _equip_item_from_stash(item_type: String, data: Dictionary) -> void:
 
 func _ring_bonus_text(ring: Dictionary) -> String:
 	var attr: String = ring.get("attr", "") as String
-	var value: float = _ring_base_t1_value(attr, float(ring.get("value", 0.0)))
+	var value: float = float(ring.get("value", 0.0))
 	if attr in ["potion_drop_rate", "xp_bonus", "ring_drop_rate", "skill_dmg", "skill_cd", "aoe_radius", "projectile_spd", "crit_chance", "boss_dmg"]:
 		return "%s %s" % [_format_percent_value(value), _pretty_stat_label(attr)]
 	if attr == "regen":
