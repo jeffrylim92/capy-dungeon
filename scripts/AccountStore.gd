@@ -5,6 +5,7 @@ extends RefCounted
 ## hashed passwords. This is a prototype — not a substitute for real auth.
 
 const ACCOUNTS_PATH := "user://accounts.json"
+const SESSION_PATH := "user://session.json"
 const MIN_USERNAME_LEN := 3
 const MIN_PASSWORD_LEN := 4
 
@@ -38,6 +39,64 @@ static func _save_all(data: Dictionary) -> bool:
 	f.store_string(JSON.stringify(data, "\t"))
 	f.close()
 	return true
+
+static func save_persistent_session(account: Dictionary) -> void:
+	var username: String = String(account.get("username", "")).strip_edges()
+	if username.is_empty():
+		clear_persistent_session()
+		return
+	var payload := {
+		"username": username,
+		"snapshot": account,
+	}
+	var f := FileAccess.open(SESSION_PATH, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify(payload))
+	f.close()
+
+static func load_persistent_session() -> Variant:
+	if not FileAccess.file_exists(SESSION_PATH):
+		return null
+	var f := FileAccess.open(SESSION_PATH, FileAccess.READ)
+	if f == null:
+		return null
+	var raw: String = f.get_as_text()
+	f.close()
+	var parsed: Variant = JSON.parse_string(raw)
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return null
+	var data: Dictionary = parsed as Dictionary
+	var username: String = String(data.get("username", "")).strip_edges()
+	var snapshot: Dictionary = data.get("snapshot", {}) as Dictionary
+	if username.is_empty():
+		return snapshot if not snapshot.is_empty() else null
+
+	if username.to_lower() == DEV_USERNAME.to_lower():
+		if not snapshot.is_empty():
+			return snapshot
+		return {
+			"username": DEV_USERNAME,
+			"display_name": "Dev Admin",
+			"favorite_capy": "",
+			"is_dev": true,
+			"created_at": Time.get_datetime_string_from_system(true),
+		}
+
+	var accounts := _load_all()
+	var key := username.to_lower()
+	if accounts.has(key):
+		var acc: Dictionary = accounts[key] as Dictionary
+		for field in ["display_name", "favorite_capy", "social_provider", "social_provider_id", "social_email", "social_links", "is_dev", "created_at"]:
+			if snapshot.has(field) and (not acc.has(field) or String(acc.get(field, "")).is_empty()):
+				acc[field] = snapshot[field]
+		return acc
+
+	return snapshot if not snapshot.is_empty() else null
+
+static func clear_persistent_session() -> void:
+	if FileAccess.file_exists(SESSION_PATH):
+		DirAccess.remove_absolute(SESSION_PATH)
 
 static func exists(username: String) -> bool:
 	return _load_all().has(username.to_lower())

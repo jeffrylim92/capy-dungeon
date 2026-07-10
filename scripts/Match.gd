@@ -7249,7 +7249,10 @@ func _build_hud() -> void:
 
 	var pass_header := HBoxContainer.new()
 	pass_header.add_theme_constant_override("separation", 8)
+	pass_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pass_header.custom_minimum_size = Vector2(0, 42)
 	pass_header.mouse_filter = Control.MOUSE_FILTER_STOP
+	pass_header.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	pass_root.add_child(pass_header)
 
 	var pass_title := Label.new()
@@ -7262,10 +7265,10 @@ func _build_hud() -> void:
 
 	_passive_toggle_btn = Button.new()
 	_passive_toggle_btn.text = "▾" if _passive_collapsed else "▴"
-	_passive_toggle_btn.custom_minimum_size = Vector2(44, 34)
+	_passive_toggle_btn.custom_minimum_size = Vector2(64, 42)
 	_passive_toggle_btn.add_theme_font_size_override("font_size", 28)
 	_passive_toggle_btn.focus_mode = Control.FOCUS_NONE
-	_passive_toggle_btn.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_passive_toggle_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	var tog_s := StyleBoxFlat.new()
 	tog_s.bg_color = Color(0.18, 0.14, 0.08, 0.90)
 	tog_s.corner_radius_top_left = 8
@@ -7276,6 +7279,7 @@ func _build_hud() -> void:
 	_passive_toggle_btn.add_theme_stylebox_override("hover", tog_s)
 	_passive_toggle_btn.add_theme_stylebox_override("pressed", tog_s)
 	_passive_toggle_btn.add_theme_color_override("font_color", Color(0.96, 0.84, 0.50))
+	_passive_toggle_btn.pressed.connect(_toggle_passive_panel)
 	pass_header.add_child(_passive_toggle_btn)
 	pass_header.gui_input.connect(func(event: InputEvent) -> void:
 		if event is InputEventMouseButton:
@@ -7326,6 +7330,7 @@ func _show_pause_menu() -> void:
 	var overlay := ColorRect.new()
 	overlay.color = Color(0.0, 0.0, 0.0, 0.62)
 	overlay.size  = view
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	layer.add_child(overlay)
 
 	var panel := PanelContainer.new()
@@ -7349,6 +7354,21 @@ func _show_pause_menu() -> void:
 	panel.position = Vector2((view.x - pw) * 0.5, view.y * 0.22)
 	panel.z_index  = 1
 	layer.add_child(panel)
+
+	overlay.gui_input.connect(func(event: InputEvent) -> void:
+		if layer.get_node_or_null("ReturnToMenuConfirm") != null:
+			return
+		if event is InputEventMouseButton:
+			var mb := event as InputEventMouseButton
+			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not panel.get_global_rect().has_point(mb.global_position):
+				layer.queue_free()
+				_paused = false
+		elif event is InputEventScreenTouch:
+			var touch_event := event as InputEventScreenTouch
+			if touch_event.pressed and not panel.get_global_rect().has_point(touch_event.global_position):
+				layer.queue_free()
+				_paused = false
+	)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 22)
@@ -7397,6 +7417,7 @@ func _show_pause_menu() -> void:
 func _show_return_to_menu_confirm(parent_layer: CanvasLayer) -> void:
 	var view: Vector2 = get_viewport_rect().size
 	var confirm := PanelContainer.new()
+	confirm.name = "ReturnToMenuConfirm"
 	var cs := StyleBoxFlat.new()
 	cs.bg_color = Color(0.12, 0.07, 0.07, 0.98)
 	cs.corner_radius_top_left = 18
@@ -8306,9 +8327,17 @@ func _on_death() -> void:
 		rh.corner_radius_bottom_right = 28; rh.corner_radius_bottom_left = 28
 		rh.set_border_width_all(3); rh.border_color = Color(0.40, 1.00, 0.40)
 		revive_btn.add_theme_stylebox_override("hover", rh)
+		var revive_status := Label.new()
+		revive_status.text = ""
+		revive_status.add_theme_font_size_override("font_size", 20)
+		revive_status.add_theme_color_override("font_color", Color(0.82, 0.82, 0.82))
+		revive_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		revive_status.position = Vector2(0, revive_y - 30)
+		revive_status.size = Vector2(view.x, 26)
+		layer.add_child(revive_status)
 		var cap_layer: Node = layer
 		revive_btn.pressed.connect(func() -> void:
-			_start_revive_ad(cap_layer)
+			_start_revive_ad(cap_layer, revive_btn, revive_status)
 		)
 		layer.add_child(revive_btn)
 
@@ -8546,15 +8575,47 @@ func _format_ring_bonus(ring: Dictionary) -> String:
 		return "+%.1f HP/s" % value
 	return "+%.0f %s" % [value, attr]
 
-func _start_revive_ad(death_layer: Node) -> void:
-	_ad_manager.rewarded_ad_completed.connect(
-		func() -> void: _do_revive(death_layer), CONNECT_ONE_SHOT
-	)
-	_ad_manager.rewarded_ad_skipped.connect(
-		func() -> void: pass,   # player closed ad early — no revive, screen stays
-		CONNECT_ONE_SHOT
-	)
+func _start_revive_ad(death_layer: Node, revive_btn: Button = null, status_lbl: Label = null) -> void:
+	if _ad_manager == null:
+		if status_lbl != null and is_instance_valid(status_lbl):
+			status_lbl.text = "Ad system unavailable."
+		if revive_btn != null and is_instance_valid(revive_btn):
+			revive_btn.disabled = false
+			if revive_btn.text.is_empty():
+				revive_btn.text = "📺  Watch Ad to Revive"
+		return
+
+	if revive_btn != null and is_instance_valid(revive_btn):
+		revive_btn.disabled = true
+		revive_btn.text = "Loading ad..."
+	if status_lbl != null and is_instance_valid(status_lbl):
+		status_lbl.text = "Please wait..."
+
+	var ad_state := {"done": false}
+	_ad_manager.rewarded_ad_completed.connect(func() -> void:
+		ad_state["done"] = true
+		_do_revive(death_layer)
+	, CONNECT_ONE_SHOT)
+	_ad_manager.rewarded_ad_skipped.connect(func() -> void:
+		ad_state["done"] = true
+		if revive_btn != null and is_instance_valid(revive_btn):
+			revive_btn.disabled = false
+			revive_btn.text = "📺  Watch Ad to Revive"
+		if status_lbl != null and is_instance_valid(status_lbl):
+			status_lbl.text = "Ad closed or unavailable. Try again."
+	, CONNECT_ONE_SHOT)
 	_ad_manager.show_rewarded_ad()
+
+	# Some mobile SDK failure paths never call callbacks; avoid dead button state.
+	get_tree().create_timer(5.0).timeout.connect(func() -> void:
+		if bool(ad_state.get("done", false)):
+			return
+		if revive_btn != null and is_instance_valid(revive_btn):
+			revive_btn.disabled = false
+			revive_btn.text = "📺  Watch Ad to Revive"
+		if status_lbl != null and is_instance_valid(status_lbl):
+			status_lbl.text = "Ad request timed out. Please try again."
+	)
 
 func _do_revive(death_layer: Node) -> void:
 	_ad_revive_used = true

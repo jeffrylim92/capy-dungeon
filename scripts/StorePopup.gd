@@ -59,6 +59,19 @@ func _build_ui() -> void:
 	panel.custom_minimum_size = Vector2(pw, ph)
 	add_child(panel)
 
+	overlay.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton:
+			var mb := event as InputEventMouseButton
+			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not panel.get_global_rect().has_point(mb.global_position):
+				closed.emit()
+				queue_free()
+		elif event is InputEventScreenTouch:
+			var st := event as InputEventScreenTouch
+			if st.pressed and not panel.get_global_rect().has_point(st.global_position):
+				closed.emit()
+				queue_free()
+	)
+
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 18)
 	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL

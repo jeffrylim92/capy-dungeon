@@ -37,6 +37,7 @@ signal interstitial_closed
 
 # ── Plugin state ──────────────────────────────────────────────────────────────
 var _plugin_available: bool = false
+var _can_simulate_ads: bool = false
 ## Loaded RewardedAd instance (null while loading / not yet preloaded).
 var _rewarded_ad    = null
 ## Loaded InterstitialAd instance.
@@ -59,12 +60,13 @@ var _fake_layer: CanvasLayer = null
 
 func _ready() -> void:
 	_plugin_available = Engine.has_singleton("MobileAds")
+	_can_simulate_ads = OS.has_feature("editor") or OS.get_name() in ["Windows", "macOS", "Linux"]
 	if _plugin_available:
 		_init_plugin()
 	else:
 		push_warning(
-			"AdManager: MobileAds singleton not found — running fake ads. " +
-			"Install godot-admob-plugin and rebuild the Android/iOS export to enable real ads."
+			"AdManager: MobileAds singleton not found. " +
+			"Fake ads are enabled only in editor/desktop simulation mode."
 		)
 
 # ── Plugin initialisation ─────────────────────────────────────────────────────
@@ -129,13 +131,19 @@ func _preload_interstitial() -> void:
 func _get_rewarded_unit_id() -> String:
 	if OS.get_name() == "Android":
 		return AD_UNIT_REWARDED_ANDROID
-	var configured := str(ProjectSettings.get_setting("admob/ios/rewarded_unit_id", ""))
+	var configured := str(ProjectSettings.get_setting("ad_units/ios/rewarded_unit_id", ""))
+	if configured.is_empty():
+		# Backward compatibility with older project setting key.
+		configured = str(ProjectSettings.get_setting("admob/ios/rewarded_unit_id", ""))
 	return configured if not configured.is_empty() else AD_UNIT_REWARDED_IOS
 
 func _get_interstitial_unit_id() -> String:
 	if OS.get_name() == "Android":
 		return AD_UNIT_INTERSTITIAL_ANDROID
-	var configured := str(ProjectSettings.get_setting("admob/ios/interstitial_unit_id", ""))
+	var configured := str(ProjectSettings.get_setting("ad_units/ios/interstitial_unit_id", ""))
+	if configured.is_empty():
+		# Backward compatibility with older project setting key.
+		configured = str(ProjectSettings.get_setting("admob/ios/interstitial_unit_id", ""))
 	return configured if not configured.is_empty() else AD_UNIT_INTERSTITIAL_IOS
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -144,15 +152,19 @@ func _get_interstitial_unit_id() -> String:
 func show_rewarded_ad() -> void:
 	if _plugin_available:
 		_show_real_rewarded_ad()
-	else:
+	elif _can_simulate_ads:
 		_show_fake_ad(true)
+	else:
+		rewarded_ad_skipped.emit()
 
 ## Show an interstitial ad (no reward). Emits interstitial_closed when done.
 func show_interstitial_ad() -> void:
 	if _plugin_available:
 		_show_real_interstitial_ad()
-	else:
+	elif _can_simulate_ads:
 		_finish_fake_ad(false)
+	else:
+		interstitial_closed.emit()
 
 # ── Real ad implementations ───────────────────────────────────────────────────
 

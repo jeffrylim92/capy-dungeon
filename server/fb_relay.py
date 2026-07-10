@@ -683,6 +683,14 @@ ANDROID_PLAY_STORE_URL = os.environ.get(
     "ANDROID_PLAY_STORE_URL",
     "https://play.google.com/store/apps/details?id=com.capydungeon.game",
 )
+IOS_APP_STORE_URL = os.environ.get(
+    "IOS_APP_STORE_URL",
+    "",
+)
+IOS_TESTFLIGHT_URL = os.environ.get(
+    "IOS_TESTFLIGHT_URL",
+    "",
+)
 
 
 def _env_int(name: str, default: int = 0) -> int:
@@ -694,6 +702,45 @@ def _env_int(name: str, default: int = 0) -> int:
 
 ANDROID_LATEST_VERSION_CODE = _env_int("ANDROID_LATEST_VERSION_CODE", 0)
 ANDROID_MIN_SUPPORTED_VERSION_CODE = _env_int("ANDROID_MIN_SUPPORTED_VERSION_CODE", 0)
+IOS_LATEST_SHORT_VERSION = os.environ.get("IOS_LATEST_SHORT_VERSION", "").strip()
+IOS_LATEST_BUILD = _env_int("IOS_LATEST_BUILD", 0)
+IOS_MIN_SUPPORTED_SHORT_VERSION = os.environ.get("IOS_MIN_SUPPORTED_SHORT_VERSION", "").strip()
+IOS_MIN_SUPPORTED_BUILD = _env_int("IOS_MIN_SUPPORTED_BUILD", 0)
+
+
+def _parse_version_parts(version: str) -> list[int]:
+    raw = str(version or "").strip()
+    if not raw:
+        return []
+    out: list[int] = []
+    for piece in raw.split("."):
+        token = piece.strip()
+        if not token:
+            out.append(0)
+            continue
+        digits = ""
+        for ch in token:
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        out.append(int(digits) if digits else 0)
+    return out
+
+
+def _compare_versions(a: str, b: str) -> int:
+    """Return -1 if a<b, 1 if a>b, else 0 for dotted numeric versions."""
+    a_parts = _parse_version_parts(a)
+    b_parts = _parse_version_parts(b)
+    max_len = max(len(a_parts), len(b_parts))
+    for i in range(max_len):
+        av = a_parts[i] if i < len(a_parts) else 0
+        bv = b_parts[i] if i < len(b_parts) else 0
+        if av < bv:
+            return -1
+        if av > bv:
+            return 1
+    return 0
 
 # ── State-keyed result cache ──────────────────────────────────────────────────
 # Facebook's safety crawler hits the redirect URL before the user's browser,
@@ -842,6 +889,54 @@ async def app_version_android(current_version_code: int = Query(0, ge=0)) -> dic
         "min_supported_version_code": minimum,
         "update_required": update_required,
         "play_store_url": ANDROID_PLAY_STORE_URL,
+        "message": message,
+    }
+
+
+@app.get("/app/version/ios")
+async def app_version_ios(
+    current_short_version: str = Query(""),
+    current_build: int = Query(0, ge=0),
+) -> dict:
+    current_short = current_short_version.strip()
+
+    min_short = IOS_MIN_SUPPORTED_SHORT_VERSION
+    min_build = max(IOS_MIN_SUPPORTED_BUILD, 0)
+    latest_short = IOS_LATEST_SHORT_VERSION
+    latest_build = max(IOS_LATEST_BUILD, 0)
+
+    update_required = False
+    reasons: list[str] = []
+
+    if min_short:
+        if not current_short or _compare_versions(current_short, min_short) < 0:
+            update_required = True
+            reasons.append("short_version")
+
+    if min_build > 0 and current_build < min_build:
+        update_required = True
+        reasons.append("build")
+
+    message = (
+        "A newer iOS version is available. Please update to continue."
+        if update_required
+        else ""
+    )
+
+    return {
+        "ok": True,
+        "platform": "ios",
+        "current_short_version": current_short,
+        "current_build": current_build,
+        "latest_short_version": latest_short,
+        "latest_build": latest_build,
+        "min_short_version": min_short,
+        "min_build": min_build,
+        "update_required": update_required,
+        "reason": ",".join(reasons),
+        "app_store_url": IOS_APP_STORE_URL,
+        "testflight_url": IOS_TESTFLIGHT_URL,
+        "url": IOS_TESTFLIGHT_URL or IOS_APP_STORE_URL,
         "message": message,
     }
 

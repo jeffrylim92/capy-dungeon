@@ -884,6 +884,8 @@ func _rebuild_stash() -> void:
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		btn.clip_text = true
 		btn.text = ""
+		# Allow drag gestures to bubble to ScrollContainer while keeping tap-to-open.
+		btn.mouse_filter = Control.MOUSE_FILTER_PASS
 		btn.add_child(_build_stash_card_content(item_type, data, count))
 
 		var disabled: bool = false
@@ -1062,6 +1064,7 @@ func _show_item_action_popup(item_type: String, data: Dictionary, from_equipped:
 	var blocker := ColorRect.new()
 	blocker.color = Color(0.0, 0.0, 0.0, 0.62)
 	blocker.size = view
+	blocker.mouse_filter = Control.MOUSE_FILTER_STOP
 	layer.add_child(blocker)
 
 	var panel := PanelContainer.new()
@@ -1069,6 +1072,17 @@ func _show_item_action_popup(item_type: String, data: Dictionary, from_equipped:
 	panel.position = Vector2((view.x - panel.custom_minimum_size.x) * 0.5, view.y * 0.16)
 	panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.90, 0.68, 0.20, 0.98), Color(0.03, 0.04, 0.08, 0.99), 18, 3))
 	layer.add_child(panel)
+
+	blocker.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton:
+			var mb := event as InputEventMouseButton
+			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not panel.get_global_rect().has_point(mb.global_position):
+				_close_item_action_popup()
+		elif event is InputEventScreenTouch:
+			var st := event as InputEventScreenTouch
+			if st.pressed and not panel.get_global_rect().has_point(st.global_position):
+				_close_item_action_popup()
+	)
 
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 12)
@@ -1245,6 +1259,7 @@ func _show_replace_slot_popup(item_type: String, data: Dictionary) -> void:
 	var blocker := ColorRect.new()
 	blocker.color = Color(0.0, 0.0, 0.0, 0.70)
 	blocker.size = view
+	blocker.mouse_filter = Control.MOUSE_FILTER_STOP
 	layer.add_child(blocker)
 
 	var panel := PanelContainer.new()
@@ -1252,6 +1267,17 @@ func _show_replace_slot_popup(item_type: String, data: Dictionary) -> void:
 	panel.position = Vector2((view.x - panel.custom_minimum_size.x) * 0.5, view.y * 0.28)
 	panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.88, 0.66, 0.20, 0.96), Color(0.05, 0.06, 0.09, 0.98), 16, 2))
 	layer.add_child(panel)
+
+	blocker.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton:
+			var mb := event as InputEventMouseButton
+			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not panel.get_global_rect().has_point(mb.global_position):
+				_close_item_action_popup()
+		elif event is InputEventScreenTouch:
+			var st := event as InputEventScreenTouch
+			if st.pressed and not panel.get_global_rect().has_point(st.global_position):
+				_close_item_action_popup()
+	)
 
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 10)

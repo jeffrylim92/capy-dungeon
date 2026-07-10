@@ -1383,6 +1383,17 @@ func _show_match_detail_modal(record: Dictionary) -> void:
 	panel.add_theme_stylebox_override("panel", st)
 	layer.add_child(panel)
 
+	overlay.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton:
+			var mb := event as InputEventMouseButton
+			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not panel.get_global_rect().has_point(mb.global_position):
+				layer.queue_free()
+		elif event is InputEventScreenTouch:
+			var touch_event := event as InputEventScreenTouch
+			if touch_event.pressed and not panel.get_global_rect().has_point(touch_event.global_position):
+				layer.queue_free()
+	)
+
 	var root := VBoxContainer.new()
 	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.size_flags_vertical = Control.SIZE_EXPAND_FILL

@@ -190,37 +190,29 @@ static func remove_artifact_from_stash(username: String, artifact_id: String) ->
 static func load_equipped(username: String) -> Dictionary:
 	var path: String = _equip_path(username)
 	if not FileAccess.file_exists(path):
-		return {"slot_0": null, "slot_1": null}
+		return {}
 	var f := FileAccess.open(path, FileAccess.READ)
 	var data: Variant = JSON.parse_string(f.get_as_text())
 	f.close()
 	if not (data is Dictionary):
-		return {"slot_0": null, "slot_1": null}
+		return {}
 	var equipped_data: Dictionary = data as Dictionary
 	if equipped_data.has("slot_0") or equipped_data.has("slot_1"):
-		return {
-			"slot_0": equipped_data.get("slot_0", null),
-			"slot_1": equipped_data.get("slot_1", null),
+		# Legacy format: preserve old shared slots under a dedicated key.
+		var migrated := {
+			_SHARED_EQUIPPED_KEY: {
+				"slot_0": equipped_data.get("slot_0", null),
+				"slot_1": equipped_data.get("slot_1", null),
+			}
 		}
-	var shared: Dictionary = {"slot_0": null, "slot_1": null}
-	for char_id in equipped_data.keys():
-		var slots: Dictionary = equipped_data.get(char_id, {}) as Dictionary
-		if slots.is_empty():
-			continue
-		for slot in 2:
-			var slot_key: String = "slot_%d" % slot
-			if shared.get(slot_key, null) == null and slots.get(slot_key, null) != null:
-				shared[slot_key] = (slots.get(slot_key, null) as Dictionary).duplicate(true)
-	save_equipped(username, shared)
-	return shared
+		save_equipped(username, migrated)
+		return migrated
+	return equipped_data
 
 static func save_equipped(username: String, equipped: Dictionary) -> void:
 	var path: String = _equip_path(username)
 	var f := FileAccess.open(path, FileAccess.WRITE)
-	f.store_string(JSON.stringify({
-		"slot_0": equipped.get("slot_0", null),
-		"slot_1": equipped.get("slot_1", null),
-	}))
+	f.store_string(JSON.stringify(equipped))
 	f.close()
 
 static func restore_from_server(username: String, artifact_stash: Array, artifact_equipped: Dictionary) -> void:
@@ -246,18 +238,29 @@ static func purge_user(username: String) -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(_stash_path(key)))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(_equip_path(key)))
 
-static func get_equipped_artifacts(username: String, _char_id: String) -> Dictionary:
-	return load_equipped(username)
-
-static func equip_artifact(username: String, _char_id: String, slot: int, artifact: Dictionary) -> void:
+static func get_equipped_artifacts(username: String, char_id: String) -> Dictionary:
 	var all: Dictionary = load_equipped(username)
-	all["slot_%d" % slot] = artifact.duplicate(true)
+	if all.has(char_id):
+		var slots: Dictionary = all[char_id] as Dictionary
+		return {
+			"slot_0": slots.get("slot_0", null),
+			"slot_1": slots.get("slot_1", null),
+		}
+	return {"slot_0": null, "slot_1": null}
+
+static func equip_artifact(username: String, char_id: String, slot: int, artifact: Dictionary) -> void:
+	var all: Dictionary = load_equipped(username)
+	if not all.has(char_id):
+		all[char_id] = {"slot_0": null, "slot_1": null}
+	var slots: Dictionary = all[char_id] as Dictionary
+	slots["slot_%d" % slot] = artifact.duplicate(true)
 	save_equipped(username, all)
 
-static func unequip_artifact(username: String, _char_id: String, slot: int) -> void:
+static func unequip_artifact(username: String, char_id: String, slot: int) -> void:
 	var all: Dictionary = load_equipped(username)
-	all["slot_%d" % slot] = null
-	save_equipped(username, all)
+	if all.has(char_id):
+		(all[char_id] as Dictionary)["slot_%d" % slot] = null
+		save_equipped(username, all)
 
 static func get_bonuses(username: String, char_id: String) -> Dictionary:
 	var slots: Dictionary = get_equipped_artifacts(username, char_id)

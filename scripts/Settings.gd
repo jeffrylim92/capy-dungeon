@@ -52,6 +52,19 @@ func _build_ui() -> void:
 	panel.add_theme_stylebox_override("panel", style)
 	add_child(panel)
 
+	var close_modal := func() -> void:
+		closed.emit()
+	scrim.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton:
+			var mb := event as InputEventMouseButton
+			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not panel.get_global_rect().has_point(mb.global_position):
+				close_modal.call()
+		elif event is InputEventScreenTouch:
+			var st := event as InputEventScreenTouch
+			if st.pressed and not panel.get_global_rect().has_point(st.global_position):
+				close_modal.call()
+	)
+
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 18)
 	panel.add_child(col)
@@ -86,7 +99,7 @@ func _build_ui() -> void:
 	close_btn.add_theme_font_size_override("font_size", 40)
 	close_btn.custom_minimum_size = Vector2(0, 88)
 	_style_primary(close_btn)
-	close_btn.pressed.connect(func() -> void: closed.emit())
+	close_btn.pressed.connect(func() -> void: close_modal.call())
 	col.add_child(close_btn)
 
 	var version := Label.new()
@@ -487,6 +500,20 @@ func _show_profile_panel() -> void:
 	panel.add_theme_stylebox_override("panel", ps)
 	add_child(panel)
 
+	var close_profile := func() -> void:
+		scrim.queue_free()
+		panel.queue_free()
+	scrim.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton:
+			var mb := event as InputEventMouseButton
+			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not panel.get_global_rect().has_point(mb.global_position):
+				close_profile.call()
+		elif event is InputEventScreenTouch:
+			var st := event as InputEventScreenTouch
+			if st.pressed and not panel.get_global_rect().has_point(st.global_position):
+				close_profile.call()
+	)
+
 	var scroll := ScrollContainer.new()
 	scroll.position = Vector2(24, 24)
 	scroll.size = Vector2(pw - 48.0, ph - 48.0)
@@ -723,9 +750,7 @@ func _show_profile_panel() -> void:
 	close_p.add_theme_font_size_override("font_size", 40)
 	close_p.custom_minimum_size = Vector2(0, 88)
 	_style_primary(close_p)
-	close_p.pressed.connect(func() -> void:
-		scrim.queue_free()
-		panel.queue_free())
+	close_p.pressed.connect(func() -> void: close_profile.call())
 	primary_actions.add_child(close_p)
 
 	var delete_gap := Control.new()

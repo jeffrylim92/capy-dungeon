@@ -8,13 +8,17 @@
 
 config_version=5
 
-[admob]
+[ad_units]
 
-"##AdMobAppIDsâreplacewithyourrealAppIDsbeforepublishing.##TestAppIDs(safetouseduringdevelopment):##Android:ca-app-pub-3940256099942544~3347511713##iOS:ca-app-pub-3940256099942544~1458002511##â ï¸RealAppIDsarefoundinAdMobconsoleâAppsâAppsettings.android/app_id"="ca-app-pub-3940256099942544~3347511713"
-ios/app_id="ca-app-pub-9375037645592356~4336379564"
 ios/rewarded_unit_id="ca-app-pub-9375037645592356/7548067502"
 ios/interstitial_unit_id="ca-app-pub-9375037645592356/4808976683"
-android/app_id="ca-app-pub-9375037645592356~3477746977"
+
+[admob]
+
+admob/general/android/enabled=true
+admob/general/android/app_id="ca-app-pub-9375037645592356~3477746977"
+admob/general/ios/enabled=true
+admob/general/ios/app_id="ca-app-pub-9375037645592356~4336379564"
 
 [animation]
 
@@ -59,6 +63,10 @@ tap_anywhere={
 , Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_mask":1,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"button_index":1,"canceled":false,"pressed":true,"double_click":false,"script":null)
 ]
 }
+
+[internationalization]
+
+locale/translations=PackedStringArray("res://addons/admob/gdscript/sample/translations/admob_sample.en.translation", "res://addons/admob/gdscript/sample/translations/admob_sample.pt_BR.translation", "res://addons/admob/gdscript/sample/translations/admob_sample.es.translation", "res://addons/admob/gdscript/sample/translations/admob_sample.zh_CN.translation", "res://addons/admob/gdscript/sample/translations/admob_sample.ja.translation")
 
 [rendering]
 

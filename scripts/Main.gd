@@ -15,7 +15,10 @@ const PROFILE_PATH := "user://profile.json"
 const HEALTHCHECK_URL: String = "https://capy-dungeon.onrender.com/health"
 const INTERNET_FALLBACK_URL: String = "https://www.google.com/generate_204"
 const ANDROID_VERSION_CHECK_URL: String = "https://capy-dungeon.onrender.com/app/version/android"
+const IOS_VERSION_CHECK_URL: String = "https://capy-dungeon.onrender.com/app/version/ios"
 const PLAY_STORE_URL_ANDROID: String = "https://play.google.com/store/apps/details?id=com.capydungeon.game"
+const APP_STORE_URL_IOS: String = "https://apps.apple.com/app/id0000000000"
+const TESTFLIGHT_URL_IOS: String = "https://testflight.apple.com/join/YYwXxZfJ"
 
 const BGM_LOBBY_PATH:   String = "res://assets/sfx/bgm_lobby.mp3"
 const BGM_DUNGEON_PATH: String = "res://assets/sfx/bgm_dungeon.mp3"
@@ -29,7 +32,7 @@ var _last_character: CharacterData = null
 
 var _startup_gate_passed: bool = false
 var _gate_mode: String = "none"
-var _update_url_pending: String = PLAY_STORE_URL_ANDROID
+var _update_url_pending: String = ""
 var _gate_layer: CanvasLayer = null
 var _gate_overlay: ColorRect = null
 var _gate_panel: PanelContainer = null
@@ -55,11 +58,12 @@ func _ready() -> void:
 	SettingsStore.apply.call_deferred(get_tree())
 	_setup_music()
 	_build_blocking_gate_ui()
+	_update_url_pending = _default_update_url_for_platform()
 	if _should_enforce_online_gate():
 		_begin_startup_checks()
 	else:
 		_startup_gate_passed = true
-		_show_login()
+		_resume_persistent_login_or_show_login()
 	# Handle cold-start via capydungeon:// deep link (app launched by URL scheme)
 	if OS.get_name() == "Android":
 		call_deferred("_check_launch_deep_link")
@@ -68,8 +72,9 @@ func _ready() -> void:
 		_runtime_net_timer.start()
 
 func _should_enforce_online_gate() -> bool:
-	# Always enforce on Android (including debug) so test behavior matches production.
-	return OS.get_name() == "Android"
+	# Enforce startup connectivity/update gate on mobile platforms.
+	var os_name := OS.get_name()
+	return os_name == "Android" or os_name == "iOS"
 
 func _check_launch_deep_link() -> void:
 	var url := _read_android_deep_link()
@@ -447,7 +452,7 @@ func _begin_startup_checks() -> void:
 			_show_gate_message("No internet connection", "Please connect to the internet to continue.", "Retry", "Quit")
 			return
 		_show_gate_message("Checking app version", "Please wait while we verify your app version.", "Retry", "Quit", false)
-		_check_android_update(func(info: Dictionary) -> void:
+		_check_platform_update(func(info: Dictionary) -> void:
 			if not (info.get("checked", false) as bool):
 				_gate_mode = "offline_startup"
 				_show_gate_message("Could not verify app version", "Connect to the internet and retry so we can check for updates.", "Retry", "Quit")
@@ -455,18 +460,25 @@ func _begin_startup_checks() -> void:
 			var required: bool = info.get("required", false) as bool
 			if required:
 				_gate_mode = "force_update"
-				_update_url_pending = String(info.get("url", PLAY_STORE_URL_ANDROID))
-				_show_gate_message("Update required", String(info.get("message", "A newer app version is available. Please update to continue.")), "Open Play Store", "Quit")
+				_update_url_pending = String(info.get("url", _default_update_url_for_platform()))
+				_show_gate_message("Update required", String(info.get("message", "A newer app version is available. Please update to continue.")), _update_button_text_for_platform(), "Quit")
 				return
 			_gate_mode = "none"
 			_hide_gate()
 			if not _startup_gate_passed:
 				_startup_gate_passed = true
-				_show_login()
+				_resume_persistent_login_or_show_login()
 			if _runtime_net_timer != null and _runtime_net_timer.is_stopped():
 				_runtime_net_timer.start()
 		)
 	)
+
+func _resume_persistent_login_or_show_login() -> void:
+	var persisted: Variant = AccountStore.load_persistent_session()
+	if typeof(persisted) == TYPE_DICTIONARY and not (persisted as Dictionary).is_empty():
+		_on_logged_in(persisted as Dictionary)
+		return
+	_show_login()
 
 func _show_gate_message(title: String, message: String, primary_text: String, secondary_text: String, show_buttons: bool = true) -> void:
 	if _gate_layer == null:
@@ -617,6 +629,136 @@ func _check_android_update(callback: Callable) -> void:
 		http.queue_free()
 		callback.call({"checked": false, "required": false, "url": PLAY_STORE_URL_ANDROID, "message": ""})
 
+func _check_platform_update(callback: Callable) -> void:
+	var os_name := OS.get_name()
+	if os_name == "Android":
+		_check_android_update(callback)
+		return
+	if os_name == "iOS":
+		_check_ios_update(callback)
+		return
+	callback.call({"checked": true, "required": false, "url": _default_update_url_for_platform(), "message": ""})
+
+func _check_ios_update(callback: Callable) -> void:
+	if OS.get_name() != "iOS":
+		callback.call({"checked": true, "required": false, "url": _default_update_url_for_platform(), "message": ""})
+		return
+	var current_short: String = _get_ios_short_version()
+	var current_build: int = _get_ios_build_code()
+	if current_short.is_empty() or current_build <= 0:
+		DebugLog.log("[Main] _check_ios_update: invalid local version short='%s' build=%d" % [current_short, current_build])
+		callback.call({"checked": false, "required": false, "url": _default_update_url_for_platform(), "message": ""})
+		return
+	var query_url := "%s?current_short_version=%s&current_build=%d" % [
+		IOS_VERSION_CHECK_URL,
+		current_short.uri_encode(),
+		current_build
+	]
+	DebugLog.log("[Main] _check_ios_update: querying %s" % query_url)
+	var http := HTTPRequest.new()
+	http.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(http)
+	http.request_completed.connect(func(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+		http.queue_free()
+		if result != HTTPRequest.RESULT_SUCCESS or code < 200 or code >= 300:
+			callback.call({"checked": false, "required": false, "url": _default_update_url_for_platform(), "message": ""})
+			return
+		var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+		if typeof(parsed) != TYPE_DICTIONARY:
+			callback.call({"checked": false, "required": false, "url": _default_update_url_for_platform(), "message": ""})
+			return
+		var payload: Dictionary = parsed as Dictionary
+		var required: bool = payload.get("update_required", false) as bool
+		if not required:
+			var min_short: String = String(payload.get("min_short_version", "")).strip_edges()
+			var min_build: int = int(payload.get("min_build", 0))
+			if not min_short.is_empty() and _compare_semver(current_short, min_short) < 0:
+				required = true
+			elif min_build > 0 and current_build < min_build:
+				required = true
+		callback.call({
+			"checked": true,
+			"required": required,
+			"url": _pick_ios_update_url(payload),
+			"message": String(payload.get("message", "A newer app version is available. Please update to continue.")),
+		})
+	, CONNECT_ONE_SHOT)
+	var err := http.request(query_url)
+	if err != OK:
+		http.queue_free()
+		callback.call({"checked": false, "required": false, "url": _default_update_url_for_platform(), "message": ""})
+
+func _pick_ios_update_url(payload: Dictionary) -> String:
+	var explicit: String = String(payload.get("url", "")).strip_edges()
+	if not explicit.is_empty():
+		return explicit
+	var tf_url: String = String(payload.get("testflight_url", "")).strip_edges()
+	if not tf_url.is_empty() and OS.is_debug_build():
+		return tf_url
+	var app_store_url: String = String(payload.get("app_store_url", "")).strip_edges()
+	if not app_store_url.is_empty():
+		return app_store_url
+	if OS.is_debug_build() and not TESTFLIGHT_URL_IOS.is_empty() and not TESTFLIGHT_URL_IOS.contains("REPLACE_ME"):
+		return TESTFLIGHT_URL_IOS
+	if not APP_STORE_URL_IOS.is_empty() and not APP_STORE_URL_IOS.contains("0000000000"):
+		return APP_STORE_URL_IOS
+	return _default_update_url_for_platform()
+
+func _default_update_url_for_platform() -> String:
+	if OS.get_name() == "Android":
+		return PLAY_STORE_URL_ANDROID
+	if OS.get_name() == "iOS":
+		if OS.is_debug_build() and not TESTFLIGHT_URL_IOS.is_empty() and not TESTFLIGHT_URL_IOS.contains("REPLACE_ME"):
+			return TESTFLIGHT_URL_IOS
+		if not APP_STORE_URL_IOS.is_empty() and not APP_STORE_URL_IOS.contains("0000000000"):
+			return APP_STORE_URL_IOS
+		return "https://apps.apple.com"
+	return ""
+
+func _update_button_text_for_platform() -> String:
+	if OS.get_name() == "Android":
+		return "Open Play Store"
+	if OS.get_name() == "iOS":
+		if OS.is_debug_build():
+			return "Open TestFlight"
+		return "Open App Store"
+	return "Open Store"
+
+func _get_ios_short_version() -> String:
+	var raw: Variant = ProjectSettings.get_setting("application/config/version", "")
+	return String(raw).strip_edges()
+
+func _get_ios_build_code() -> int:
+	var fallback: int = int(ProjectSettings.get_setting("application/config/version_code", 0))
+	if OS.get_name() != "iOS":
+		return max(fallback, 0)
+	if Engine.has_singleton("IOS"):
+		var ios = Engine.get_singleton("IOS")
+		if ios != null and ios.has_method("get_info_plist_value"):
+			var plist_build: Variant = ios.call("get_info_plist_value", "CFBundleVersion")
+			if plist_build != null:
+				var parsed: int = int(str(plist_build).strip_edges())
+				if parsed > 0:
+					return parsed
+	return max(fallback, 0)
+
+func _compare_semver(a: String, b: String) -> int:
+	var a_parts := a.split(".", false)
+	var b_parts := b.split(".", false)
+	var max_len := max(a_parts.size(), b_parts.size())
+	for i in range(max_len):
+		var ai: int = 0
+		var bi: int = 0
+		if i < a_parts.size():
+			ai = int(a_parts[i])
+		if i < b_parts.size():
+			bi = int(b_parts[i])
+		if ai < bi:
+			return -1
+		if ai > bi:
+			return 1
+	return 0
+
 func _get_android_version_code() -> int:
 	var fallback: int = int(ProjectSettings.get_setting("application/config/version_code", 0))
 	if OS.get_name() != "Android":
@@ -662,6 +804,7 @@ func _on_logged_in(account: Dictionary) -> void:
 	_account = account
 	_ensure_profile_display_name(account, func(chosen_display_name: String) -> void:
 		_account["display_name"] = chosen_display_name
+		AccountStore.save_persistent_session(_account)
 		var username: String = String(account.get("username", "")).strip_edges()
 		var cloud_username: String = _cloud_username_for(account)
 		if not username.is_empty():
@@ -681,7 +824,10 @@ func _show_lobby() -> void:
 	lobby.start_game_requested.connect(_show_select)
 	lobby.history_requested.connect(_show_history)
 	lobby.collectibles_requested.connect(_show_collectibles)
-	lobby.logout_requested.connect(_show_login)
+	lobby.logout_requested.connect(func() -> void:
+		AccountStore.clear_persistent_session()
+		_show_login()
+	)
 	add_child(lobby)
 
 func _show_collectibles() -> void:
