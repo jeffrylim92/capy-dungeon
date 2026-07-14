@@ -746,6 +746,8 @@ var _player_facing_x: int     = 1  # 1 = right, -1 = left
 var _player_move_dir: Vector2 = Vector2.ZERO
 var _enemy_tex:       Dictionary = {}  # kind -> Texture2D
 var _skill_icon_cache: Dictionary = {}  # sid -> cropped Texture2D
+var _skill_greyscale_material: ShaderMaterial = null
+var _skill_hud_widgets: Dictionary = {}  # sid -> {reveal, cooldown_label, level_label, slot}
 
 # ─── Progression ──────────────────────────────────────────────────────────────
 var _xp:      int   = 0
@@ -1046,6 +1048,7 @@ func _ready() -> void:
 	add_child(_camera)
 
 	_build_hud()
+	_update_skill_icons()
 	_show_skill_select(true)
 	# Kick off wave 1 after a short delay
 	_wave        = 0
@@ -7193,12 +7196,15 @@ func _build_hud() -> void:
 	_enemy_mod_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hud.add_child(_enemy_mod_lbl)
 
-	# Skill icons row (bottom) — hidden during gameplay
+	# Learned skill cooldown icons — directly above the floor effect details.
+	# Icons are grey immediately after casting, then reveal their colour from
+	# top to bottom as the cooldown recovers.
 	_skill_icon_row = HBoxContainer.new()
 	_skill_icon_row.add_theme_constant_override("separation", 10)
-	_skill_icon_row.position = Vector2(28, view.y - 108)
-	_skill_icon_row.size     = Vector2(view.x - 56, 88)
-	_skill_icon_row.visible = false
+	_skill_icon_row.position = Vector2(24, bottom_left_y - 116.0)
+	_skill_icon_row.size = Vector2(view.x - 48.0, 104.0)
+	_skill_icon_row.visible = true
+	_skill_icon_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(_skill_icon_row)
 
 	# Pause button (top-right corner)
@@ -7538,6 +7544,7 @@ func _update_hud() -> void:
 			_enemy_mod_lbl.text = "Floor affix: none"
 		_fit_hud_chip(_affix_chip, _enemy_mod_lbl, 260.0, get_viewport_rect().size.x - 48.0)
 
+	_update_skill_cooldown_hud()
 	_refresh_passive_panel()
 
 func _fit_hud_chip(chip: TextureRect, label: Label, min_width: float, max_width: float) -> void:
@@ -7661,40 +7668,232 @@ func _passive_icon_for_key(key: String) -> String:
 		_: return "✦"
 
 func _update_skill_icons() -> void:
+	if _skill_icon_row == null:
+		return
+
+	_skill_hud_widgets.clear()
 	for c in _skill_icon_row.get_children():
+		_skill_icon_row.remove_child(c)
 		c.queue_free()
+
 	for sk in _skills:
-		var sid: String      = sk["id"] as String
-		var lvl: int         = sk["level"] as int
+		var sid: String = sk["id"] as String
+		if not SKILL_DEFS.has(sid):
+			continue
+		var lvl: int = sk["level"] as int
 		var sdef: Dictionary = SKILL_DEFS[sid] as Dictionary
-		var pill := Panel.new()
-		var ps := StyleBoxFlat.new()
-		ps.bg_color = Color(0.10, 0.08, 0.06, 0.90)
-		ps.corner_radius_top_left = 10; ps.corner_radius_top_right = 10
-		ps.corner_radius_bottom_right = 10; ps.corner_radius_bottom_left = 10
-		ps.set_border_width_all(2)
-		ps.border_color = (sdef["col"] as Color).darkened(0.15)
-		pill.add_theme_stylebox_override("panel", ps)
-		pill.custom_minimum_size = Vector2(196, 104)
-		var icon := _make_skill_card_icon(sid, sdef["col"] as Color, 76.0)
-		icon.position = Vector2(10, 14)
-		pill.add_child(icon)
-		var nl := Label.new()
-		nl.text = sdef["name"] as String
-		nl.add_theme_font_size_override("font_size", 22)
-		nl.add_theme_color_override("font_color", sdef["col"] as Color)
-		nl.position = Vector2(94, 10); nl.size = Vector2(92, 40)
-		nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		nl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		pill.add_child(nl)
-		var ll := Label.new()
-		ll.text = "Lv %d" % lvl
-		ll.add_theme_font_size_override("font_size", 20)
-		ll.add_theme_color_override("font_color", Color(0.70, 0.65, 0.52))
-		ll.position = Vector2(94, 60); ll.size = Vector2(90, 28)
-		ll.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		pill.add_child(ll)
-		_skill_icon_row.add_child(pill)
+		var skill_col: Color = sdef["col"] as Color
+		var tex: Texture2D = _skill_icon_texture(sid)
+
+		var slot := Panel.new()
+		slot.custom_minimum_size = Vector2(96, 104)
+		slot.size = Vector2(96, 104)
+		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.tooltip_text = "%s — Level %d" % [String(sdef.get("name", sid)), lvl]
+
+		var slot_style := StyleBoxFlat.new()
+		slot_style.bg_color = Color(0.055, 0.045, 0.035, 0.94)
+		slot_style.border_color = skill_col.darkened(0.22)
+		slot_style.set_border_width_all(2)
+		slot_style.corner_radius_top_left = 14
+		slot_style.corner_radius_top_right = 14
+		slot_style.corner_radius_bottom_left = 14
+		slot_style.corner_radius_bottom_right = 14
+		slot_style.shadow_color = Color(0.0, 0.0, 0.0, 0.38)
+		slot_style.shadow_size = 7
+		slot_style.shadow_offset = Vector2(0, 3)
+		slot.add_theme_stylebox_override("panel", slot_style)
+		_skill_icon_row.add_child(slot)
+
+		var icon_frame := Panel.new()
+		icon_frame.position = Vector2(7, 7)
+		icon_frame.size = Vector2(82, 82)
+		icon_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_frame.clip_contents = true
+		var frame_style := StyleBoxFlat.new()
+		frame_style.bg_color = Color(0.03, 0.03, 0.03, 0.96)
+		frame_style.border_color = Color(skill_col.r, skill_col.g, skill_col.b, 0.72)
+		frame_style.set_border_width_all(2)
+		frame_style.corner_radius_top_left = 10
+		frame_style.corner_radius_top_right = 10
+		frame_style.corner_radius_bottom_left = 10
+		frame_style.corner_radius_bottom_right = 10
+		icon_frame.add_theme_stylebox_override("panel", frame_style)
+		slot.add_child(icon_frame)
+
+		if tex != null:
+			var grey_icon := TextureRect.new()
+			grey_icon.texture = tex
+			grey_icon.material = _skill_greyscale_icon_material()
+			grey_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			grey_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			grey_icon.position = Vector2(4, 4)
+			grey_icon.size = Vector2(74, 74)
+			grey_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			icon_frame.add_child(grey_icon)
+
+			var reveal := Control.new()
+			reveal.position = Vector2(4, 4)
+			reveal.size = Vector2(74, 74)
+			reveal.clip_contents = true
+			reveal.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			icon_frame.add_child(reveal)
+
+			var colour_icon := TextureRect.new()
+			colour_icon.texture = tex
+			colour_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			colour_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			colour_icon.position = Vector2.ZERO
+			colour_icon.size = Vector2(74, 74)
+			colour_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			reveal.add_child(colour_icon)
+
+			_skill_hud_widgets[sid] = {
+				"reveal": reveal,
+				"cooldown_label": null,
+				"level_label": null,
+				"slot": slot,
+				"icon_height": 74.0,
+			}
+		else:
+			var fallback := Label.new()
+			fallback.text = _skill_icon_abbrev(sid)
+			fallback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			fallback.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			fallback.set_anchors_preset(Control.PRESET_FULL_RECT)
+			fallback.add_theme_font_size_override("font_size", 30)
+			fallback.add_theme_color_override("font_color", skill_col)
+			fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			icon_frame.add_child(fallback)
+			_skill_hud_widgets[sid] = {
+				"reveal": null,
+				"cooldown_label": null,
+				"level_label": null,
+				"slot": slot,
+				"icon_height": 74.0,
+			}
+
+		var cooldown_lbl := Label.new()
+		cooldown_lbl.text = ""
+		cooldown_lbl.position = Vector2(5, 27)
+		cooldown_lbl.size = Vector2(86, 34)
+		cooldown_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cooldown_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		cooldown_lbl.add_theme_font_size_override("font_size", 23)
+		cooldown_lbl.add_theme_color_override("font_color", Color.WHITE)
+		cooldown_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
+		cooldown_lbl.add_theme_constant_override("outline_size", 6)
+		cooldown_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(cooldown_lbl)
+
+		var level_lbl := Label.new()
+		level_lbl.text = "Lv%d" % lvl
+		level_lbl.position = Vector2(44, 78)
+		level_lbl.size = Vector2(46, 22)
+		level_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		level_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		level_lbl.add_theme_font_size_override("font_size", 15)
+		level_lbl.add_theme_color_override("font_color", Color(1.0, 0.93, 0.72))
+		level_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
+		level_lbl.add_theme_constant_override("outline_size", 4)
+		level_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(level_lbl)
+
+		var widget: Dictionary = _skill_hud_widgets[sid] as Dictionary
+		widget["cooldown_label"] = cooldown_lbl
+		widget["level_label"] = level_lbl
+		_skill_hud_widgets[sid] = widget
+
+	_update_skill_cooldown_hud()
+
+func _update_skill_cooldown_hud() -> void:
+	if _skill_hud_widgets.is_empty():
+		return
+
+	for sk in _skills:
+		var sid: String = sk["id"] as String
+		if not _skill_hud_widgets.has(sid):
+			continue
+		var widget: Dictionary = _skill_hud_widgets[sid] as Dictionary
+		var reveal: Control = widget.get("reveal", null) as Control
+		var cooldown_lbl: Label = widget.get("cooldown_label", null) as Label
+		var level_lbl: Label = widget.get("level_label", null) as Label
+		var slot: Panel = widget.get("slot", null) as Panel
+		var icon_height: float = float(widget.get("icon_height", 74.0))
+		var lvl: int = int(sk.get("level", 1))
+		var total_cd: float = _skill_cooldown_total_for_hud(sk)
+		var remaining: float = max(float(sk.get("timer", 0.0)), 0.0)
+
+		# Hawk Companion stays fully coloured while the summoned hawk is active;
+		# its grey cooldown begins only after the active duration ends.
+		var is_temporarily_active: bool = sid == "hawk_companion" and float(sk.get("active_t", 0.0)) > 0.0
+		var progress: float = 1.0
+		if total_cd > 0.0 and not is_temporarily_active:
+			var safe_total: float = max(max(total_cd, remaining), 0.001)
+			progress = clamp(1.0 - remaining / safe_total, 0.0, 1.0)
+
+		if reveal != null:
+			reveal.size.y = icon_height * progress
+
+		if cooldown_lbl != null:
+			if is_temporarily_active:
+				cooldown_lbl.text = "ACTIVE"
+				cooldown_lbl.add_theme_font_size_override("font_size", 16)
+			elif total_cd > 0.0 and remaining > 0.05:
+				cooldown_lbl.text = "%.1fs" % remaining
+				cooldown_lbl.add_theme_font_size_override("font_size", 23)
+			else:
+				cooldown_lbl.text = ""
+
+		if level_lbl != null:
+			level_lbl.text = "Lv%d" % lvl
+
+		if slot != null and SKILL_DEFS.has(sid):
+			var sdef: Dictionary = SKILL_DEFS[sid] as Dictionary
+			var name: String = String(sdef.get("name", sid))
+			if total_cd > 0.0:
+				slot.tooltip_text = "%s — Level %d — Cooldown %.1fs" % [name, lvl, total_cd]
+			else:
+				slot.tooltip_text = "%s — Level %d — Always active" % [name, lvl]
+
+func _skill_cooldown_total_for_hud(sk: Dictionary) -> float:
+	var sid: String = String(sk.get("id", ""))
+	var lvl: int = int(sk.get("level", 1))
+	if sid.is_empty() or not SKILL_DEFS.has(sid):
+		return 0.0
+
+	# These two skills use custom cooldown formulas in _update_skills().
+	if sid == "fireball":
+		return _apply_skill_cooldown_bonus(1.2 - float(lvl) * 0.12)
+	if sid == "shadow_clone":
+		return max(4.0, 10.0 - float(lvl) * 1.2)
+
+	var sdef: Dictionary = SKILL_DEFS[sid] as Dictionary
+	var levels: Array = sdef.get("lvl", []) as Array
+	if levels.is_empty():
+		return 0.0
+	var idx: int = clampi(lvl - 1, 0, levels.size() - 1)
+	var level_data: Dictionary = levels[idx] as Dictionary
+	if not level_data.has("cd"):
+		return 0.0
+	return _apply_skill_cooldown_bonus(float(level_data["cd"]))
+
+func _skill_greyscale_icon_material() -> ShaderMaterial:
+	if _skill_greyscale_material != null:
+		return _skill_greyscale_material
+	var shader := Shader.new()
+	shader.code = """
+shader_type canvas_item;
+
+void fragment() {
+	vec4 tex = texture(TEXTURE, UV);
+	float grey = dot(tex.rgb, vec3(0.2126, 0.7152, 0.0722));
+	COLOR = vec4(vec3(grey * 0.62), tex.a * 0.92);
+}
+"""
+	_skill_greyscale_material = ShaderMaterial.new()
+	_skill_greyscale_material.shader = shader
+	return _skill_greyscale_material
 
 func _skill_icon_path_candidates(sid: String) -> Array[String]:
 	var out: Array[String] = ["res://assets/skills/%s.png" % sid]
@@ -7771,6 +7970,7 @@ func _make_skill_card_icon(sid: String, icon_color: Color, size: float, is_ulti:
 	panel.custom_minimum_size = Vector2(size, size)
 	panel.size = Vector2(size, size)
 	panel.clip_contents = true
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var tex: Texture2D = _skill_icon_texture(sid)
 	if tex != null:
@@ -7999,22 +8199,58 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 		var cap_is_initial: bool = is_initial
 		var cap_layer: Node = layer
 		reroll_btn.pressed.connect(func() -> void:
+			if _ad_manager == null:
+				reroll_btn.text = "Ad unavailable — tap to retry"
+				return
+
 			reroll_btn.disabled = true
 			reroll_btn.text = "Loading ad..."
+			var ad_state := {"done": false}
+
 			_ad_manager.rewarded_ad_completed.connect(
 				func() -> void:
+					if bool(ad_state.get("done", false)):
+						return
+					ad_state["done"] = true
 					_skill_reroll_used = true
-					cap_layer.queue_free()
+					if is_instance_valid(cap_layer):
+						cap_layer.queue_free()
 					_show_skill_select(cap_is_initial, true),
 				CONNECT_ONE_SHOT
 			)
 			_ad_manager.rewarded_ad_skipped.connect(
 				func() -> void:
-					reroll_btn.disabled = false
-					reroll_btn.text = "Watch Ad to Reroll Skills",
+					if bool(ad_state.get("done", false)):
+						return
+					ad_state["done"] = true
+					if is_instance_valid(reroll_btn):
+						reroll_btn.disabled = false
+						reroll_btn.text = "Watch Ad to Reroll Skills",
 				CONNECT_ONE_SHOT
 			)
+			if _ad_manager.has_signal("rewarded_ad_unavailable"):
+				_ad_manager.rewarded_ad_unavailable.connect(
+					func() -> void:
+						if bool(ad_state.get("done", false)):
+							return
+						ad_state["done"] = true
+						if is_instance_valid(reroll_btn):
+							reroll_btn.disabled = false
+							reroll_btn.text = "Ad unavailable — tap to retry",
+					CONNECT_ONE_SHOT
+				)
+
 			_ad_manager.show_rewarded_ad()
+
+			# Defensive fallback for SDK/device paths that never invoke a callback.
+			get_tree().create_timer(15.0).timeout.connect(func() -> void:
+				if bool(ad_state.get("done", false)):
+					return
+				ad_state["done"] = true
+				if is_instance_valid(reroll_btn):
+					reroll_btn.disabled = false
+					reroll_btn.text = "Ad timed out — tap to retry"
+			)
 		)
 	layer.add_child(reroll_btn)
 
@@ -8592,32 +8828,27 @@ func _start_revive_ad(death_layer: Node, revive_btn: Button = null, status_lbl: 
 	if status_lbl != null and is_instance_valid(status_lbl):
 		status_lbl.text = "Please wait..."
 
-	# iOS/no-fill path: do not attempt show until a rewarded ad is actually ready.
-	if _ad_manager.has_method("is_rewarded_ready") and not bool(_ad_manager.call("is_rewarded_ready")):
-		if _ad_manager.has_method("request_rewarded_ad"):
-			_ad_manager.call("request_rewarded_ad")
-		if revive_btn != null and is_instance_valid(revive_btn):
-			revive_btn.disabled = false
-			revive_btn.text = "📺  Watch Ad to Revive"
-		if status_lbl != null and is_instance_valid(status_lbl):
-			status_lbl.text = "Ad is loading. Please try again in a few seconds."
-		return
-
 	var ad_state := {"done": false}
 	_ad_manager.rewarded_ad_completed.connect(func() -> void:
+		if bool(ad_state.get("done", false)):
+			return
 		ad_state["done"] = true
 		_do_revive(death_layer)
 	, CONNECT_ONE_SHOT)
 	_ad_manager.rewarded_ad_skipped.connect(func() -> void:
+		if bool(ad_state.get("done", false)):
+			return
 		ad_state["done"] = true
 		if revive_btn != null and is_instance_valid(revive_btn):
 			revive_btn.disabled = false
 			revive_btn.text = "📺  Watch Ad to Revive"
 		if status_lbl != null and is_instance_valid(status_lbl):
-			status_lbl.text = "Ad closed or unavailable. Try again."
+			status_lbl.text = "Ad closed before completion. Try again."
 	, CONNECT_ONE_SHOT)
 	if _ad_manager.has_signal("rewarded_ad_unavailable"):
 		_ad_manager.rewarded_ad_unavailable.connect(func() -> void:
+			if bool(ad_state.get("done", false)):
+				return
 			ad_state["done"] = true
 			if revive_btn != null and is_instance_valid(revive_btn):
 				revive_btn.disabled = false
@@ -8627,10 +8858,11 @@ func _start_revive_ad(death_layer: Node, revive_btn: Button = null, status_lbl: 
 		, CONNECT_ONE_SHOT)
 	_ad_manager.show_rewarded_ad()
 
-	# Some mobile SDK failure paths never call callbacks; avoid dead button state.
-	get_tree().create_timer(5.0).timeout.connect(func() -> void:
+	# Some SDK/device failure paths never call callbacks; avoid a dead button.
+	get_tree().create_timer(15.0).timeout.connect(func() -> void:
 		if bool(ad_state.get("done", false)):
 			return
+		ad_state["done"] = true
 		if revive_btn != null and is_instance_valid(revive_btn):
 			revive_btn.disabled = false
 			revive_btn.text = "📺  Watch Ad to Revive"

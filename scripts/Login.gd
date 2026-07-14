@@ -196,6 +196,15 @@ func _make_input(placeholder: String, is_secret: bool = false) -> LineEdit:
 	var le := LineEdit.new()
 	le.placeholder_text = placeholder
 	le.secret = is_secret
+	# Explicitly keep desktop shortcuts and the mobile context menu enabled so
+	# username/password fields support select, copy, cut, and paste.
+	le.editable = true
+	le.selecting_enabled = true
+	le.shortcut_keys_enabled = true
+	le.context_menu_enabled = true
+	le.drag_and_drop_selection_enabled = true
+	le.middle_mouse_paste_enabled = true
+	le.deselect_on_focus_loss_enabled = false
 	le.add_theme_font_size_override("font_size", 32)
 	le.custom_minimum_size = Vector2(0, 64)
 	return le

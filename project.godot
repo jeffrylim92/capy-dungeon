@@ -29,12 +29,12 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 config/name="Capy Dungeon"
 config/description="Tap-combo capybara battler"
 config/version="1.0.3"
-config/version_code=1
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 boot_splash/bg_color=Color(0, 0, 0, 1)
 boot_splash/image="res://assets/splash.png"
 config/icon="res://assets/icon.png"
+config/version_code=1
 
 [autoload]
 

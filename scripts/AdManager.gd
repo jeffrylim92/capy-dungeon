@@ -11,28 +11,29 @@ extends Node
 ## add your AdMob App ID in Project Settings → General → Admob → Android/iOS.
 ##
 ## ── Ad unit IDs ────────────────────────────────────────────────────────────
-## The constants below use Google's official TEST IDs so integration can be
-## verified without a live AdMob account.
-## ⚠️  BEFORE PUBLISHING: replace every constant with your real AdMob IDs.
-## Real IDs look like:  ca-app-pub-1234567890123456/1234567890
+## Debug exports use Google's official test units. Release exports use the
+## production units below, so development never depends on live-ad inventory.
+## Real IDs look like: ca-app-pub-1234567890123456/1234567890
 ## ─────────────────────────────────────────────────────────────────────────
 
-# ── Ad unit IDs — swap for real IDs before publishing ─────────────────────────
-## Android rewarded ID
-const AD_UNIT_REWARDED_ANDROID:     String = "ca-app-pub-9375037645592356/8574160982"
-## iOS rewarded test ID (replace: ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX)
-const AD_UNIT_REWARDED_IOS:         String = "ca-app-pub-3940256099942544/1712485313"
-## Android interstitial ID
+const TEST_REWARDED_ANDROID: String = "ca-app-pub-3940256099942544/5224354917"
+const TEST_REWARDED_IOS: String = "ca-app-pub-3940256099942544/1712485313"
+const TEST_INTERSTITIAL_ANDROID: String = "ca-app-pub-3940256099942544/1033173712"
+const TEST_INTERSTITIAL_IOS: String = "ca-app-pub-3940256099942544/4411468910"
+
+const AD_UNIT_REWARDED_ANDROID: String = "ca-app-pub-9375037645592356/8574160982"
+const AD_UNIT_REWARDED_IOS: String = "ca-app-pub-9375037645592356/7548067502"
 const AD_UNIT_INTERSTITIAL_ANDROID: String = "ca-app-pub-9375037645592356/2200324324"
-## iOS interstitial test ID (replace: ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX)
-const AD_UNIT_INTERSTITIAL_IOS:     String = "ca-app-pub-3940256099942544/4411468910"
+const AD_UNIT_INTERSTITIAL_IOS: String = "ca-app-pub-9375037645592356/4808976683"
 
 # ── Signals ───────────────────────────────────────────────────────────────────
 ## Emitted when a rewarded ad finishes and the reward should be granted.
 signal rewarded_ad_completed
 ## Emitted when a rewarded ad is dismissed without completing (no reward).
 signal rewarded_ad_skipped
-## Emitted when rewarded ad cannot be shown (not ready / failed to load/show).
+## Emitted when a rewarded ad has finished loading and is ready.
+signal rewarded_ad_loaded
+## Emitted when rewarded ad cannot be loaded or shown.
 signal rewarded_ad_unavailable
 ## Emitted when an interstitial ad closes (used for post-match / between screens).
 signal interstitial_closed
@@ -51,6 +52,11 @@ var _reward_earned: bool = false
 var _rewarded_load_cb     = null
 var _interstitial_load_cb = null
 var _rewarded_retry_timer: Timer = null
+var _rewarded_request_timeout: Timer = null
+var _rewarded_loading: bool = false
+var _rewarded_show_pending: bool = false
+var _rewarded_show_in_progress: bool = false
+var _reward_listener = null
 
 # ── Fake-ad state (desktop / dev only) ───────────────────────────────────────
 const FAKE_AD_DURATION: float = 3.0
@@ -66,9 +72,16 @@ func _ready() -> void:
 	_can_simulate_ads = OS.has_feature("editor") or OS.get_name() in ["Windows", "macOS", "Linux"]
 	_rewarded_retry_timer = Timer.new()
 	_rewarded_retry_timer.one_shot = true
-	_rewarded_retry_timer.wait_time = 2.0
+	_rewarded_retry_timer.wait_time = 10.0
 	_rewarded_retry_timer.timeout.connect(_preload_rewarded)
 	add_child(_rewarded_retry_timer)
+
+	_rewarded_request_timeout = Timer.new()
+	_rewarded_request_timeout.one_shot = true
+	_rewarded_request_timeout.wait_time = 12.0
+	_rewarded_request_timeout.timeout.connect(_on_rewarded_request_timeout)
+	add_child(_rewarded_request_timeout)
+
 	if _plugin_available:
 		_init_plugin()
 	else:
@@ -90,28 +103,63 @@ func _build_rewarded_callback() -> void:
 	# All plugin classes accessed via ClassDB.instantiate() so the script
 	# parses cleanly when the plugin is not installed.
 	_rewarded_load_cb = ClassDB.instantiate("RewardedAdLoadCallback")
+	if _rewarded_load_cb == null:
+		push_warning("AdManager: RewardedAdLoadCallback class is unavailable.")
+		return
+
 	_rewarded_load_cb.on_ad_failed_to_load = func(error) -> void:
-		push_warning("AdManager: rewarded ad failed to load — " + error.message)
+		_rewarded_loading = false
 		_rewarded_ad = null
-		if _rewarded_retry_timer != null:
+		var message: String = str(error.message)
+		push_warning("AdManager: rewarded ad failed to load — " + message)
+		if _rewarded_show_pending:
+			_rewarded_show_pending = false
+			_stop_rewarded_request_timeout()
+			rewarded_ad_unavailable.emit()
+		if _rewarded_retry_timer != null and _rewarded_retry_timer.is_stopped():
 			_rewarded_retry_timer.start()
-	_rewarded_load_cb.on_ad_loaded = func(ad) -> void:
-		_rewarded_ad = ad
+
+	_rewarded_load_cb.on_ad_loaded = func(loaded_ad) -> void:
+		_rewarded_loading = false
+		_rewarded_ad = loaded_ad
 		var fsc = ClassDB.instantiate("FullScreenContentCallback")
+		if fsc == null:
+			push_warning("AdManager: FullScreenContentCallback class is unavailable.")
+			_rewarded_ad = null
+			if _rewarded_show_pending:
+				_rewarded_show_pending = false
+				_stop_rewarded_request_timeout()
+				rewarded_ad_unavailable.emit()
+			return
+
 		fsc.on_ad_dismissed_full_screen_content = func() -> void:
+			_rewarded_show_in_progress = false
+			_reward_listener = null
 			if _reward_earned:
 				rewarded_ad_completed.emit()
 			else:
 				rewarded_ad_skipped.emit()
 			_reward_earned = false
-			_rewarded_ad   = null
-			_preload_rewarded()          # pre-load for next show
+			_rewarded_ad = null
+			_preload_rewarded()
+
 		fsc.on_ad_failed_to_show_full_screen_content = func(error) -> void:
-			push_warning("AdManager: rewarded ad failed to show — " + error.message)
+			_rewarded_show_in_progress = false
+			_reward_listener = null
+			push_warning("AdManager: rewarded ad failed to show — " + str(error.message))
 			rewarded_ad_unavailable.emit()
 			_rewarded_ad = null
 			_preload_rewarded()
+
 		_rewarded_ad.full_screen_content_callback = fsc
+		rewarded_ad_loaded.emit()
+
+		# A user may tap before preload finishes. Show automatically as soon as
+		# the SDK returns a loaded ad instead of leaving the UI spinning.
+		if _rewarded_show_pending:
+			_rewarded_show_pending = false
+			_stop_rewarded_request_timeout()
+			call_deferred("_show_real_rewarded_ad")
 
 func _build_interstitial_callback() -> void:
 	_interstitial_load_cb = ClassDB.instantiate("InterstitialAdLoadCallback")
@@ -132,14 +180,36 @@ func _build_interstitial_callback() -> void:
 		_interstitial_ad.full_screen_content_callback = fsc
 
 func _preload_rewarded() -> void:
+	if not _plugin_available or _rewarded_ad != null or _rewarded_loading:
+		return
+	if _rewarded_load_cb == null:
+		if _rewarded_show_pending:
+			_rewarded_show_pending = false
+			_stop_rewarded_request_timeout()
+			rewarded_ad_unavailable.emit()
+		return
+
+	var loader = ClassDB.instantiate("RewardedAdLoader")
+	var request = ClassDB.instantiate("AdRequest")
+	if loader == null or request == null:
+		push_warning("AdManager: rewarded ad plugin classes are unavailable.")
+		if _rewarded_show_pending:
+			_rewarded_show_pending = false
+			_stop_rewarded_request_timeout()
+			rewarded_ad_unavailable.emit()
+		return
+
+	_rewarded_loading = true
 	var unit_id := _get_rewarded_unit_id()
-	ClassDB.instantiate("RewardedAdLoader").load(unit_id, ClassDB.instantiate("AdRequest"), _rewarded_load_cb)
+	loader.load(unit_id, request, _rewarded_load_cb)
 
 func _preload_interstitial() -> void:
 	var unit_id := _get_interstitial_unit_id()
 	ClassDB.instantiate("InterstitialAdLoader").load(unit_id, ClassDB.instantiate("AdRequest"), _interstitial_load_cb)
 
 func _get_rewarded_unit_id() -> String:
+	if OS.is_debug_build():
+		return TEST_REWARDED_ANDROID if OS.get_name() == "Android" else TEST_REWARDED_IOS
 	if OS.get_name() == "Android":
 		return AD_UNIT_REWARDED_ANDROID
 	var configured := str(ProjectSettings.get_setting("ad_units/ios/rewarded_unit_id", ""))
@@ -149,6 +219,8 @@ func _get_rewarded_unit_id() -> String:
 	return configured if not configured.is_empty() else AD_UNIT_REWARDED_IOS
 
 func _get_interstitial_unit_id() -> String:
+	if OS.is_debug_build():
+		return TEST_INTERSTITIAL_ANDROID if OS.get_name() == "Android" else TEST_INTERSTITIAL_IOS
 	if OS.get_name() == "Android":
 		return AD_UNIT_INTERSTITIAL_ANDROID
 	var configured := str(ProjectSettings.get_setting("ad_units/ios/interstitial_unit_id", ""))
@@ -162,9 +234,17 @@ func _get_interstitial_unit_id() -> String:
 ## Show a rewarded ad. Emits rewarded_ad_completed on success, rewarded_ad_skipped on dismiss.
 func show_rewarded_ad() -> void:
 	if _plugin_available:
-		_show_real_rewarded_ad()
+		if _rewarded_show_in_progress or _rewarded_show_pending:
+			return
+		if _rewarded_ad != null:
+			_show_real_rewarded_ad()
+		else:
+			_rewarded_show_pending = true
+			_start_rewarded_request_timeout()
+			_preload_rewarded()
 	elif _can_simulate_ads:
-		_show_fake_ad(true)
+		if not _showing_fake:
+			_show_fake_ad(true)
 	else:
 		rewarded_ad_unavailable.emit()
 
@@ -173,7 +253,8 @@ func show_interstitial_ad() -> void:
 	if _plugin_available:
 		_show_real_interstitial_ad()
 	elif _can_simulate_ads:
-		_finish_fake_ad(false)
+		if not _showing_fake:
+			_show_fake_ad(false)
 	else:
 		interstitial_closed.emit()
 
@@ -181,24 +262,50 @@ func show_interstitial_ad() -> void:
 
 func _show_real_rewarded_ad() -> void:
 	if _rewarded_ad == null:
-		push_warning("AdManager: rewarded ad not ready yet")
+		# This can happen if the loaded ad expired between readiness check and show.
+		_rewarded_show_pending = true
+		_start_rewarded_request_timeout()
 		_preload_rewarded()
-		rewarded_ad_unavailable.emit()
 		return
 	if _rewarded_retry_timer != null:
 		_rewarded_retry_timer.stop()
+
+	_rewarded_show_in_progress = true
 	_reward_earned = false
-	var listener = ClassDB.instantiate("OnUserEarnedRewardListener")
+	_reward_listener = ClassDB.instantiate("OnUserEarnedRewardListener")
+	if _reward_listener == null:
+		_rewarded_show_in_progress = false
+		push_warning("AdManager: OnUserEarnedRewardListener class is unavailable.")
+		rewarded_ad_unavailable.emit()
+		return
+
 	# _reward_earned is read by the FullScreenContentCallback dismissal handler.
-	listener.on_user_earned_reward = func(_reward) -> void:
+	_reward_listener.on_user_earned_reward = func(_reward) -> void:
 		_reward_earned = true
-	_rewarded_ad.show(listener)
+	_rewarded_ad.show(_reward_listener)
 
 func is_rewarded_ready() -> bool:
+	if _can_simulate_ads and not _plugin_available:
+		return true
 	return _rewarded_ad != null
 
 func request_rewarded_ad() -> void:
 	_preload_rewarded()
+
+func _start_rewarded_request_timeout() -> void:
+	if _rewarded_request_timeout != null:
+		_rewarded_request_timeout.start()
+
+func _stop_rewarded_request_timeout() -> void:
+	if _rewarded_request_timeout != null:
+		_rewarded_request_timeout.stop()
+
+func _on_rewarded_request_timeout() -> void:
+	if not _rewarded_show_pending:
+		return
+	_rewarded_show_pending = false
+	push_warning("AdManager: rewarded ad request timed out.")
+	rewarded_ad_unavailable.emit()
 
 func _show_real_interstitial_ad() -> void:
 	if _interstitial_ad == null:
