@@ -724,11 +724,21 @@ func _best_rank_entry(server_entry: Variant, entries: Array, is_survive: bool, f
 	if typeof(server_entry) == TYPE_DICTIONARY:
 		candidate = server_entry
 	else:
-		var visible_entry: Variant = _matching_visible_rank_entry(entries)
+		var visible_entry: Variant = _best_visible_rank_entry(entries)
 		if typeof(visible_entry) == TYPE_DICTIONARY:
 			candidate = visible_entry
 		else:
 			candidate = _local_best_rank_entry(is_survive)
+
+	var best_visible: Variant = _best_visible_rank_entry(entries)
+	if typeof(best_visible) == TYPE_DICTIONARY:
+		if typeof(candidate) != TYPE_DICTIONARY:
+			candidate = best_visible
+		else:
+			var candidate_rank: int = int((candidate as Dictionary).get("rank", 0))
+			var visible_rank: int = int((best_visible as Dictionary).get("rank", 0))
+			if candidate_rank <= 0 or (visible_rank > 0 and visible_rank < candidate_rank):
+				candidate = best_visible
 
 	if typeof(candidate) != TYPE_DICTIONARY:
 		return null
@@ -743,21 +753,29 @@ func _best_rank_entry(server_entry: Variant, entries: Array, is_survive: bool, f
 			normalized["rank"] = inferred_rank
 	return normalized
 
-func _matching_visible_rank_entry(entries: Array) -> Variant:
+func _best_visible_rank_entry(entries: Array) -> Variant:
+	var best_entry: Dictionary = {}
+	var best_rank: int = 0
 	var username := String(account.get("username", "")).strip_edges().to_lower()
 	var social_email := String(account.get("social_email", "")).strip_edges().to_lower()
 	var cloud_username := _cloud_username_for_history()
-	var display_name := String(account.get("display_name", username)).strip_edges().to_lower()
 	for entry in entries:
 		if typeof(entry) != TYPE_DICTIONARY:
 			continue
 		var data: Dictionary = entry as Dictionary
 		var entry_user := String(data.get("username", "")).strip_edges().to_lower()
-		var entry_name := String(data.get("display_name", "")).strip_edges().to_lower()
-		if not entry_user.is_empty() and (entry_user == cloud_username or entry_user == social_email or entry_user == username):
-			return entry
-		if not entry_name.is_empty() and (entry_name == display_name or entry_name == username or entry_name == cloud_username):
-			return entry
+		if entry_user.is_empty():
+			continue
+		if entry_user != cloud_username and entry_user != social_email and entry_user != username:
+			continue
+		var rank: int = int(data.get("rank", 0))
+		if rank <= 0:
+			continue
+		if best_rank <= 0 or rank < best_rank:
+			best_rank = rank
+			best_entry = data
+	if best_rank > 0:
+		return best_entry
 	return null
 
 func _infer_rank_for_entry(entry: Dictionary, entries: Array, is_survive: bool) -> int:
@@ -767,7 +785,6 @@ func _infer_rank_for_entry(entry: Dictionary, entries: Array, is_survive: bool) 
 	var username := String(account.get("username", "")).strip_edges().to_lower()
 	var social_email := String(account.get("social_email", "")).strip_edges().to_lower()
 	var cloud_username := _cloud_username_for_history()
-	var display_name := String(account.get("display_name", username)).strip_edges().to_lower()
 	var target_char := String(entry.get("character", "")).strip_edges().to_lower()
 	var target_value: float = float(entry.get("value", 0.0))
 
@@ -777,11 +794,8 @@ func _infer_rank_for_entry(entry: Dictionary, entries: Array, is_survive: bool) 
 			continue
 		var data: Dictionary = item as Dictionary
 		var entry_user := String(data.get("username", "")).strip_edges().to_lower()
-		var entry_name := String(data.get("display_name", "")).strip_edges().to_lower()
 		var rank: int = int(data.get("rank", i + 1))
 		if not entry_user.is_empty() and (entry_user == cloud_username or entry_user == social_email or entry_user == username):
-			return rank
-		if not entry_name.is_empty() and (entry_name == display_name or entry_name == username):
 			return rank
 		var value: float = float(data.get("value", 0.0))
 		var char_id := String(data.get("character", "")).strip_edges().to_lower()

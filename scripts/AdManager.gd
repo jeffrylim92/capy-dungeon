@@ -60,6 +60,7 @@ var _rewarded_loading: bool = false
 var _rewarded_show_pending: bool = false
 var _rewarded_show_in_progress: bool = false
 var _reward_listener = null
+var _mobile_ads_initialized: bool = false
 
 # ── Fake-ad state (desktop / dev only) ───────────────────────────────────────
 const FAKE_AD_DURATION: float = 3.0
@@ -97,7 +98,24 @@ func _ready() -> void:
 # ── Plugin initialisation ─────────────────────────────────────────────────────
 
 func _init_plugin() -> void:
-	Engine.get_singleton("MobileAds").initialize()
+	var mobile_ads := Engine.get_singleton("MobileAds")
+	if mobile_ads == null:
+		push_warning("AdManager: MobileAds singleton became unavailable during init.")
+		return
+	var init_listener = ClassDB.instantiate("OnInitializationCompleteListener")
+	if init_listener != null:
+		init_listener.on_initialization_complete = func(_status) -> void:
+			_on_mobile_ads_initialized()
+		mobile_ads.initialize(init_listener)
+	else:
+		# Fallback for plugin versions without initialization listener class.
+		mobile_ads.initialize()
+		_on_mobile_ads_initialized()
+
+func _on_mobile_ads_initialized() -> void:
+	if _mobile_ads_initialized:
+		return
+	_mobile_ads_initialized = true
 	_build_rewarded_callback()
 	_build_interstitial_callback()
 	_preload_rewarded()
@@ -184,7 +202,7 @@ func _build_interstitial_callback() -> void:
 		_interstitial_ad.full_screen_content_callback = fsc
 
 func _preload_rewarded() -> void:
-	if not _plugin_available or _rewarded_ad != null or _rewarded_loading:
+	if not _plugin_available or not _mobile_ads_initialized or _rewarded_ad != null or _rewarded_loading:
 		return
 	if _rewarded_load_cb == null:
 		if _rewarded_show_pending:
@@ -208,8 +226,17 @@ func _preload_rewarded() -> void:
 	loader.load(unit_id, request, _rewarded_load_cb)
 
 func _preload_interstitial() -> void:
+	if not _plugin_available or not _mobile_ads_initialized:
+		return
+	if _interstitial_load_cb == null:
+		return
+	var loader = ClassDB.instantiate("InterstitialAdLoader")
+	var request = ClassDB.instantiate("AdRequest")
+	if loader == null or request == null:
+		push_warning("AdManager: interstitial ad plugin classes are unavailable.")
+		return
 	var unit_id := _get_interstitial_unit_id()
-	ClassDB.instantiate("InterstitialAdLoader").load(unit_id, ClassDB.instantiate("AdRequest"), _interstitial_load_cb)
+	loader.load(unit_id, request, _interstitial_load_cb)
 
 func _get_rewarded_unit_id() -> String:
 	if FORCE_TEST_ADS or OS.is_debug_build():
