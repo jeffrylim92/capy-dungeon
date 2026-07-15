@@ -748,6 +748,9 @@ var _enemy_tex:       Dictionary = {}  # kind -> Texture2D
 var _skill_icon_cache: Dictionary = {}  # sid -> cropped Texture2D
 var _skill_greyscale_material: ShaderMaterial = null
 var _skill_hud_widgets: Dictionary = {}  # sid -> {reveal, cooldown_label, level_label, slot}
+const DAMAGE_POPUP_MAX: int = 120
+const DAMAGE_POPUP_LIFE: float = 0.62
+var _damage_popups: Array[Dictionary] = []
 
 # ─── Progression ──────────────────────────────────────────────────────────────
 var _xp:      int   = 0
@@ -868,6 +871,7 @@ var _level_lbl:      Label
 var _time_lbl:       Label
 var _kill_lbl:       Label
 var _wave_lbl:       Label
+var _skill_icon_scroll: ScrollContainer
 var _skill_icon_row: HBoxContainer
 var _joy_vis:        JoystickVisual
 var _time_chip: TextureRect
@@ -1214,6 +1218,7 @@ func _process(delta: float) -> void:
 	_update_lava_lines(delta)
 	_update_lava_pools(delta)
 	_update_spawner(delta)
+	_update_damage_popups(delta)
 	queue_redraw()
 	_update_hud()
 
@@ -4810,10 +4815,13 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 	if _is_boss_kind(ekind):
 		final_dmg *= 1.0 + _ring_bonus("boss_dmg")
 	var crit_chance: float = _ring_bonus("crit_chance")
+	var did_crit: bool = false
 	if crit_chance > 0.0 and randf() < crit_chance:
+		did_crit = true
 		final_dmg *= 1.8 + _ring_bonus("crit_dmg")
 	if _ring_bonus("lifesteal") > 0.0:
 		_player_hp = min(_player_max_hp, _player_hp + final_dmg * _ring_bonus("lifesteal"))
+	_spawn_damage_popup(e["pos"] as Vector2, final_dmg, did_crit)
 	e["hp"]      = (e["hp"] as float) - final_dmg
 	e["iframes"] = ENEMY_HIT_IF
 	if (e["hp"] as float) <= 0.0:
@@ -4867,6 +4875,59 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 			for _bi in ember_count:
 				var off: Vector2 = Vector2(randf_range(-28, 28), randf_range(-28, 28))
 				_append_burn_trail(ep + off, 2.2 + float(_wave) * 0.08)
+
+func _spawn_damage_popup(world_pos: Vector2, damage: float, critical: bool) -> void:
+	if damage <= 0.0 or is_nan(damage) or is_inf(damage):
+		return
+	if _damage_popups.size() >= DAMAGE_POPUP_MAX:
+		_damage_popups.remove_at(0)
+	_damage_popups.append({
+		"pos": world_pos + Vector2(randf_range(-14.0, 14.0), randf_range(-10.0, -2.0)),
+		"vel": Vector2(randf_range(-24.0, 24.0), randf_range(-128.0, -96.0)),
+		"life": DAMAGE_POPUP_LIFE,
+		"max_life": DAMAGE_POPUP_LIFE,
+		"text": str(int(round(damage))),
+		"size": 36 if critical else 30,
+		"color": Color(1.0, 0.86, 0.38, 1.0) if critical else Color(0.96, 0.96, 0.96, 1.0),
+	})
+
+func _update_damage_popups(delta: float) -> void:
+	for i in range(_damage_popups.size() - 1, -1, -1):
+		var p: Dictionary = _damage_popups[i]
+		p["life"] = (p["life"] as float) - delta
+		if (p["life"] as float) <= 0.0:
+			_damage_popups.remove_at(i)
+			continue
+		var vel: Vector2 = p["vel"] as Vector2
+		vel.y += 220.0 * delta
+		p["vel"] = vel
+		p["pos"] = (p["pos"] as Vector2) + vel * delta
+		_damage_popups[i] = p
+
+func _draw_damage_popups() -> void:
+	if _damage_popups.is_empty():
+		return
+	var font: Font = ThemeDB.fallback_font
+	if font == null:
+		return
+	var default_font_size: int = maxi(ThemeDB.fallback_font_size, 16)
+	for p in _damage_popups:
+		var life: float = float(p.get("life", 0.0))
+		var max_life: float = max(float(p.get("max_life", DAMAGE_POPUP_LIFE)), 0.001)
+		var alpha: float = clampf(life / max_life, 0.0, 1.0)
+		var fade: float = alpha * alpha
+		var size: int = int(round(max(float(p.get("size", default_font_size)) * (1.0 + (1.0 - alpha) * 0.08), 10.0)))
+		var text: String = String(p.get("text", ""))
+		if text.is_empty():
+			continue
+		var color: Color = p.get("color", Color.WHITE) as Color
+		color.a = fade
+		var shadow: Color = Color(0.0, 0.0, 0.0, min(0.92, fade + 0.25))
+		var pos: Vector2 = p.get("pos", Vector2.ZERO) as Vector2
+		var text_size: Vector2 = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
+		var draw_pos: Vector2 = pos - Vector2(text_size.x * 0.5, 0.0)
+		draw_string(font, draw_pos + Vector2(2.0, 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, shadow)
+		draw_string(font, draw_pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
 func _bleed_bonus_from_level(level: int) -> float:
 	var max_lvl: int = int(SKILL_DEFS["bleed_mark"]["max_lvl"])
@@ -5110,6 +5171,8 @@ func _draw() -> void:
 		var op: Vector2 = orb["pos"] as Vector2
 		draw_circle(op, XP_ORB_R, Color(0.28, 0.88, 0.60, 0.9))
 		draw_arc(op, XP_ORB_R + 2.0, 0.0, TAU, 16, Color(0.5, 1.0, 0.8, 0.5), 1.5)
+
+	_draw_damage_popups()
 
 	# Aura — level-scaled mud effect
 	if _has_skill("aura"):
@@ -7199,13 +7262,21 @@ func _build_hud() -> void:
 	# Learned skill cooldown icons — directly above the floor effect details.
 	# Icons are grey immediately after casting, then reveal their colour from
 	# top to bottom as the cooldown recovers.
+	_skill_icon_scroll = ScrollContainer.new()
+	_skill_icon_scroll.position = Vector2(24, bottom_left_y - 116.0)
+	_skill_icon_scroll.size = Vector2(view.x - 48.0, 104.0)
+	_skill_icon_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_skill_icon_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_skill_icon_scroll.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(_skill_icon_scroll)
+
 	_skill_icon_row = HBoxContainer.new()
 	_skill_icon_row.add_theme_constant_override("separation", 10)
-	_skill_icon_row.position = Vector2(24, bottom_left_y - 116.0)
-	_skill_icon_row.size = Vector2(view.x - 48.0, 104.0)
+	_skill_icon_row.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_skill_icon_row.custom_minimum_size = Vector2(view.x - 48.0, 104.0)
 	_skill_icon_row.visible = true
 	_skill_icon_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud.add_child(_skill_icon_row)
+	_skill_icon_scroll.add_child(_skill_icon_row)
 
 	# Pause button (top-right corner)
 	var pause_btn := Button.new()
@@ -8904,7 +8975,21 @@ func _apply_skill_damage_bonus(value: float) -> float:
 	return value * (1.0 + _ring_bonus("skill_dmg") + _artifact_wheel_skill_dmg) * _room_skill_dmg_multiplier()
 
 func _apply_skill_cooldown_bonus(value: float) -> float:
-	return max(value * (1.0 - _ring_bonus("skill_cd") + _artifact_wheel_cd), 0.12)
+	var base_cd: float = value
+	if is_nan(base_cd) or is_inf(base_cd):
+		base_cd = 0.12
+	base_cd = max(base_cd, 0.0)
+
+	var cooldown_multiplier: float = 1.0 - _ring_bonus("skill_cd") + _artifact_wheel_cd
+	if is_nan(cooldown_multiplier) or is_inf(cooldown_multiplier):
+		cooldown_multiplier = 1.0
+	# Clamp to prevent extreme/overflowing cooldown outcomes from stacked modifiers.
+	cooldown_multiplier = clampf(cooldown_multiplier, 0.08, 8.0)
+
+	var cooled: float = base_cd * cooldown_multiplier
+	if is_nan(cooled) or is_inf(cooled):
+		return 0.12
+	return clampf(cooled, 0.12, 120.0)
 
 func _apply_radius_bonus(value: float) -> float:
 	return value * (1.0 + _ring_bonus("aoe_radius"))
