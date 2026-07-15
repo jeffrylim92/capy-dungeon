@@ -21,6 +21,9 @@ const TEST_REWARDED_IOS: String = "ca-app-pub-3940256099942544/1712485313"
 const TEST_INTERSTITIAL_ANDROID: String = "ca-app-pub-3940256099942544/1033173712"
 const TEST_INTERSTITIAL_IOS: String = "ca-app-pub-3940256099942544/4411468910"
 
+# Keep true while testing internal/debug builds. Set false before public release.
+const FORCE_TEST_ADS: bool = true
+
 const AD_UNIT_REWARDED_ANDROID: String = "ca-app-pub-9375037645592356/8574160982"
 const AD_UNIT_REWARDED_IOS: String = "ca-app-pub-9375037645592356/7548067502"
 const AD_UNIT_INTERSTITIAL_ANDROID: String = "ca-app-pub-9375037645592356/2200324324"
@@ -69,6 +72,7 @@ var _fake_layer: CanvasLayer = null
 
 func _ready() -> void:
 	_plugin_available = Engine.has_singleton("MobileAds")
+	print("AdManager: platform=%s debug=%s MobileAds=%s force_test=%s" % [OS.get_name(), OS.is_debug_build(), _plugin_available, FORCE_TEST_ADS])
 	_can_simulate_ads = OS.has_feature("editor") or OS.get_name() in ["Windows", "macOS", "Linux"]
 	_rewarded_retry_timer = Timer.new()
 	_rewarded_retry_timer.one_shot = true
@@ -208,7 +212,7 @@ func _preload_interstitial() -> void:
 	ClassDB.instantiate("InterstitialAdLoader").load(unit_id, ClassDB.instantiate("AdRequest"), _interstitial_load_cb)
 
 func _get_rewarded_unit_id() -> String:
-	if OS.is_debug_build():
+	if FORCE_TEST_ADS or OS.is_debug_build():
 		return TEST_REWARDED_ANDROID if OS.get_name() == "Android" else TEST_REWARDED_IOS
 	if OS.get_name() == "Android":
 		return AD_UNIT_REWARDED_ANDROID
@@ -219,7 +223,7 @@ func _get_rewarded_unit_id() -> String:
 	return configured if not configured.is_empty() else AD_UNIT_REWARDED_IOS
 
 func _get_interstitial_unit_id() -> String:
-	if OS.is_debug_build():
+	if FORCE_TEST_ADS or OS.is_debug_build():
 		return TEST_INTERSTITIAL_ANDROID if OS.get_name() == "Android" else TEST_INTERSTITIAL_IOS
 	if OS.get_name() == "Android":
 		return AD_UNIT_INTERSTITIAL_ANDROID
