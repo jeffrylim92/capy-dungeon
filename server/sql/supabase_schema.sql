@@ -43,6 +43,12 @@ create table if not exists save_data (
 create index if not exists idx_save_data_user on save_data (user_id);
 create index if not exists idx_save_data_updated on save_data (updated_at desc);
 
+create table if not exists account_sessions (
+  account_key text primary key,
+  session_token text not null,
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists leaderboards (
   id bigserial primary key,
   user_id uuid references users(id) on delete set null,

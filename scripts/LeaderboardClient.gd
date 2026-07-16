@@ -7,6 +7,36 @@ extends RefCounted
 const BASE_URL := "https://capy-dungeon.onrender.com"
 const GLOBAL_LIMIT_ALL := 0
 const GLOBAL_LIMIT_TOP20 := 20
+static var active_session_token: String = ""
+
+static func set_session_token(token: String) -> void:
+	active_session_token = token
+
+static func claim_session(host: Node, account_key: String, callback: Callable) -> void:
+	_post_json(host, "/session/claim", {"account_key":account_key}, func(payload: Dictionary) -> void:
+		callback.call(String(payload.get("session_token", "")) if bool(payload.get("ok", false)) else "")
+	)
+
+static func check_session(host: Node, account_key: String, session_token: String, callback: Callable) -> void:
+	_post_json(host, "/session/check", {"account_key":account_key, "session_token":session_token}, func(payload: Dictionary) -> void:
+		callback.call(bool(payload.get("active", true)))
+	)
+
+static func _post_json(host: Node, path: String, payload: Dictionary, callback: Callable) -> void:
+	var http := HTTPRequest.new()
+	host.add_child(http)
+	http.request_completed.connect(func(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+		http.queue_free()
+		if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+			callback.call({})
+			return
+		var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+		callback.call(parsed as Dictionary if typeof(parsed) == TYPE_DICTIONARY else {})
+	)
+	var err := http.request(BASE_URL + path, ["Content-Type: application/json"], HTTPClient.METHOD_POST, JSON.stringify(payload))
+	if err != OK:
+		http.queue_free()
+		callback.call({})
 
 ## Submit the calling user's cumulative stats after each match.
 ## Fire-and-forget: errors are logged but not surfaced.
@@ -17,10 +47,6 @@ static func submit_stats(host: Node, username: String, display_name: String, sta
 	if source_username.is_empty():
 		source_username = username
 	var all := StatsStore.get_all_for_user(source_username)
-	if all.is_empty():
-		DebugLog.log("[LeaderboardClient] submit skipped: no stats for source '%s'" % source_username)
-		return
-
 	var best_character_kills: int = 0
 	var best_survive: float = 0.0
 	var best_kill_char: String    = ""
@@ -49,6 +75,9 @@ static func submit_stats(host: Node, username: String, display_name: String, sta
 			"ring_stash_json":       RingStore.load_stash(source_username),
 			"artifact_stash_json":   ArtifactStore.load_stash(source_username),
 			"artifact_equipped_json": ArtifactStore.load_equipped(source_username),
+			"story_json":           StoryStore.cloud_snapshot(source_username),
+			"progression_json":     ProgressionStore.cloud_snapshot(source_username),
+			"session_token":        active_session_token,
 	}
 	if not latest_match.is_empty():
 		body_payload["latest_match"] = latest_match
@@ -68,7 +97,7 @@ static func submit_stats(host: Node, username: String, display_name: String, sta
 
 ## Fetch cloud-backed progress for a user.
 ## `callback` receives a Dictionary with keys:
-##   stats, rings_equipped, ring_stash, artifact_stash, artifact_equipped
+##   stats, rings_equipped, ring_stash, artifact_stash, artifact_equipped, story, progression
 ## or {} on failure.
 static func fetch_user_stats(host: Node, username: String, callback: Callable) -> void:
 	if username.is_empty():
@@ -93,9 +122,11 @@ static func fetch_user_stats(host: Node, username: String, callback: Callable) -
 				"ring_stash": payload.get("ring_stash", []) as Array,
 				"artifact_stash": payload.get("artifact_stash", []) as Array,
 				"artifact_equipped": payload.get("artifact_equipped", {}) as Dictionary,
+				"story": payload.get("story", {}) as Dictionary,
+				"progression": payload.get("progression", {}) as Dictionary,
 			})
 	)
-	var err := http.request(BASE_URL + "/stats/user/" + username.to_lower())
+	var err := http.request(BASE_URL + "/stats/user/" + username.to_lower(), ["Authorization: Bearer " + active_session_token])
 	if err != OK:
 		http.queue_free()
 		callback.call({})
@@ -108,6 +139,7 @@ static func delete_account(host: Node, username: String, social_email: String, c
 		callback.call({"ok": false, "deleted": 0, "error": "missing username"})
 		return
 	var payload: Dictionary = {"username": key}
+	payload["session_token"] = active_session_token
 	var email_key: String = social_email.strip_edges().to_lower()
 	if not email_key.is_empty():
 		payload["social_email"] = email_key

@@ -206,8 +206,34 @@ static func load_equipped(username: String) -> Dictionary:
 			}
 		}
 		save_equipped(username, migrated)
+		_ensure_equipped_artifacts_in_stash(username, migrated)
 		return migrated
+	_ensure_equipped_artifacts_in_stash(username, equipped_data)
 	return equipped_data
+
+static func _ensure_equipped_artifacts_in_stash(username: String, equipped: Dictionary) -> void:
+	# Artifacts are account unlocks with independent per-character loadouts.
+	# Recover items removed by the previous consumptive equip behavior.
+	var stash := load_stash(username)
+	var known_ids: Dictionary = {}
+	for item in stash:
+		if item is Dictionary:
+			known_ids[String((item as Dictionary).get("id", ""))] = true
+	var changed := false
+	for slots_any in equipped.values():
+		if not (slots_any is Dictionary):
+			continue
+		for artifact_any in (slots_any as Dictionary).values():
+			if not (artifact_any is Dictionary):
+				continue
+			var artifact := artifact_any as Dictionary
+			var artifact_id := String(artifact.get("id", ""))
+			if not artifact_id.is_empty() and not known_ids.has(artifact_id):
+				stash.append(artifact.duplicate(true))
+				known_ids[artifact_id] = true
+				changed = true
+	if changed:
+		save_stash(username)
 
 static func save_equipped(username: String, equipped: Dictionary) -> void:
 	var path: String = _equip_path(username)

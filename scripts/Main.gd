@@ -8,6 +8,8 @@ const LOBBY_SCENE := preload("res://scenes/Lobby.tscn")
 const SELECT_SCENE := preload("res://scenes/CharacterSelect.tscn")
 const INVENTORY_SCENE := preload("res://scenes/Inventory.tscn")
 const MATCH_SCENE := preload("res://scenes/Match.tscn")
+const STORY_SCENE := preload("res://scenes/StorySelect.tscn")
+const STORY_INVENTORY_SCENE := preload("res://scenes/StoryInventory.tscn")
 const HISTORY_SCENE := preload("res://scenes/History.tscn")
 const COLLECTIBLES_SCENE := preload("res://scenes/Collectibles.tscn")
 const PROFILE_PATH := "user://profile.json"
@@ -26,9 +28,11 @@ const BGM_FADE_TIME:    float  = 1.2   # crossfade duration in seconds
 const BGM_LOBBY_VOLUME_DB: float = 0.0
 const BGM_DUNGEON_VOLUME_DB: float = -14.0
 const HISTORY_SYNC_COOLDOWN_MS: int = 45000
+const SESSION_CHECK_INTERVAL: float = 5.0
 
 var _account: Dictionary = {}
 var _last_character: CharacterData = null
+var _story_stage: Dictionary = {}
 
 var _startup_gate_passed: bool = false
 var _gate_mode: String = "none"
@@ -44,6 +48,10 @@ var _runtime_net_timer: Timer = null
 var _history_loading_layer: CanvasLayer = null
 var _last_history_sync_ms: int = 0
 var _display_name_prompt_layer: CanvasLayer = null
+var _session_token: String = ""
+var _session_check_elapsed: float = 0.0
+var _session_check_pending: bool = false
+var _session_expired_layer: CanvasLayer = null
 
 # ── Music players ─────────────────────────────────────────────────────────────
 var _bgm_a: AudioStreamPlayer = null
@@ -131,21 +139,20 @@ func _scaled_music_db(target_db: float, factor: float) -> float:
 	return target_db + linear_to_db(clamp(factor, 0.0001, 1.0))
 
 func _process(delta: float) -> void:
-	if not _bgm_fading:
-		return
-	_bgm_fade_t += delta
-	var t: float = clamp(_bgm_fade_t / BGM_FADE_TIME, 0.0, 1.0)
-	_bgm_a.volume_db = _scaled_music_db(_bgm_active_volume_db, 1.0 - t)
-	_bgm_b.volume_db = _scaled_music_db(_bgm_next_volume_db, t)
-	if t >= 1.0:
-		_bgm_a.stop()
-		# Swap so A is always the active player
-		var tmp: AudioStreamPlayer = _bgm_a
-		_bgm_a = _bgm_b
-		_bgm_b = tmp
-		_bgm_active_volume_db = _bgm_next_volume_db
-		_bgm_a.volume_db = _bgm_active_volume_db
-		_bgm_fading = false
+	if _bgm_fading:
+		_bgm_fade_t += delta
+		var t: float = clamp(_bgm_fade_t / BGM_FADE_TIME, 0.0, 1.0)
+		_bgm_a.volume_db = _scaled_music_db(_bgm_active_volume_db, 1.0 - t)
+		_bgm_b.volume_db = _scaled_music_db(_bgm_next_volume_db, t)
+		if t >= 1.0:
+			_bgm_a.stop()
+			var tmp: AudioStreamPlayer = _bgm_a
+			_bgm_a = _bgm_b
+			_bgm_b = tmp
+			_bgm_active_volume_db = _bgm_next_volume_db
+			_bgm_a.volume_db = _bgm_active_volume_db
+			_bgm_fading = false
+	_poll_account_session(delta)
 
 ## Called by the OS when the app is (re)opened via a capydungeon:// deep link.
 ## Wire this up from your platform bridge:
@@ -806,6 +813,10 @@ func _get_android_version_code() -> int:
 
 func _show_login() -> void:
 	_account = {}
+	_session_token = ""
+	LeaderboardClient.set_session_token("")
+	_session_check_elapsed = 0.0
+	_session_check_pending = false
 	_clear_children()
 	_play_music(BGM_LOBBY_PATH, BGM_LOBBY_VOLUME_DB)
 	var login := LOGIN_SCENE.instantiate()
@@ -821,19 +832,36 @@ func _on_logged_in(account: Dictionary) -> void:
 		var cloud_username: String = _cloud_username_for(account)
 		if not username.is_empty():
 			PurchaseStore.set_username(username)
-			_restore_cloud_progress_for_account(account, func() -> void:
-				_last_history_sync_ms = Time.get_ticks_msec()
+			LeaderboardClient.claim_session(self, cloud_username, func(token: String) -> void:
+				if token.is_empty():
+					_show_login()
+					return
+				_session_token = token
+				LeaderboardClient.set_session_token(token)
+				_session_check_elapsed = 0.0
+				_restore_cloud_progress_for_account(account, func() -> void:
+					_last_history_sync_ms = Time.get_ticks_msec()
+					_show_lobby()
+					_show_account_linked_message()
+				)
 			)
-			LeaderboardClient.submit_stats(self, cloud_username, chosen_display_name, username)
-		_show_lobby()
+		else:
+			_show_lobby()
 	)
 
-func _show_lobby() -> void:
+func _show_lobby(open_play_hub: bool = false) -> void:
+	_sync_cloud_progress()
 	_clear_children()
 	_play_music(BGM_LOBBY_PATH, BGM_LOBBY_VOLUME_DB)
 	var lobby := LOBBY_SCENE.instantiate()
 	lobby.account = _account
-	lobby.start_game_requested.connect(_show_select)
+	lobby.open_play_hub_on_ready = open_play_hub
+	lobby.start_game_requested.connect(func() -> void:
+		_story_stage = {}
+		_show_select()
+	)
+	lobby.story_requested.connect(_show_story)
+	lobby.cloud_sync_requested.connect(_sync_cloud_progress)
 	lobby.history_requested.connect(_show_history)
 	lobby.collectibles_requested.connect(_show_collectibles)
 	lobby.logout_requested.connect(func() -> void:
@@ -841,6 +869,20 @@ func _show_lobby() -> void:
 		_show_login()
 	)
 	add_child(lobby)
+
+func _show_story() -> void:
+	_sync_cloud_progress()
+	_story_stage = {}
+	_clear_children()
+	var story := STORY_SCENE.instantiate()
+	story.account_username = String(_account.get("username", ""))
+	story.stage_selected.connect(func(stage: Dictionary) -> void:
+		_story_stage = stage
+		_show_select()
+	)
+	story.back_requested.connect(_show_lobby.bind(true))
+	story.cloud_sync_requested.connect(_sync_cloud_progress)
+	add_child(story)
 
 func _show_collectibles() -> void:
 	_clear_children()
@@ -905,6 +947,112 @@ func _apply_cloud_payload(username: String, data: Dictionary) -> void:
 		data.get("artifact_stash", []) as Array,
 		data.get("artifact_equipped", {}) as Dictionary
 	)
+	StoryStore.restore_from_server(username, data.get("story", {}) as Dictionary)
+	ProgressionStore.restore_from_server(username, data.get("progression", {}) as Dictionary)
+
+func _sync_cloud_progress() -> void:
+	var username: String = String(_account.get("username", "")).strip_edges()
+	if username.is_empty():
+		return
+	LeaderboardClient.submit_stats(self, _cloud_username_for(_account), _profile_display_name_for(_account), username)
+
+func _poll_account_session(delta: float) -> void:
+	if _session_token.is_empty() or _account.is_empty() or _session_check_pending or _session_expired_layer != null:
+		return
+	_session_check_elapsed += delta
+	if _session_check_elapsed < SESSION_CHECK_INTERVAL:
+		return
+	_session_check_elapsed = 0.0
+	_session_check_pending = true
+	LeaderboardClient.check_session(self, _cloud_username_for(_account), _session_token, func(active: bool) -> void:
+		_session_check_pending = false
+		if not active and not _session_token.is_empty():
+			_show_session_expired()
+	)
+
+func _show_account_linked_message() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 220
+	add_child(layer)
+	var view := get_viewport().get_visible_rect().size
+	var panel := PanelContainer.new()
+	panel.position = Vector2(70, 75)
+	panel.size = Vector2(view.x - 140, 92)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.24, 0.16, 0.96)
+	style.border_color = Color(0.42, 0.88, 0.58)
+	style.set_border_width_all(3)
+	style.corner_radius_top_left = 24; style.corner_radius_top_right = 24; style.corner_radius_bottom_left = 24; style.corner_radius_bottom_right = 24
+	panel.add_theme_stylebox_override("panel", style)
+	layer.add_child(panel)
+	var label := Label.new()
+	label.text = "Account successfully linked."
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 30)
+	panel.add_child(label)
+	var timer := get_tree().create_timer(3.0)
+	timer.timeout.connect(func() -> void:
+		if is_instance_valid(layer): layer.queue_free()
+	)
+
+func _show_session_expired() -> void:
+	if _session_expired_layer != null:
+		return
+	get_tree().paused = true
+	_session_expired_layer = CanvasLayer.new()
+	_session_expired_layer.layer = 500
+	_session_expired_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(_session_expired_layer)
+	var view := get_viewport().get_visible_rect().size
+	var shade := ColorRect.new()
+	shade.color = Color(0.01, 0.01, 0.02, 0.94)
+	shade.size = view
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	_session_expired_layer.add_child(shade)
+	var panel := PanelContainer.new()
+	panel.position = Vector2(70, view.y * 0.28)
+	panel.size = Vector2(view.x - 140, 600)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.07, 0.12, 0.99)
+	style.border_color = Color(0.76, 0.48, 0.20)
+	style.set_border_width_all(4)
+	style.corner_radius_top_left = 28; style.corner_radius_top_right = 28; style.corner_radius_bottom_left = 28; style.corner_radius_bottom_right = 28
+	style.content_margin_left = 35; style.content_margin_right = 35; style.content_margin_top = 38; style.content_margin_bottom = 38
+	panel.add_theme_stylebox_override("panel", style)
+	_session_expired_layer.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 26)
+	panel.add_child(box)
+	var title := Label.new()
+	title.text = "SESSION EXPIRED\nAccount Logged In Elsewhere"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 42)
+	title.add_theme_color_override("font_color", Color("ffd06a"))
+	box.add_child(title)
+	var body := Label.new()
+	body.text = "This account is now active on another device. Your current game has been paused to protect your progress."
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_theme_font_size_override("font_size", 27)
+	body.custom_minimum_size = Vector2(0, 150)
+	box.add_child(body)
+	var button := Button.new()
+	button.text = "RETURN TO TITLE SCREEN"
+	button.custom_minimum_size = Vector2(0, 90)
+	button.add_theme_font_size_override("font_size", 30)
+	button.pressed.connect(_return_to_title_after_session_expired)
+	box.add_child(button)
+
+func _return_to_title_after_session_expired() -> void:
+	_session_token = ""
+	LeaderboardClient.set_session_token("")
+	AccountStore.clear_persistent_session()
+	if _session_expired_layer != null:
+		_session_expired_layer.queue_free()
+	_session_expired_layer = null
+	get_tree().paused = false
+	_show_login()
 
 func _payload_has_progress(data: Dictionary) -> bool:
 	var stats: Dictionary = data.get("stats", {}) as Dictionary
@@ -917,6 +1065,10 @@ func _payload_has_progress(data: Dictionary) -> bool:
 	if not (data.get("rings_equipped", {}) as Dictionary).is_empty():
 		return true
 	if not (data.get("artifact_equipped", {}) as Dictionary).is_empty():
+		return true
+	if not (data.get("story", {}) as Dictionary).is_empty():
+		return true
+	if not (data.get("progression", {}) as Dictionary).is_empty():
 		return true
 	return false
 
@@ -954,12 +1106,25 @@ func _show_select() -> void:
 	sel.favourite_character_id = String(_account.get("favorite_capy", ""))
 	sel.account_username = username
 	sel.character_chosen.connect(_on_character_chosen)
-	sel.back_to_menu.connect(_show_lobby)
+	sel.back_to_menu.connect(_show_story if not _story_stage.is_empty() else _show_lobby)
 	add_child(sel)
 
 func _on_character_chosen(data: CharacterData) -> void:
 	_last_character = data
-	_show_inventory(data)
+	if not _story_stage.is_empty():
+		_show_story_inventory(data)
+	else:
+		_show_inventory(data)
+
+func _show_story_inventory(data: CharacterData) -> void:
+	_clear_children()
+	var inv := STORY_INVENTORY_SCENE.instantiate()
+	inv.selected_character = data
+	inv.account_username = String(_account.get("username", ""))
+	inv.confirmed.connect(_start_match)
+	inv.back_requested.connect(_show_select)
+	inv.cloud_sync_requested.connect(_sync_cloud_progress)
+	add_child(inv)
 
 func _show_inventory(data: CharacterData) -> void:
 	_clear_children()
@@ -981,11 +1146,14 @@ func _start_match(data: CharacterData) -> void:
 	m.account_username     = String(_account.get("username", ""))
 	m.account_cloud_id     = _cloud_username_for(_account)
 	m.account_display_name = _profile_display_name_for(_account)
+	m.story_stage = _story_stage.duplicate(true)
 	m.match_ended.connect(_on_match_ended)
 	add_child(m)
 
 func _on_match_ended(next_action: String) -> void:
 	match next_action:
+		"story":
+			_show_story()
 		"rematch":
 			if _last_character != null:
 				_start_match(_last_character)

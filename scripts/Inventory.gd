@@ -1330,12 +1330,8 @@ func _replace_equipped_slot(item_type: String, slot: int, data: Dictionary) -> v
 		_rings = RingStore.load_stash(account_username)
 		_info_lbl.text = "Ring equipped to slot %d." % (slot + 1)
 	else:
-		var old_art = _artifacts_equipped.get("slot_%d" % slot, null)
-		if old_art != null and typeof(old_art) == TYPE_DICTIONARY:
-			ArtifactStore.ensure_artifact_in_stash(account_username, old_art as Dictionary)
 		_artifacts_equipped["slot_%d" % slot] = data
 		ArtifactStore.equip_artifact(account_username, _char_id, slot, data)
-		ArtifactStore.remove_artifact_from_stash(account_username, item_id)
 		_artifacts = ArtifactStore.load_stash(account_username)
 		_info_lbl.text = "Artifact equipped to slot %d." % (slot + 1)
 	_refresh_slots()
@@ -1390,8 +1386,7 @@ func _unequip_item(item_type: String, slot: int) -> void:
 	else:
 		var art = _artifacts_equipped.get("slot_%d" % slot, null)
 		if art != null and typeof(art) == TYPE_DICTIONARY:
-			ArtifactStore.ensure_artifact_in_stash(account_username, art as Dictionary)
-		_artifacts_equipped["slot_%d" % slot] = null
+			_artifacts_equipped["slot_%d" % slot] = null
 		ArtifactStore.unequip_artifact(account_username, _char_id, slot)
 		_artifacts = ArtifactStore.load_stash(account_username)
 		_info_lbl.text = "Artifact unequipped."
@@ -1417,7 +1412,6 @@ func _equip_item_from_stash(item_type: String, data: Dictionary) -> void:
 			return
 		_artifacts_equipped["slot_%d" % slot_a] = data
 		ArtifactStore.equip_artifact(account_username, _char_id, slot_a, data)
-		ArtifactStore.remove_artifact_from_stash(account_username, item_id)
 		_artifacts = ArtifactStore.load_stash(account_username)
 		_info_lbl.text = "Artifact equipped to slot %d." % (slot_a + 1)
 	_refresh_slots()

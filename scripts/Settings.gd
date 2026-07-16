@@ -341,6 +341,8 @@ func _purge_local_account_data(username: String) -> void:
 	StatsStore.purge_user(username)
 	RingStore.purge_user(username)
 	ArtifactStore.purge_user(username)
+	StoryStore.purge_user(username)
+	ProgressionStore.purge_user(username)
 	PurchaseStore.purge_user(username)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(_PROFILE_PATH))
 

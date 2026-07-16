@@ -190,9 +190,10 @@ func _load_secrets() -> void:
 	var relay: String = cfg.get_value("relay", "facebook_relay_url", FACEBOOK_RELAY_URL)
 	if not relay.is_empty():
 		FACEBOOK_RELAY_URL = relay
-	print("SocialAuth: secrets loaded — google client_id=%s… facebook client_id=%s" % [
-		(google_dict["client_id"] as String).left(12),
-		(fb_dict["client_id"] as String).left(6),
+	print("SocialAuth: OAuth config loaded — google_configured=%s facebook_configured=%s relay_configured=%s" % [
+		str(not (google_dict["client_id"] as String).is_empty()),
+		str(not (fb_dict["client_id"] as String).is_empty()),
+		str(not FACEBOOK_RELAY_URL.is_empty()),
 	])
 
 ## Returns the list of providers to show on the current device.

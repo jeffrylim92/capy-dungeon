@@ -22,6 +22,7 @@ import asyncio
 import json as _json
 import logging
 import os
+import secrets
 import sqlite3
 import threading
 import time
@@ -30,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Header, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -163,6 +164,8 @@ def _db_init() -> None:
                 ring_stash_json   TEXT    DEFAULT '[]',
                 artifact_stash_json TEXT  DEFAULT '[]',
                 artifact_equipped_json TEXT DEFAULT '{}',
+                story_json        TEXT    DEFAULT '{}',
+                progression_json  TEXT    DEFAULT '{}',
                 updated_at        TEXT    DEFAULT ''
             )
         """)
@@ -187,6 +190,13 @@ def _db_init() -> None:
         _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_wave ON leaderboard_runs(wave DESC)")
         _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_user ON leaderboard_runs(username)")
         _execute(conn, "CREATE INDEX IF NOT EXISTS idx_runs_character ON leaderboard_runs(character)")
+        _execute(conn, """
+            CREATE TABLE IF NOT EXISTS account_sessions (
+                account_key TEXT PRIMARY KEY,
+                session_token TEXT NOT NULL,
+                updated_at TEXT DEFAULT ''
+            )
+        """)
         # Migrate older tables missing newer leaderboard columns.
         # Important for PostgreSQL: a failed ALTER aborts the transaction, so we
         # must detect column existence first or rollback between attempts.
@@ -197,6 +207,8 @@ def _db_init() -> None:
         _ensure_column(conn, "leaderboard", "ring_stash_json", "TEXT DEFAULT '[]'")
         _ensure_column(conn, "leaderboard", "artifact_stash_json", "TEXT DEFAULT '[]'")
         _ensure_column(conn, "leaderboard", "artifact_equipped_json", "TEXT DEFAULT '{}'")
+        _ensure_column(conn, "leaderboard", "story_json", "TEXT DEFAULT '{}'")
+        _ensure_column(conn, "leaderboard", "progression_json", "TEXT DEFAULT '{}'")
         conn.commit()
         conn.close()
 
@@ -235,12 +247,58 @@ class StatsSubmit(BaseModel):
     ring_stash_json: list = []
     artifact_stash_json: list = []
     artifact_equipped_json: dict = {}
+    story_json: dict = {}
+    progression_json: dict = {}
+    session_token: str = ""
     latest_match: dict = {}
 
 
 class AccountDeleteRequest(BaseModel):
     username: str
     social_email: str = ""
+    session_token: str = ""
+
+
+class SessionClaimRequest(BaseModel):
+    account_key: str
+
+
+class SessionCheckRequest(BaseModel):
+    account_key: str
+    session_token: str
+
+
+@app.post("/session/claim")
+async def session_claim(body: SessionClaimRequest) -> dict:
+    account_key = body.account_key.strip().lower()
+    if not account_key:
+        return {"ok": False, "error": "missing account key"}
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc).isoformat()
+    with _db_lock:
+        conn = _db_connect()
+        _execute(
+            conn,
+            f"INSERT INTO account_sessions (account_key,session_token,updated_at) VALUES ({_PH},{_PH},{_PH}) "
+            f"ON CONFLICT(account_key) DO UPDATE SET session_token=excluded.session_token,updated_at=excluded.updated_at",
+            (account_key, token, now),
+        )
+        conn.commit()
+        conn.close()
+    return {"ok": True, "session_token": token}
+
+
+@app.post("/session/check")
+async def session_check(body: SessionCheckRequest) -> dict:
+    account_key = body.account_key.strip().lower()
+    token = body.session_token.strip()
+    if not account_key or not token:
+        return {"ok": True, "active": False}
+    with _db_lock:
+        conn = _db_connect()
+        row = _fetchone(conn, f"SELECT session_token FROM account_sessions WHERE account_key={_PH}", (account_key,))
+        conn.close()
+    return {"ok": True, "active": bool(row and secrets.compare_digest(str(row["session_token"]), token))}
 
 
 def _best_kill_from_stats(stats: dict, fallback_kills: int = 0, fallback_char: str = "") -> tuple[int, str]:
@@ -357,12 +415,20 @@ async def stats_submit(body: StatsSubmit) -> dict:
     username = body.username.strip().lower()
     if not username:
         return {"ok": False, "error": "missing username"}
+    with _db_lock:
+        session_conn = _db_connect()
+        session_row = _fetchone(session_conn, f"SELECT session_token FROM account_sessions WHERE account_key={_PH}", (username,))
+        session_conn.close()
+    if not session_row or not secrets.compare_digest(str(session_row["session_token"]), body.session_token.strip()):
+        return {"ok": False, "error": "session expired"}
     now = datetime.now(timezone.utc).isoformat()
     stats_blob = _json.dumps(body.stats_json, ensure_ascii=False)
     rings_blob = _json.dumps(body.rings_json, ensure_ascii=False)
     ring_stash_blob = _json.dumps(body.ring_stash_json, ensure_ascii=False)
     artifact_stash_blob = _json.dumps(body.artifact_stash_json, ensure_ascii=False)
     artifact_equipped_blob = _json.dumps(body.artifact_equipped_json, ensure_ascii=False)
+    story_blob = _json.dumps(body.story_json, ensure_ascii=False)
+    progression_blob = _json.dumps(body.progression_json, ensure_ascii=False)
     submitted_kills, submitted_kill_char = _best_kill_from_stats(
         body.stats_json,
         body.total_kills,
@@ -378,6 +444,8 @@ async def stats_submit(body: StatsSubmit) -> dict:
             existing_ring_stash_blob = row["ring_stash_json"] if row["ring_stash_json"] else "[]"
             existing_artifact_stash_blob = row["artifact_stash_json"] if row["artifact_stash_json"] else "[]"
             existing_artifact_equipped_blob = row["artifact_equipped_json"] if row["artifact_equipped_json"] else "{}"
+            existing_story_blob = row["story_json"] if row["story_json"] else "{}"
+            existing_progression_blob = row["progression_json"] if row["progression_json"] else "{}"
             existing_stats = {}
             try:
                 existing_stats = _json.loads(existing_blob)
@@ -401,22 +469,24 @@ async def stats_submit(body: StatsSubmit) -> dict:
             new_ring_stash_blob = ring_stash_blob if body.ring_stash_json else existing_ring_stash_blob
             new_artifact_stash_blob = artifact_stash_blob if body.artifact_stash_json else existing_artifact_stash_blob
             new_artifact_equipped_blob = artifact_equipped_blob if body.artifact_equipped_json else existing_artifact_equipped_blob
+            new_story_blob = story_blob if body.story_json else existing_story_blob
+            new_progression_blob = progression_blob if body.progression_json else existing_progression_blob
             _execute(conn,
                 f"UPDATE leaderboard SET display_name={ph},total_kills={ph},best_survive_sec={ph},"
                 f"best_kill_char={ph},best_survive_char={ph},stats_json={ph},rings_json={ph},"
-                f"ring_stash_json={ph},artifact_stash_json={ph},artifact_equipped_json={ph},updated_at={ph} WHERE username={ph}",
+                f"ring_stash_json={ph},artifact_stash_json={ph},artifact_equipped_json={ph},story_json={ph},progression_json={ph},updated_at={ph} WHERE username={ph}",
                 (body.display_name, new_kills, new_survive, kill_char, surv_char, new_blob, new_rings_blob,
-                 new_ring_stash_blob, new_artifact_stash_blob, new_artifact_equipped_blob, now, username),
+                 new_ring_stash_blob, new_artifact_stash_blob, new_artifact_equipped_blob, new_story_blob, new_progression_blob, now, username),
             )
         else:
             _execute(conn,
                 f"INSERT INTO leaderboard "
                 f"(username,display_name,total_kills,best_survive_sec,best_kill_char,best_survive_char,stats_json,rings_json,"
-                f"ring_stash_json,artifact_stash_json,artifact_equipped_json,updated_at)"
-                f" VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})",
+                f"ring_stash_json,artifact_stash_json,artifact_equipped_json,story_json,progression_json,updated_at)"
+                f" VALUES ({ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph},{ph})",
                 (username, body.display_name, submitted_kills, body.best_survive_seconds,
                  submitted_kill_char, body.best_survive_character, stats_blob, rings_blob,
-                 ring_stash_blob, artifact_stash_blob, artifact_equipped_blob, now),
+                 ring_stash_blob, artifact_stash_blob, artifact_equipped_blob, story_blob, progression_blob, now),
             )
 
         latest: dict = body.latest_match if isinstance(body.latest_match, dict) else {}
@@ -442,22 +512,27 @@ async def stats_submit(body: StatsSubmit) -> dict:
 
 
 @app.get("/stats/user/{username}")
-async def stats_user(username: str) -> dict:
+async def stats_user(username: str, authorization: str = Header(default="")) -> dict:
     uname = username.strip().lower()
     if not uname:
         return {"ok": False, "stats": {}}
     ph = _PH
     with _db_lock:
         conn = _db_connect()
+        session_row = _fetchone(conn, f"SELECT session_token FROM account_sessions WHERE account_key={ph}", (uname,))
+        session_token = authorization.removeprefix("Bearer ").strip()
+        if not session_row or not secrets.compare_digest(str(session_row["session_token"]), session_token):
+            conn.close()
+            return {"ok": False, "error": "session expired"}
         row = _fetchone(
             conn,
-            f"SELECT stats_json, rings_json, ring_stash_json, artifact_stash_json, artifact_equipped_json "
+            f"SELECT stats_json, rings_json, ring_stash_json, artifact_stash_json, artifact_equipped_json, story_json, progression_json "
             f"FROM leaderboard WHERE username = {ph}",
             (uname,),
         )
         conn.close()
     if not row:
-        return {"ok": True, "stats": {}, "rings_json": {}, "ring_stash": [], "artifact_stash": [], "artifact_equipped": {}}
+        return {"ok": True, "stats": {}, "rings_json": {}, "ring_stash": [], "artifact_stash": [], "artifact_equipped": {}, "story": {}, "progression": {}}
     try:
         stats = _json.loads(row["stats_json"] if row["stats_json"] else "{}")
     except Exception:
@@ -478,6 +553,14 @@ async def stats_user(username: str) -> dict:
         artifact_equipped = _json.loads(row["artifact_equipped_json"] if row["artifact_equipped_json"] else "{}")
     except Exception:
         artifact_equipped = {}
+    try:
+        story = _json.loads(row["story_json"] if row["story_json"] else "{}")
+    except Exception:
+        story = {}
+    try:
+        progression = _json.loads(row["progression_json"] if row["progression_json"] else "{}")
+    except Exception:
+        progression = {}
     return {
         "ok": True,
         "stats": stats if isinstance(stats, dict) else {},
@@ -485,6 +568,8 @@ async def stats_user(username: str) -> dict:
         "ring_stash": ring_stash if isinstance(ring_stash, list) else [],
         "artifact_stash": artifact_stash if isinstance(artifact_stash, list) else [],
         "artifact_equipped": artifact_equipped if isinstance(artifact_equipped, dict) else {},
+        "story": story if isinstance(story, dict) else {},
+        "progression": progression if isinstance(progression, dict) else {},
     }
 
 
@@ -499,6 +584,14 @@ async def account_delete(body: AccountDeleteRequest) -> dict:
     if social_email and social_email not in keys:
         keys.append(social_email)
 
+    session_key = social_email if social_email else username
+    with _db_lock:
+        session_conn = _db_connect()
+        session_row = _fetchone(session_conn, f"SELECT session_token FROM account_sessions WHERE account_key={_PH}", (session_key,))
+        session_conn.close()
+    if not session_row or not secrets.compare_digest(str(session_row["session_token"]), body.session_token.strip()):
+        return {"ok": False, "error": "session expired", "deleted": 0}
+
     placeholders = ",".join([_PH] * len(keys))
     deleted: int = 0
 
@@ -511,6 +604,9 @@ async def account_delete(body: AccountDeleteRequest) -> dict:
                 deleted += int(cur.rowcount or 0)
             if _table_exists(conn, "leaderboard"):
                 cur = _execute(conn, f"DELETE FROM leaderboard WHERE username IN ({placeholders})", tuple(keys))
+                deleted += int(cur.rowcount or 0)
+            if _table_exists(conn, "account_sessions"):
+                cur = _execute(conn, f"DELETE FROM account_sessions WHERE account_key IN ({placeholders})", tuple(keys))
                 deleted += int(cur.rowcount or 0)
 
             # New Supabase schema tables (if present).
