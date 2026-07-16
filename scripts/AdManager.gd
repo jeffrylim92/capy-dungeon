@@ -23,6 +23,7 @@ const TEST_INTERSTITIAL_IOS: String = "ca-app-pub-3940256099942544/4411468910"
 
 # Keep true while testing internal/debug builds. Set false before public release.
 const FORCE_TEST_ADS: bool = true
+const NATIVE_ADMOB_SINGLETON: StringName = &"PoingGodotAdMob"
 
 const AD_UNIT_REWARDED_ANDROID: String = "ca-app-pub-9375037645592356/8574160982"
 const AD_UNIT_REWARDED_IOS: String = "ca-app-pub-9375037645592356/7548067502"
@@ -55,12 +56,14 @@ var _reward_earned: bool = false
 var _rewarded_load_cb     = null
 var _interstitial_load_cb = null
 var _rewarded_retry_timer: Timer = null
+var _interstitial_retry_timer: Timer = null
 var _rewarded_request_timeout: Timer = null
 var _rewarded_loading: bool = false
 var _rewarded_show_pending: bool = false
 var _rewarded_show_in_progress: bool = false
 var _reward_listener = null
 var _mobile_ads_initialized: bool = false
+var _mobile_ads_init_watchdog: Timer = null
 
 # ── Fake-ad state (desktop / dev only) ───────────────────────────────────────
 const FAKE_AD_DURATION: float = 3.0
@@ -72,8 +75,8 @@ var _fake_layer: CanvasLayer = null
 # ─────────────────────────────────────────────────────────────────────────────
 
 func _ready() -> void:
-	_plugin_available = Engine.has_singleton("MobileAds")
-	print("AdManager: platform=%s debug=%s MobileAds=%s force_test=%s" % [OS.get_name(), OS.is_debug_build(), _plugin_available, FORCE_TEST_ADS])
+	_plugin_available = Engine.has_singleton(NATIVE_ADMOB_SINGLETON)
+	print("AdManager: startup platform=%s debug=%s native_singleton=%s available=%s force_test=%s" % [OS.get_name(), OS.is_debug_build(), NATIVE_ADMOB_SINGLETON, _plugin_available, FORCE_TEST_ADS])
 	_can_simulate_ads = OS.has_feature("editor") or OS.get_name() in ["Windows", "macOS", "Linux"]
 	_rewarded_retry_timer = Timer.new()
 	_rewarded_retry_timer.one_shot = true
@@ -81,45 +84,68 @@ func _ready() -> void:
 	_rewarded_retry_timer.timeout.connect(_preload_rewarded)
 	add_child(_rewarded_retry_timer)
 
+	_interstitial_retry_timer = Timer.new()
+	_interstitial_retry_timer.one_shot = true
+	_interstitial_retry_timer.wait_time = 10.0
+	_interstitial_retry_timer.timeout.connect(_preload_interstitial)
+	add_child(_interstitial_retry_timer)
+
 	_rewarded_request_timeout = Timer.new()
 	_rewarded_request_timeout.one_shot = true
 	_rewarded_request_timeout.wait_time = 12.0
 	_rewarded_request_timeout.timeout.connect(_on_rewarded_request_timeout)
 	add_child(_rewarded_request_timeout)
 
+	_mobile_ads_init_watchdog = Timer.new()
+	_mobile_ads_init_watchdog.one_shot = true
+	_mobile_ads_init_watchdog.wait_time = 4.0
+	_mobile_ads_init_watchdog.timeout.connect(_on_mobile_ads_init_watchdog_timeout)
+	add_child(_mobile_ads_init_watchdog)
+
 	if _plugin_available:
 		_init_plugin()
 	else:
 		push_warning(
-			"AdManager: MobileAds singleton not found. " +
+			"AdManager: native singleton '%s' not found; MobileAds is not available in this export. " % NATIVE_ADMOB_SINGLETON +
 			"Fake ads are enabled only in editor/desktop simulation mode."
 		)
 
 # ── Plugin initialisation ─────────────────────────────────────────────────────
 
 func _init_plugin() -> void:
-	var mobile_ads := Engine.get_singleton("MobileAds")
+	var mobile_ads := Engine.get_singleton(NATIVE_ADMOB_SINGLETON)
 	if mobile_ads == null:
-		push_warning("AdManager: MobileAds singleton became unavailable during init.")
+		push_warning("AdManager: native AdMob singleton became unavailable during initialization.")
 		return
-	var init_listener = ClassDB.instantiate("OnInitializationCompleteListener")
-	if init_listener != null:
-		init_listener.on_initialization_complete = func(_status) -> void:
-			_on_mobile_ads_initialized()
-		mobile_ads.initialize(init_listener)
-	else:
-		# Fallback for plugin versions without initialization listener class.
-		mobile_ads.initialize()
-		_on_mobile_ads_initialized()
+	print("AdManager: initializing Google Mobile Ads SDK")
+	var init_callback := Callable(self, "_on_native_mobile_ads_initialized")
+	if mobile_ads.has_signal("on_initialization_complete") and not mobile_ads.is_connected("on_initialization_complete", init_callback):
+		mobile_ads.connect("on_initialization_complete", init_callback, CONNECT_ONE_SHOT)
+	mobile_ads.initialize()
+	if _mobile_ads_init_watchdog != null:
+		_mobile_ads_init_watchdog.start()
+
+func _on_native_mobile_ads_initialized(status: Dictionary = {}) -> void:
+	print("AdManager: Google Mobile Ads SDK initialization completed; adapters=%d" % status.size())
+	_on_mobile_ads_initialized()
 
 func _on_mobile_ads_initialized() -> void:
 	if _mobile_ads_initialized:
 		return
 	_mobile_ads_initialized = true
+	if _mobile_ads_init_watchdog != null:
+		_mobile_ads_init_watchdog.stop()
+	print("AdManager: building callbacks and preloading ads")
 	_build_rewarded_callback()
 	_build_interstitial_callback()
 	_preload_rewarded()
 	_preload_interstitial()
+
+func _on_mobile_ads_init_watchdog_timeout() -> void:
+	if _mobile_ads_initialized:
+		return
+	push_warning("AdManager: Mobile Ads initialization callback timed out after 4s; attempting guarded preload.")
+	_on_mobile_ads_initialized()
 
 func _build_rewarded_callback() -> void:
 	# All plugin classes accessed via ClassDB.instantiate() so the script
@@ -133,7 +159,7 @@ func _build_rewarded_callback() -> void:
 		_rewarded_loading = false
 		_rewarded_ad = null
 		var message: String = str(error.message)
-		push_warning("AdManager: rewarded ad failed to load — " + message)
+		push_warning("AdManager: rewarded load failed unit=%s error=%s" % [_get_rewarded_unit_id(), message])
 		if _rewarded_show_pending:
 			_rewarded_show_pending = false
 			_stop_rewarded_request_timeout()
@@ -144,6 +170,7 @@ func _build_rewarded_callback() -> void:
 	_rewarded_load_cb.on_ad_loaded = func(loaded_ad) -> void:
 		_rewarded_loading = false
 		_rewarded_ad = loaded_ad
+		print("AdManager: rewarded ad loaded unit=%s" % _get_rewarded_unit_id())
 		var fsc = ClassDB.instantiate("FullScreenContentCallback")
 		if fsc == null:
 			push_warning("AdManager: FullScreenContentCallback class is unavailable.")
@@ -155,6 +182,7 @@ func _build_rewarded_callback() -> void:
 			return
 
 		fsc.on_ad_dismissed_full_screen_content = func() -> void:
+			print("AdManager: rewarded ad dismissed reward_earned=%s" % _reward_earned)
 			_rewarded_show_in_progress = false
 			_reward_listener = null
 			if _reward_earned:
@@ -168,7 +196,7 @@ func _build_rewarded_callback() -> void:
 		fsc.on_ad_failed_to_show_full_screen_content = func(error) -> void:
 			_rewarded_show_in_progress = false
 			_reward_listener = null
-			push_warning("AdManager: rewarded ad failed to show — " + str(error.message))
+			push_warning("AdManager: rewarded show failed error=%s" % str(error.message))
 			rewarded_ad_unavailable.emit()
 			_rewarded_ad = null
 			_preload_rewarded()
@@ -187,6 +215,8 @@ func _build_interstitial_callback() -> void:
 	_interstitial_load_cb = ClassDB.instantiate("InterstitialAdLoadCallback")
 	_interstitial_load_cb.on_ad_failed_to_load = func(error) -> void:
 		push_warning("AdManager: interstitial ad failed to load — " + error.message)
+		if _interstitial_retry_timer != null and _interstitial_retry_timer.is_stopped():
+			_interstitial_retry_timer.start()
 	_interstitial_load_cb.on_ad_loaded = func(ad) -> void:
 		_interstitial_ad = ad
 		var fsc = ClassDB.instantiate("FullScreenContentCallback")
@@ -223,6 +253,7 @@ func _preload_rewarded() -> void:
 
 	_rewarded_loading = true
 	var unit_id := _get_rewarded_unit_id()
+	print("AdManager: loading rewarded ad unit=%s test=%s" % [unit_id, FORCE_TEST_ADS or OS.is_debug_build()])
 	loader.load(unit_id, request, _rewarded_load_cb)
 
 func _preload_interstitial() -> void:
@@ -264,6 +295,7 @@ func _get_interstitial_unit_id() -> String:
 
 ## Show a rewarded ad. Emits rewarded_ad_completed on success, rewarded_ad_skipped on dismiss.
 func show_rewarded_ad() -> void:
+	print("AdManager: rewarded show requested plugin=%s initialized=%s loaded=%s loading=%s" % [_plugin_available, _mobile_ads_initialized, _rewarded_ad != null, _rewarded_loading])
 	if _plugin_available:
 		if _rewarded_show_in_progress or _rewarded_show_pending:
 			return
@@ -303,6 +335,7 @@ func _show_real_rewarded_ad() -> void:
 
 	_rewarded_show_in_progress = true
 	_reward_earned = false
+	print("AdManager: showing rewarded ad unit=%s" % _get_rewarded_unit_id())
 	_reward_listener = ClassDB.instantiate("OnUserEarnedRewardListener")
 	if _reward_listener == null:
 		_rewarded_show_in_progress = false
@@ -311,8 +344,9 @@ func _show_real_rewarded_ad() -> void:
 		return
 
 	# _reward_earned is read by the FullScreenContentCallback dismissal handler.
-	_reward_listener.on_user_earned_reward = func(_reward) -> void:
+	_reward_listener.on_user_earned_reward = func(reward) -> void:
 		_reward_earned = true
+		print("AdManager: reward earned amount=%s type=%s" % [str(reward.amount), str(reward.type)])
 	_rewarded_ad.show(_reward_listener)
 
 func is_rewarded_ready() -> bool:
