@@ -1056,7 +1056,7 @@ func _ready() -> void:
 	_combat_vfx = CombatVFX.new()
 	add_child(_combat_vfx)
 	var view: Vector2 = get_viewport_rect().size
-	_joy_zone = Rect2(0.0, view.y * 0.55, view.x, view.y * 0.45)
+	_joy_zone = Rect2(0.0, view.y * (2.0 / 3.0), view.x, view.y / 3.0)
 
 	if selected_player_character != null:
 		_player_base_max_hp = float(selected_player_character.max_hp)
@@ -1230,8 +1230,7 @@ func _input(event: InputEvent) -> void:
 		var te: InputEventScreenTouch = event as InputEventScreenTouch
 		if te.pressed and _touch_id < 0 and _joy_zone.has_point(te.position):
 			_touch_id = te.index
-			var view := get_viewport_rect().size
-			_touch_origin = Vector2(view.x * 0.18, view.y * 0.78)
+			_touch_origin = te.position
 			_touch_cur = te.position
 			_joy_vis.origin = _touch_origin
 			_joy_vis.knob = _touch_origin + (_touch_cur - _touch_origin).limit_length(80.0)
