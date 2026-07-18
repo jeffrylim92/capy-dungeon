@@ -328,6 +328,11 @@ static func save_equipped(username: String, equipped: Dictionary) -> void:
 	f.store_string(JSON.stringify(equipped))
 	f.close()
 
+static func replace_loadout(username: String, stash: Array, equipped: Dictionary) -> void:
+	_stash_cache[username] = stash.duplicate(true)
+	save_stash(username)
+	save_equipped(username, equipped.duplicate(true))
+
 static func restore_from_server(username: String, ring_stash: Array, rings_equipped: Dictionary) -> void:
 	if username.strip_edges().is_empty():
 		return

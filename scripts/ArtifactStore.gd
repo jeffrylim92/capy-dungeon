@@ -241,20 +241,38 @@ static func save_equipped(username: String, equipped: Dictionary) -> void:
 	f.store_string(JSON.stringify(equipped))
 	f.close()
 
+static func replace_loadout(username: String, stash: Array, equipped: Dictionary) -> void:
+	_stash_cache[username] = stash.duplicate(true)
+	save_stash(username)
+	save_equipped(username, equipped.duplicate(true))
+
 static func restore_from_server(username: String, artifact_stash: Array, artifact_equipped: Dictionary) -> void:
 	if username.strip_edges().is_empty():
 		return
 	if artifact_stash.is_empty() and artifact_equipped.is_empty():
 		return
 	if not artifact_stash.is_empty():
-		var stash_copy: Array = []
+		var stash_copy: Array = load_stash(username).duplicate(true)
+		var known_ids: Dictionary = {}
+		for local_item in stash_copy:
+			if typeof(local_item) == TYPE_DICTIONARY:
+				known_ids[String((local_item as Dictionary).get("id", ""))] = true
 		for item in artifact_stash:
 			if typeof(item) == TYPE_DICTIONARY:
-				stash_copy.append((item as Dictionary).duplicate(true))
+				var artifact_id := String((item as Dictionary).get("id", ""))
+				if not artifact_id.is_empty() and not known_ids.has(artifact_id):
+					stash_copy.append((item as Dictionary).duplicate(true))
+					known_ids[artifact_id] = true
 		_stash_cache[username] = stash_copy
 		save_stash(username)
 	if not artifact_equipped.is_empty():
 		save_equipped(username, artifact_equipped)
+	reconcile_loadout(username)
+
+static func reconcile_loadout(username: String) -> void:
+	if username.strip_edges().is_empty():
+		return
+	_ensure_equipped_artifacts_in_stash(username, load_equipped(username))
 
 static func purge_user(username: String) -> void:
 	var key := username.strip_edges().to_lower()

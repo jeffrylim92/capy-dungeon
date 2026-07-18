@@ -26,8 +26,18 @@ const MODIFIERS := [
 	{"id": "scholar", "name": "Scholar's Trial", "desc": "Experience +20%; enemy health +20%", "xp_bonus": 0.20, "enemy_hp": 1.20},
 ]
 
+const DAILY_MISSIONS := [
+	{"id":"enemy_kills", "name":"Kill Enemies", "description":"Defeat 75 enemies in any combat mode.", "target":75, "reward":30},
+	{"id":"survival_time", "name":"Survive for 10 Minutes", "description":"Spend a total of 10 minutes alive in Survival.", "target":600, "reward":40},
+	{"id":"boss_kills", "name":"Defeat a Boss", "description":"Defeat 1 boss in any combat mode.", "target":1, "reward":45},
+	{"id":"characters", "name":"Play 3 Different Characters", "description":"Start runs with 3 different capybara characters.", "target":3, "reward":45},
+	{"id":"story_clears", "name":"Clear a Story Stage", "description":"Complete any Story stage once.", "target":1, "reward":35},
+	{"id":"dungeon_clears", "name":"Clear a Dungeon Depth", "description":"Complete any depth in either resource dungeon.", "target":1, "reward":35},
+	{"id":"survival_runs", "name":"Play Survival Once", "description":"Complete 1 Survival run.", "target":1, "reward":25},
+]
+
 static func _blank() -> Dictionary:
-	return {"coins": 0, "account_xp": 0, "upgrades": {}, "mastery": {}, "difficulty": 0, "missions": {}, "claimed_unlocks": []}
+	return {"coins": 0, "account_xp": 0, "upgrades": {}, "mastery": {}, "difficulty": 0, "missions": {}, "claimed_unlocks": [], "dungeon_depths":{"coin_burrow":0, "forgecore":0}}
 
 static func _load_all() -> Dictionary:
 	if not FileAccess.file_exists(SAVE_PATH):
@@ -68,6 +78,9 @@ static func save_profile(username: String, profile: Dictionary) -> void:
 static func cloud_snapshot(username: String) -> Dictionary:
 	return load_profile(username).duplicate(true)
 
+static func replace_profile(username: String, profile: Dictionary) -> void:
+	save_profile(username, profile.duplicate(true))
+
 static func restore_from_server(username: String, server_profile: Dictionary) -> void:
 	if username.strip_edges().is_empty() or server_profile.is_empty():
 		return
@@ -83,6 +96,10 @@ static func restore_from_server(username: String, server_profile: Dictionary) ->
 		for key in (server_profile.get(field, {}) as Dictionary):
 			merged[key] = maxi(int(merged.get(key, 0)), int((server_profile.get(field, {}) as Dictionary)[key]))
 		local[field] = merged
+	var depths: Dictionary = local.get("dungeon_depths", {}) as Dictionary
+	for dungeon_id in (server_profile.get("dungeon_depths", {}) as Dictionary):
+		depths[dungeon_id] = maxi(int(depths.get(dungeon_id, 0)), int((server_profile.get("dungeon_depths", {}) as Dictionary)[dungeon_id]))
+	local["dungeon_depths"] = depths
 	var unlocks: Array = local.get("claimed_unlocks", []) as Array
 	for value in server_profile.get("claimed_unlocks", []) as Array:
 		if value not in unlocks:
@@ -188,7 +205,9 @@ static func record_run(username: String, character_id: String, kills: int, secon
 	var mastery: Dictionary = profile.get("mastery", {}) as Dictionary
 	mastery[character_id] = int(mastery.get(character_id, 0)) + xp
 	profile["mastery"] = mastery
-	_update_missions(profile, kills, seconds, wave)
+	_add_mission_progress(profile, "enemy_kills", kills)
+	_add_mission_progress(profile, "survival_time", int(seconds))
+	_add_mission_progress(profile, "survival_runs", 1)
 	save_profile(username, profile)
 	return {"coins": coins, "xp": xp, "level": account_level(profile), "mastery_level": mastery_level(profile, character_id), "next_unlock": next_unlock(profile)}
 
@@ -203,53 +222,58 @@ static func next_unlock(profile: Dictionary) -> String:
 	if level < 10: return "Golden Camp badge at Camp Level 10"
 	return "All camp milestones unlocked — raise character mastery!"
 
-static func missions(profile: Dictionary) -> Array[Dictionary]:
+static func missions(profile: Dictionary, period: String = "daily") -> Array[Dictionary]:
 	_refresh_missions(profile)
 	var data: Dictionary = profile.get("missions", {}) as Dictionary
-	var daily_claimed: Array = data.get("daily_claimed", []) as Array
-	return [
-		{"id": "kills", "name": "Daily Hunt", "progress": int(data.get("daily_kills", 0)), "target": 75, "reward": 80, "claimed": daily_claimed.has("kills")},
-		{"id": "survive", "name": "Daily Survivor", "progress": int(data.get("daily_seconds", 0)), "target": 600, "reward": 100, "claimed": daily_claimed.has("survive")},
-		{"id": "weekly", "name": "Weekly Delver", "progress": int(data.get("weekly_runs", 0)), "target": 10, "reward": 250, "claimed": bool(data.get("weekly_claimed", false))},
-	]
+	var counters: Dictionary = data.get("%s_progress" % period, {}) as Dictionary
+	var claimed: Array = data.get("%s_claimed" % period, []) as Array
+	var out: Array[Dictionary] = []
+	for definition_variant in DAILY_MISSIONS:
+		var definition: Dictionary = (definition_variant as Dictionary).duplicate(true)
+		var multiplier := 7 if period == "weekly" else 1
+		definition["period"] = period
+		definition["progress"] = int(counters.get(definition.id, 0))
+		definition["target"] = int(definition.target) * multiplier
+		definition["reward"] = int(definition.reward) * (5 if period == "weekly" else 1)
+		if period == "weekly" and String(definition.id) == "characters":
+			definition["name"] = "Play 21 Character Runs"
+			definition["description"] = "Start 21 runs using any capybara characters during the week."
+		if period == "weekly" and String(definition.id) == "survival_time":
+			definition["name"] = "Survive for 70 Minutes"
+			definition["description"] = "Spend a total of 70 minutes alive in Survival during the week."
+		definition["claimed"] = String(definition.id) in claimed
+		out.append(definition)
+	return out
 
-static func claim_mission(username: String, mission_id: String) -> int:
+static func claim_mission(username: String, mission_id: String, period: String = "daily") -> int:
 	var profile := load_profile(username)
-	var reward := _claim_mission_in_profile(profile, mission_id)
+	var reward := _claim_mission_in_profile(profile, mission_id, period)
 	if reward > 0:
 		profile["coins"] = int(profile.get("coins", 0)) + reward
 		save_profile(username, profile)
 	return reward
 
-static func claim_all_missions(username: String) -> int:
+static func claim_all_missions(username: String, period: String = "daily") -> int:
 	var profile := load_profile(username)
 	var total := 0
-	for mission_id in ["kills", "survive", "weekly"]:
-		total += _claim_mission_in_profile(profile, mission_id)
+	for definition in DAILY_MISSIONS:
+		total += _claim_mission_in_profile(profile, String((definition as Dictionary).id), period)
 	if total > 0:
 		profile["coins"] = int(profile.get("coins", 0)) + total
 		save_profile(username, profile)
 	return total
 
-static func _claim_mission_in_profile(profile: Dictionary, mission_id: String) -> int:
+static func _claim_mission_in_profile(profile: Dictionary, mission_id: String, period: String) -> int:
 	_refresh_missions(profile)
 	var data: Dictionary = profile.get("missions", {}) as Dictionary
-	var daily_claimed: Array = data.get("daily_claimed", []) as Array
+	var claimed: Array = data.get("%s_claimed" % period, []) as Array
 	var reward := 0
-	match mission_id:
-		"kills":
-			if int(data.get("daily_kills", 0)) >= 75 and not daily_claimed.has("kills"):
-				daily_claimed.append("kills")
-				reward = 80
-		"survive":
-			if int(data.get("daily_seconds", 0)) >= 600 and not daily_claimed.has("survive"):
-				daily_claimed.append("survive")
-				reward = 100
-		"weekly":
-			if int(data.get("weekly_runs", 0)) >= 10 and not bool(data.get("weekly_claimed", false)):
-				data["weekly_claimed"] = true
-				reward = 250
-	data["daily_claimed"] = daily_claimed
+	for mission in missions(profile, period):
+		if String(mission.id) == mission_id and int(mission.progress) >= int(mission.target) and mission_id not in claimed:
+			claimed.append(mission_id)
+			reward = int(mission.reward)
+			break
+	data["%s_claimed" % period] = claimed
 	profile["missions"] = data
 	return reward
 
@@ -259,15 +283,71 @@ static func _refresh_missions(profile: Dictionary) -> void:
 	var weekly_key := str(int(Time.get_unix_time_from_system() / 604800.0))
 	var m: Dictionary = profile.get("missions", {}) as Dictionary
 	if String(m.get("daily_key", "")) != daily_key:
-		m["daily_key"] = daily_key; m["daily_kills"] = 0; m["daily_seconds"] = 0; m["daily_claimed"] = []
+		m["daily_key"] = daily_key; m["daily_progress"] = {}; m["daily_claimed"] = []; m["daily_characters"] = []
 	if String(m.get("weekly_key", "")) != weekly_key:
-		m["weekly_key"] = weekly_key; m["weekly_runs"] = 0; m["weekly_claimed"] = false
+		m["weekly_key"] = weekly_key; m["weekly_progress"] = {}; m["weekly_claimed"] = []; m["weekly_characters"] = []
+	# Migrate mission fields created by the previous three-mission format.
+	for period in ["daily", "weekly"]:
+		var progress_key := "%s_progress" % period
+		var claimed_key := "%s_claimed" % period
+		var characters_key := "%s_characters" % period
+		if typeof(m.get(progress_key, null)) != TYPE_DICTIONARY:
+			m[progress_key] = {}
+		if typeof(m.get(claimed_key, null)) != TYPE_ARRAY:
+			m[claimed_key] = []
+		if typeof(m.get(characters_key, null)) != TYPE_ARRAY:
+			m[characters_key] = []
 	profile["missions"] = m
 
-static func _update_missions(profile: Dictionary, kills: int, seconds: float, _wave: int) -> void:
+static func record_mission_event(username: String, mission_id: String, amount: int = 1, character_id: String = "") -> void:
+	var profile := load_profile(username)
+	if mission_id == "characters": _add_mission_character(profile, character_id)
+	else: _add_mission_progress(profile, mission_id, amount)
+	save_profile(username, profile)
+
+static func _add_mission_progress(profile: Dictionary, mission_id: String, amount: int) -> void:
 	_refresh_missions(profile)
 	var m: Dictionary = profile.get("missions", {}) as Dictionary
-	m["daily_kills"] = int(m.get("daily_kills", 0)) + kills
-	m["daily_seconds"] = int(m.get("daily_seconds", 0)) + int(seconds)
-	m["weekly_runs"] = int(m.get("weekly_runs", 0)) + 1
+	for period in ["daily", "weekly"]:
+		var counters: Dictionary = m.get("%s_progress" % period, {}) as Dictionary
+		counters[mission_id] = int(counters.get(mission_id, 0)) + amount
+		m["%s_progress" % period] = counters
 	profile["missions"] = m
+
+static func _add_mission_character(profile: Dictionary, character_id: String) -> void:
+	if character_id.is_empty(): return
+	_refresh_missions(profile)
+	var m: Dictionary = profile.get("missions", {}) as Dictionary
+	for period in ["daily", "weekly"]:
+		var characters: Array = m.get("%s_characters" % period, []) as Array
+		if character_id not in characters: characters.append(character_id)
+		m["%s_characters" % period] = characters
+		var counters: Dictionary = m.get("%s_progress" % period, {}) as Dictionary
+		counters["characters"] = int(counters.get("characters", 0)) + 1 if period == "weekly" else characters.size()
+		m["%s_progress" % period] = counters
+	profile["missions"] = m
+
+static func record_dungeon_run(username: String, dungeon_id: String, depth: int, extracted_amount: int = -1) -> Dictionary:
+	var profile := load_profile(username)
+	var depths: Dictionary = profile.get("dungeon_depths", {}) as Dictionary
+	depths[dungeon_id] = maxi(int(depths.get(dungeon_id, 0)), depth)
+	profile["dungeon_depths"] = depths
+	if depth > 0: _add_mission_progress(profile, "dungeon_clears", depth)
+	# Resource dungeons are repeatable, so rewards scale steadily without
+	# eclipsing one-time Story clears or the broader Survival reward bundle.
+	var reward := extracted_amount if dungeon_id == "coin_burrow" and extracted_amount >= 0 else (35 + depth * 12 if depth > 0 else 0)
+	if dungeon_id == "coin_burrow": profile["coins"] = int(profile.get("coins", 0)) + reward
+	save_profile(username, profile)
+	var material_reward := maxi(1, ceili(float(depth) * 0.75)) if depth > 0 else 0
+	return {"coins":reward if dungeon_id == "coin_burrow" else 0, "materials":material_reward if dungeon_id == "forgecore" else 0, "depth":depth}
+
+static func record_dungeon_depth_completed(username: String, dungeon_id: String, depth: int) -> void:
+	if username.is_empty() or dungeon_id.is_empty() or depth < 1:
+		return
+	var profile := load_profile(username)
+	var depths: Dictionary = profile.get("dungeon_depths", {}) as Dictionary
+	if depth <= int(depths.get(dungeon_id, 0)):
+		return
+	depths[dungeon_id] = depth
+	profile["dungeon_depths"] = depths
+	save_profile(username, profile)

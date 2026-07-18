@@ -41,7 +41,7 @@ static func _save_all(data: Dictionary) -> bool:
 	return true
 
 static func save_persistent_session(account: Dictionary) -> void:
-	var username: String = String(account.get("username", "")).strip_edges()
+	var username: String = str(account.get("username", "")).strip_edges()
 	if username.is_empty():
 		clear_persistent_session()
 		return
@@ -67,7 +67,7 @@ static func load_persistent_session() -> Variant:
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return null
 	var data: Dictionary = parsed as Dictionary
-	var username: String = String(data.get("username", "")).strip_edges()
+	var username: String = str(data.get("username", "")).strip_edges()
 	var snapshot: Dictionary = data.get("snapshot", {}) as Dictionary
 	if username.is_empty():
 		return snapshot if not snapshot.is_empty() else null
@@ -88,7 +88,7 @@ static func load_persistent_session() -> Variant:
 	if accounts.has(key):
 		var acc: Dictionary = accounts[key] as Dictionary
 		for field in ["display_name", "favorite_capy", "social_provider", "social_provider_id", "social_email", "social_links", "is_dev", "created_at"]:
-			if snapshot.has(field) and (not acc.has(field) or String(acc.get(field, "")).is_empty()):
+			if snapshot.has(field) and (not acc.has(field) or str(acc.get(field, "")).is_empty()):
 				acc[field] = snapshot[field]
 		return acc
 
@@ -167,13 +167,13 @@ static func _is_simple_handle(s: String) -> bool:
 ## `profile` is the dict emitted by SocialAuth.auth_success.
 ## Returns the account Dictionary on success, or null if something went wrong.
 static func login_or_register_social(profile: Dictionary) -> Variant:
-	var provider:    String = String(profile.get("provider", ""))
-	var provider_id: String = String(profile.get("provider_id", ""))
+	var provider:    String = str(profile.get("provider", ""))
+	var provider_id: String = str(profile.get("provider_id", ""))
 	if provider.is_empty() or provider_id.is_empty():
 		return null
 
-	var email: String = String(profile.get("email", "")).strip_edges().to_lower()
-	var display: String = String(profile.get("display_name", "Capy Player")).strip_edges()
+	var email: String = str(profile.get("email", "")).strip_edges().to_lower()
+	var display: String = str(profile.get("display_name", "Capy Player")).strip_edges()
 	if display.is_empty():
 		display = "Capy Player"
 
@@ -225,9 +225,9 @@ static func _canonical_social_account_key(accounts: Dictionary, social_key: Stri
 		var best_key: String = ""
 		var best_score: int = -1
 		for key_variant in accounts.keys():
-			var key: String = String(key_variant)
+			var key: String = str(key_variant)
 			var acc: Dictionary = accounts.get(key, {}) as Dictionary
-			var acc_email: String = String(acc.get("social_email", "")).strip_edges().to_lower()
+			var acc_email: String = str(acc.get("social_email", "")).strip_edges().to_lower()
 			if acc_email != email:
 				continue
 			var score: int = _account_merge_score(key)
@@ -279,4 +279,3 @@ static func delete_local_account(username: String) -> void:
 	if accounts.has(key):
 		accounts.erase(key)
 		_save_all(accounts)
-

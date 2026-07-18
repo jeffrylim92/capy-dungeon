@@ -2,9 +2,13 @@ extends Node2D
 
 signal inventory_confirmed(char_data: CharacterData)
 signal back_to_select
+signal equipment_requested
+signal edit_applied
+signal edit_cancelled
 
 var selected_character: CharacterData = null
 var account_username: String = ""
+var accessory_edit_mode: bool = false
 
 var _char_id: String = ""
 var _rings_equipped: Dictionary = {}
@@ -124,12 +128,25 @@ func _build_ui() -> void:
 	equipped_box.add_theme_constant_override("separation", 8)
 	equipped_panel.add_child(equipped_box)
 
+	var equipped_header := HBoxContainer.new()
+	equipped_header.add_theme_constant_override("separation", 12)
+	equipped_box.add_child(equipped_header)
+	var equipment_btn := Button.new()
+	equipment_btn.text = "Equipment"
+	equipment_btn.visible = not accessory_edit_mode
+	equipment_btn.custom_minimum_size = Vector2(190, 64)
+	equipment_btn.add_theme_font_size_override("font_size", 25)
+	_apply_button_skin(equipment_btn, Color(0.70, 0.52, 0.16, 0.95), Color(0.08, 0.08, 0.12), Color(0.98, 0.86, 0.58), 3)
+	equipment_btn.pressed.connect(func() -> void: equipment_requested.emit())
+	equipped_header.add_child(equipment_btn)
 	var eq_lbl := Label.new()
 	eq_lbl.text = "EQUIPPED"
 	eq_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	eq_lbl.add_theme_font_size_override("font_size", 58)
 	eq_lbl.add_theme_color_override("font_color", Color(0.98, 0.82, 0.34))
-	equipped_box.add_child(eq_lbl)
+	eq_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	equipped_header.add_child(eq_lbl)
+	var attributes := Button.new(); attributes.text = "Attributes"; attributes.custom_minimum_size = Vector2(190, 64); attributes.add_theme_font_size_override("font_size", 25); _apply_button_skin(attributes, Color(0.70, 0.52, 0.16, 0.95), Color(0.08, 0.08, 0.12), Color(0.98, 0.86, 0.58), 3); attributes.pressed.connect(_show_combined_attributes); equipped_header.add_child(attributes)
 
 	var type_row := HBoxContainer.new()
 	type_row.add_theme_constant_override("separation", 12)
@@ -333,16 +350,20 @@ func _build_ui() -> void:
 	add_child(bottom)
 
 	var back_btn := Button.new()
-	back_btn.text = "Back"
-	back_btn.custom_minimum_size = Vector2(260, 74)
+	back_btn.text = "Cancel" if accessory_edit_mode else "Back"
+	back_btn.custom_minimum_size = Vector2(210, 74)
 	back_btn.add_theme_font_size_override("font_size", 34)
 	_apply_button_skin(back_btn, Color(0.56, 0.40, 0.14, 0.9), Color(0.10, 0.08, 0.06), Color(0.95, 0.86, 0.70))
-	back_btn.pressed.connect(func() -> void: back_to_select.emit())
+	back_btn.pressed.connect(func() -> void:
+		if accessory_edit_mode: edit_cancelled.emit()
+		else: back_to_select.emit()
+	)
 	bottom.add_child(back_btn)
 
 	var store_btn := Button.new()
 	store_btn.text = "Store"
-	store_btn.custom_minimum_size = Vector2(260, 74)
+	store_btn.visible = not accessory_edit_mode
+	store_btn.custom_minimum_size = Vector2(200, 74)
 	store_btn.add_theme_font_size_override("font_size", 30)
 	_apply_button_skin(store_btn, Color(0.56, 0.40, 0.14, 0.9), Color(0.10, 0.08, 0.06), Color(0.95, 0.86, 0.70))
 	store_btn.pressed.connect(_open_store)
@@ -353,17 +374,86 @@ func _build_ui() -> void:
 	bottom.add_child(bottom_fill)
 
 	var play_btn := Button.new()
-	play_btn.text = "Play"
+	play_btn.text = "Apply" if accessory_edit_mode else "Play"
 	play_btn.custom_minimum_size = Vector2(320, 74)
 	play_btn.add_theme_font_size_override("font_size", 36)
 	_apply_button_skin(play_btn, Color(0.98, 0.82, 0.14, 0.98), Color(0.42, 0.26, 0.08), Color(0.02, 0.02, 0.02), 3)
-	play_btn.pressed.connect(func() -> void: inventory_confirmed.emit(selected_character))
+	play_btn.pressed.connect(func() -> void:
+		if accessory_edit_mode: edit_applied.emit()
+		else: _request_play()
+	)
 	bottom.add_child(play_btn)
 
 	_update_filter_buttons()
 	_refresh_slots()
 	_update_key_info()
 	_rebuild_stash()
+
+func _request_play() -> void:
+	var warnings := _loadout_warning_lines()
+	if warnings.is_empty():
+		inventory_confirmed.emit(selected_character)
+	else:
+		_show_loadout_warning(warnings)
+
+func _loadout_warning_lines() -> Array[String]:
+	var warnings: Array[String] = []
+	var profile := StoryStore.load_profile(account_username)
+	var story_equipped: Dictionary = profile.get("equipped", {}) as Dictionary
+	for gear_id_variant in profile.get("owned", []) as Array:
+		var gear_id := String(gear_id_variant)
+		if not StoryStore.GEAR.has(gear_id): continue
+		var slot := String((StoryStore.GEAR[gear_id] as Dictionary).get("slot", ""))
+		if String(story_equipped.get(slot, "")).is_empty():
+			warnings.append("Equipment is available for an empty %s slot." % _equipment_slot_name(slot))
+			break
+	if _has_available_accessory(_rings, _rings_equipped):
+		warnings.append("A ring is available for an empty accessory slot.")
+	if _has_available_accessory(_artifacts, _artifacts_equipped):
+		warnings.append("An artifact is available for an empty accessory slot.")
+	return warnings
+
+func _has_available_accessory(stash: Array, equipped: Dictionary) -> bool:
+	if equipped.get("slot_0", null) != null and equipped.get("slot_1", null) != null:
+		return false
+	for item_variant in stash:
+		if typeof(item_variant) != TYPE_DICTIONARY: continue
+		var item := item_variant as Dictionary
+		if not _is_item_equipped(equipped, String(item.get("id", ""))): return true
+	return false
+
+func _equipment_slot_name(slot: String) -> String:
+	match slot:
+		"headwear": return "Headgear"
+		"pants": return "Pant"
+		"boots": return "Boot"
+		_: return slot.capitalize()
+
+func _show_loadout_warning(warnings: Array[String]) -> void:
+	var layer := CanvasLayer.new(); layer.layer = 230; add_child(layer)
+	var shade := ColorRect.new(); shade.color = Color(0, 0, 0, 0.86); shade.size = _view; shade.mouse_filter = Control.MOUSE_FILTER_STOP; layer.add_child(shade)
+	var panel := PanelContainer.new(); panel.position = Vector2(70, _view.y * 0.28); panel.size = Vector2(_view.x - 140, 460); panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.78, 0.58, 0.18, 0.98), Color(0.04, 0.05, 0.08, 0.99), 22, 3)); layer.add_child(panel)
+	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 22); panel.add_child(box)
+	var title := Label.new(); title.text = "UNEQUIPPED ITEMS"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 44); title.add_theme_color_override("font_color", Color(1.0, 0.82, 0.34)); box.add_child(title)
+	var message := Label.new(); message.text = "You have items that can fill empty slots:\n\n• %s\n\nEquip them before playing, or proceed with the current loadout." % "\n• ".join(warnings); message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; message.add_theme_font_size_override("font_size", 29); box.add_child(message)
+	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 16); box.add_child(row)
+	var cancel := Button.new(); cancel.text = "Cancel"; cancel.custom_minimum_size = Vector2(0, 82); cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL; cancel.add_theme_font_size_override("font_size", 31); _apply_button_skin(cancel, Color(0.56, 0.40, 0.14, 0.9), Color(0.10, 0.08, 0.06), Color(0.95, 0.86, 0.70)); cancel.pressed.connect(layer.queue_free); row.add_child(cancel)
+	var proceed := Button.new(); proceed.text = "Proceed"; proceed.custom_minimum_size = Vector2(0, 82); proceed.size_flags_horizontal = Control.SIZE_EXPAND_FILL; proceed.add_theme_font_size_override("font_size", 31); _apply_button_skin(proceed, Color(0.98, 0.82, 0.14, 0.98), Color(0.42, 0.26, 0.08), Color(0.02, 0.02, 0.02), 3); proceed.pressed.connect(func() -> void: layer.queue_free(); inventory_confirmed.emit(selected_character)); row.add_child(proceed)
+
+func _show_combined_attributes() -> void:
+	var combined := RingStore.get_bonuses(account_username, _char_id)
+	for source in [ArtifactStore.get_bonuses(account_username, _char_id), StoryStore.bonuses(account_username)]:
+		for key in source: combined[key] = float(combined.get(key, 0.0)) + float(source[key])
+	var lines: Array[String] = []
+	for key in combined: lines.append("%s: %s" % [StoryStore.stat_name(str(key)), StoryStore.stat_value_text(str(key), float(combined[key]))])
+	var layer := CanvasLayer.new(); layer.layer = 220; add_child(layer); var shade := ColorRect.new(); shade.color = Color(0,0,0,0.88); shade.size = _view; shade.mouse_filter = Control.MOUSE_FILTER_STOP; layer.add_child(shade)
+	var panel_height := minf(900.0, _view.y - 180.0)
+	var panel := PanelContainer.new(); panel.position = Vector2(70, (_view.y - panel_height) * 0.5); panel.size = Vector2(_view.x - 140, panel_height); panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.78, 0.58, 0.18, 0.98), Color(0.04, 0.05, 0.08, 0.99), 22, 3)); layer.add_child(panel)
+	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 22); panel.add_child(box)
+	var title := Label.new(); title.text = "ALL EQUIPPED ATTRIBUTES"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 42); title.add_theme_color_override("font_color", Color(1.0, 0.82, 0.34)); box.add_child(title)
+	var scroll := ScrollContainer.new(); scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL; box.add_child(scroll)
+	var label := Label.new(); label.text = "No attribute bonuses." if lines.is_empty() else "\n".join(lines); label.custom_minimum_size = Vector2(_view.x - 205, 0); label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; label.add_theme_font_size_override("font_size", 30); scroll.add_child(label)
+	var close := Button.new(); close.text = "Close"; close.custom_minimum_size = Vector2(0, 86); close.add_theme_font_size_override("font_size", 34); _apply_button_skin(close, Color(0.70, 0.52, 0.16, 0.95), Color(0.08, 0.08, 0.12), Color(0.98, 0.86, 0.58), 3); close.pressed.connect(layer.queue_free); box.add_child(close)
 
 func _process(delta: float) -> void:
 	_key_timer_tick += delta
@@ -566,11 +656,11 @@ func _bonus_chip_data(key: String, value: float) -> Dictionary:
 		"revive_once":
 			return {"label": "Revive", "value": "+%d" % int(round(value)), "color": Color(0.42, 0.90, 0.36)}
 		"xp_bonus":
-			return {"label": "XP Bonus", "value": "%+d%%" % int(round(value * 100.0)), "color": Color(0.76, 0.58, 1.0)}
+			return {"label": "Experience Bonus", "value": "%+d%%" % int(round(value * 100.0)), "color": Color(0.76, 0.58, 1.0)}
 		"crit_chance":
-			return {"label": "Crit Chance", "value": "%+d%%" % int(round(value * 100.0)), "color": Color(1.0, 0.40, 0.42)}
+			return {"label": "Critical Chance", "value": "%+d%%" % int(round(value * 100.0)), "color": Color(1.0, 0.40, 0.42)}
 		"max_hp_pct":
-			return {"label": "Max HP", "value": "%+d%%" % int(round(value * 100.0)), "color": Color(0.30, 0.92, 0.50)}
+			return {"label": "Maximum Health", "value": "%+d%%" % int(round(value * 100.0)), "color": Color(0.30, 0.92, 0.50)}
 		_:
 			return {"label": key.capitalize(), "value": "%+d" % int(round(value)), "color": Color(0.92, 0.78, 0.34)}
 
@@ -654,7 +744,7 @@ func _pretty_stat_label(stat_key: String) -> String:
 		"revive_hp_pct": return "Restore Health"
 		"projectile_spd": return "Projectile Speed"
 		"projectile_dmg", "projectile_damage": return "Projectile Damage"
-		"xp_bonus": return "XP Bonus"
+		"xp_bonus": return "Experience Bonus"
 		"max_hp": return "Maximum Health"
 		"max_hp_pct": return "Maximum Health"
 		"regen": return "Health Regeneration"

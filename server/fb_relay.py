@@ -628,6 +628,36 @@ async def account_delete(body: AccountDeleteRequest) -> dict:
     return {"ok": True, "deleted": deleted}
 
 
+@app.get("/stats/leaderboard/adventure")
+async def leaderboard_adventure() -> dict:
+    with _db_lock:
+        conn = _db_connect()
+        rows = _fetchall(conn, "SELECT username,display_name,best_kill_char,story_json,progression_json,rings_json,artifact_equipped_json FROM leaderboard")
+        conn.close()
+    entries = []
+    for row in rows:
+        def blob(name, fallback):
+            try:
+                return _json.loads(row[name] or _json.dumps(fallback))
+            except Exception:
+                return fallback
+        story = blob("story_json", {})
+        progression = blob("progression_json", {})
+        depths = progression.get("dungeon_depths", {}) if isinstance(progression, dict) else {}
+        cleared = story.get("cleared", []) if isinstance(story, dict) else []
+        entries.append({
+            "username": row["username"], "display_name": row["display_name"],
+            "character": row["best_kill_char"] or "",
+            "story_stage": len(cleared) if isinstance(cleared, list) else 0,
+            "coin_depth": int(depths.get("coin_burrow", 0) or 0),
+            "forge_depth": int(depths.get("forgecore", 0) or 0),
+            "equipment": story.get("equipped", {}) if isinstance(story, dict) else {},
+            "rings": blob("rings_json", {}), "artifacts": blob("artifact_equipped_json", {}),
+        })
+    entries.sort(key=lambda e: (e["story_stage"], e["coin_depth"] + e["forge_depth"]), reverse=True)
+    return {"ok": True, "entries": entries}
+
+
 @app.get("/stats/leaderboard/kills")
 async def leaderboard_kills(limit: int = 20, username: str = "", character: str = "") -> dict:
     try:

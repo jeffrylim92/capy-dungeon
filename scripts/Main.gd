@@ -33,6 +33,8 @@ const SESSION_CHECK_INTERVAL: float = 5.0
 var _account: Dictionary = {}
 var _last_character: CharacterData = null
 var _story_stage: Dictionary = {}
+var _dungeon_mode: String = ""
+var _loadout_snapshot: Dictionary = {}
 
 var _startup_gate_passed: bool = false
 var _gate_mode: String = "none"
@@ -227,10 +229,10 @@ func _find_social_auth_recursive(node: Node) -> SocialAuth:
 
 func _cloud_username_for(account: Dictionary) -> String:
 	# Prefer social email for cloud sync so Google logins across devices share one key.
-	var social_email: String = String(account.get("social_email", "")).strip_edges().to_lower()
+	var social_email: String = str(account.get("social_email", "")).strip_edges().to_lower()
 	if not social_email.is_empty():
 		return social_email
-	return String(account.get("username", "")).strip_edges().to_lower()
+	return str(account.get("username", "")).strip_edges().to_lower()
 
 func _load_profile() -> Dictionary:
 	if not FileAccess.file_exists(PROFILE_PATH):
@@ -828,7 +830,7 @@ func _on_logged_in(account: Dictionary) -> void:
 	_ensure_profile_display_name(account, func(chosen_display_name: String) -> void:
 		_account["display_name"] = chosen_display_name
 		AccountStore.save_persistent_session(_account)
-		var username: String = String(account.get("username", "")).strip_edges()
+		var username: String = str(account.get("username", "")).strip_edges()
 		var cloud_username: String = _cloud_username_for(account)
 		if not username.is_empty():
 			PurchaseStore.set_username(username)
@@ -858,6 +860,12 @@ func _show_lobby(open_play_hub: bool = false) -> void:
 	lobby.open_play_hub_on_ready = open_play_hub
 	lobby.start_game_requested.connect(func() -> void:
 		_story_stage = {}
+		_dungeon_mode = ""
+		_show_survival_difficulty_picker()
+	)
+	lobby.dungeon_requested.connect(func(dungeon_id: String) -> void:
+		_story_stage = {}
+		_dungeon_mode = dungeon_id
 		_show_select()
 	)
 	lobby.story_requested.connect(_show_story)
@@ -870,12 +878,24 @@ func _show_lobby(open_play_hub: bool = false) -> void:
 	)
 	add_child(lobby)
 
-func _show_story() -> void:
+func _show_story(advance_after_completion: bool = false) -> void:
 	_sync_cloud_progress()
+	var initial_stage_index := -1
+	if not _story_stage.is_empty():
+		var completed_index := StoryStore.stage_index(str(_story_stage.get("id", "")))
+		var profile := StoryStore.load_profile(str(_account.get("username", "")))
+		var completed_chapter := int(_story_stage.get("chapter", 1))
+		var completed_chapter_stage := int(_story_stage.get("chapter_stage", 1))
+		if not advance_after_completion or (completed_chapter_stage == 5 and not StoryStore.is_chapter_claimed(profile, completed_chapter)):
+			initial_stage_index = completed_index
+		else:
+			initial_stage_index = mini(completed_index + 1, StoryStore.stage_count() - 1)
 	_story_stage = {}
+	_dungeon_mode = ""
 	_clear_children()
 	var story := STORY_SCENE.instantiate()
 	story.account_username = String(_account.get("username", ""))
+	story.initial_stage_index = initial_stage_index
 	story.stage_selected.connect(func(stage: Dictionary) -> void:
 		_story_stage = stage
 		_show_select()
@@ -883,6 +903,37 @@ func _show_story() -> void:
 	story.back_requested.connect(_show_lobby.bind(true))
 	story.cloud_sync_requested.connect(_sync_cloud_progress)
 	add_child(story)
+
+func _show_survival_difficulty_picker() -> void:
+	var layer := CanvasLayer.new(); layer.layer = 160; add_child(layer)
+	var view := get_viewport().get_visible_rect().size
+	var shade := ColorRect.new(); shade.color = Color(0.01, 0.02, 0.04, 0.94); shade.size = view; shade.mouse_filter = Control.MOUSE_FILTER_STOP; layer.add_child(shade)
+	var panel_height := minf(920.0, view.y - 100.0)
+	var panel := PanelContainer.new(); panel.position = Vector2(60, (view.y - panel_height) * 0.5); panel.size = Vector2(view.x - 120, panel_height); panel.add_theme_stylebox_override("panel", _survival_picker_panel_style()); layer.add_child(panel)
+	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 18); panel.add_child(box)
+	var title := Label.new(); title.text = "CHOOSE SURVIVAL DIFFICULTY"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 46); title.add_theme_color_override("font_color", Color(1.0, 0.82, 0.34)); box.add_child(title)
+	var username := str(_account.get("username", "")); var profile := ProgressionStore.load_profile(username)
+	var modifier := ProgressionStore.daily_modifier()
+	var challenge := Label.new(); challenge.text = "Today's challenge: %s\n%s" % [str(modifier.name), str(modifier.desc)]; challenge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; challenge.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; challenge.add_theme_font_size_override("font_size", 27); box.add_child(challenge)
+	var choices := VBoxContainer.new(); choices.size_flags_vertical = Control.SIZE_EXPAND_FILL; choices.add_theme_constant_override("separation", 14); box.add_child(choices)
+	for i in ProgressionStore.DIFFICULTIES.size():
+		var index := i; var difficulty: Dictionary = ProgressionStore.DIFFICULTIES[i] as Dictionary
+		var selected := int(profile.get("difficulty", 0)) == index
+		var button := Button.new(); button.text = "%s%s\nEnemy Health ×%.2f  ·  Enemy Damage ×%.2f  ·  Rewards ×%.2f" % ["SELECTED  ·  " if selected else "", str(difficulty.name), float(difficulty.enemy_hp), float(difficulty.enemy_damage), float(difficulty.reward)]; button.custom_minimum_size = Vector2(0, 112); button.size_flags_vertical = Control.SIZE_EXPAND_FILL; button.add_theme_font_size_override("font_size", 26); button.disabled = ProgressionStore.account_level(profile) < int(difficulty.unlock_level)
+		if button.disabled: button.text += "\nUnlocks at Camp Level %d" % int(difficulty.unlock_level)
+		_style_survival_picker_button(button, selected)
+		button.pressed.connect(func() -> void: ProgressionStore.set_difficulty(username, index); layer.queue_free(); _sync_cloud_progress(); _show_select()); choices.add_child(button)
+	var cancel := Button.new(); cancel.text = "Cancel"; cancel.custom_minimum_size = Vector2(0, 82); cancel.add_theme_font_size_override("font_size", 30); _style_survival_picker_button(cancel, false); cancel.pressed.connect(func() -> void: layer.queue_free()); box.add_child(cancel)
+
+func _survival_picker_panel_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new(); style.bg_color = Color(0.035, 0.045, 0.075, 0.99); style.border_color = Color(0.86, 0.66, 0.22); style.set_border_width_all(4); style.corner_radius_top_left = 28; style.corner_radius_top_right = 28; style.corner_radius_bottom_left = 28; style.corner_radius_bottom_right = 28; style.content_margin_left = 28; style.content_margin_right = 28; style.content_margin_top = 28; style.content_margin_bottom = 28; style.shadow_color = Color(0, 0, 0, 0.48); style.shadow_size = 14; style.shadow_offset = Vector2(0, 5); return style
+
+func _style_survival_picker_button(button: Button, selected: bool) -> void:
+	var normal := _survival_picker_panel_style(); normal.bg_color = Color(0.30, 0.21, 0.06, 0.98) if selected else Color(0.10, 0.10, 0.17, 0.98); normal.border_color = Color(1.0, 0.82, 0.28) if selected else Color(0.55, 0.55, 0.75, 0.82); normal.set_border_width_all(4 if selected else 2); normal.content_margin_top = 10; normal.content_margin_bottom = 10; normal.shadow_size = 7
+	var hover := normal.duplicate() as StyleBoxFlat; hover.bg_color = normal.bg_color.lightened(0.12)
+	var pressed := normal.duplicate() as StyleBoxFlat; pressed.bg_color = normal.bg_color.darkened(0.10); pressed.shadow_size = 3
+	var disabled := normal.duplicate() as StyleBoxFlat; disabled.bg_color = Color(0.06, 0.06, 0.08, 0.94); disabled.border_color = Color(0.28, 0.28, 0.32, 0.8); disabled.shadow_size = 0
+	button.add_theme_stylebox_override("normal", normal); button.add_theme_stylebox_override("hover", hover); button.add_theme_stylebox_override("pressed", pressed); button.add_theme_stylebox_override("disabled", disabled); button.add_theme_color_override("font_color", Color(1.0, 0.88, 0.56) if selected else Color(0.92, 0.92, 1.0)); button.add_theme_color_override("font_disabled_color", Color(0.48, 0.48, 0.54)); button.focus_mode = Control.FOCUS_NONE
 
 func _show_collectibles() -> void:
 	_clear_children()
@@ -1124,6 +1175,7 @@ func _show_story_inventory(data: CharacterData) -> void:
 	inv.confirmed.connect(_start_match)
 	inv.back_requested.connect(_show_select)
 	inv.cloud_sync_requested.connect(_sync_cloud_progress)
+	inv.accessories_requested.connect(_edit_accessories_from_story.bind(data))
 	add_child(inv)
 
 func _show_inventory(data: CharacterData) -> void:
@@ -1133,6 +1185,22 @@ func _show_inventory(data: CharacterData) -> void:
 	inv.account_username   = String(_account.get("username", ""))
 	inv.inventory_confirmed.connect(_on_inventory_confirmed)
 	inv.back_to_select.connect(_show_select)
+	inv.equipment_requested.connect(_edit_equipment_from_survival.bind(data))
+	add_child(inv)
+
+func _edit_accessories_from_story(data: CharacterData) -> void:
+	var username := str(_account.get("username", ""))
+	_loadout_snapshot = {"ring_stash":RingStore.load_stash(username).duplicate(true), "rings":RingStore.load_equipped(username).duplicate(true), "artifact_stash":ArtifactStore.load_stash(username).duplicate(true), "artifacts":ArtifactStore.load_equipped(username).duplicate(true)}
+	_clear_children(); var inv := INVENTORY_SCENE.instantiate(); inv.selected_character = data; inv.account_username = username; inv.accessory_edit_mode = true
+	inv.edit_cancelled.connect(func() -> void: RingStore.replace_loadout(username, _loadout_snapshot.ring_stash, _loadout_snapshot.rings); ArtifactStore.replace_loadout(username, _loadout_snapshot.artifact_stash, _loadout_snapshot.artifacts); _show_story_inventory(data))
+	inv.edit_applied.connect(func() -> void: _sync_cloud_progress(); _show_story_inventory(data))
+	add_child(inv)
+
+func _edit_equipment_from_survival(data: CharacterData) -> void:
+	var username := str(_account.get("username", "")); _loadout_snapshot = {"story":StoryStore.cloud_snapshot(username), "progression":ProgressionStore.cloud_snapshot(username)}
+	_clear_children(); var inv := STORY_INVENTORY_SCENE.instantiate(); inv.selected_character = data; inv.account_username = username; inv.equipment_edit_mode = true
+	inv.edit_cancelled.connect(func() -> void: StoryStore.replace_profile(username, _loadout_snapshot.story); ProgressionStore.replace_profile(username, _loadout_snapshot.progression); _show_inventory(data))
+	inv.edit_applied.connect(func() -> void: _sync_cloud_progress(); _show_inventory(data))
 	add_child(inv)
 
 func _on_inventory_confirmed(data: CharacterData) -> void:
@@ -1147,13 +1215,21 @@ func _start_match(data: CharacterData) -> void:
 	m.account_cloud_id     = _cloud_username_for(_account)
 	m.account_display_name = _profile_display_name_for(_account)
 	m.story_stage = _story_stage.duplicate(true)
+	m.dungeon_mode = _dungeon_mode
 	m.match_ended.connect(_on_match_ended)
 	add_child(m)
 
 func _on_match_ended(next_action: String) -> void:
+	var username := str(_account.get("username", ""))
+	ArtifactStore.reconcile_loadout(username)
+	_sync_cloud_progress()
 	match next_action:
 		"story":
 			_show_story()
+		"story_clear":
+			_show_story(true)
+		"dungeon":
+			_show_lobby(true)
 		"rematch":
 			if _last_character != null:
 				_start_match(_last_character)

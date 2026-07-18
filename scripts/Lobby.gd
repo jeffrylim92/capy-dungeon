@@ -4,6 +4,7 @@ extends Node2D
 ## character stats, change settings, or sign out / switch account.
 
 signal start_game_requested
+signal dungeon_requested(dungeon_id: String)
 signal story_requested
 signal history_requested
 signal cloud_sync_requested
@@ -12,6 +13,8 @@ signal logout_requested
 
 const SETTINGS_SCENE := preload("res://scenes/Settings.tscn")
 const CAMP_VISTA_SCRIPT := preload("res://scripts/CampVista.gd")
+const CAMP_COIN_ICON := preload("res://assets/camp/resources/camp_coin.png")
+const FORGECORE_MATERIAL_ICON := preload("res://assets/camp/resources/forgecore_material.png")
 
 var account: Dictionary = {}
 var open_play_hub_on_ready := false
@@ -202,6 +205,7 @@ func _show_camp(selected_upgrade: String = "") -> void:
 	var scroll := ScrollContainer.new()
 	scroll.position = Vector2(40, 70)
 	scroll.size = Vector2(view.x - 80, view.y - 140)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_camp_overlay.add_child(scroll)
 	var root := VBoxContainer.new()
 	root.custom_minimum_size = Vector2(view.x - 110, 0)
@@ -209,19 +213,26 @@ func _show_camp(selected_upgrade: String = "") -> void:
 	scroll.add_child(root)
 	var title := Label.new()
 	title.text = "Capy Camp  ·  Level %d" % ProgressionStore.account_level(profile)
-	title.add_theme_font_size_override("font_size", 52)
+	title.add_theme_font_size_override("font_size", 60)
 	title.add_theme_color_override("font_color", Color(1.0, 0.78, 0.20))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(title)
-	var wallet := Label.new()
 	var xp_info := ProgressionStore.xp_progress(profile)
-	wallet.text = "%d camp coins  ·  Camp XP %d / %d  ·  Total %d\nNext unlock: %s" % [int(profile.get("coins", 0)), int(xp_info.current), int(xp_info.needed), int(xp_info.total), ProgressionStore.next_unlock(profile)]
-	wallet.add_theme_font_size_override("font_size", 24)
+	var resource_row := HBoxContainer.new()
+	resource_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	resource_row.add_theme_constant_override("separation", 28)
+	root.add_child(resource_row)
+	_add_camp_resource_amount(resource_row, CAMP_COIN_ICON, int(profile.get("coins", 0)), "Camp Coins")
+	_add_camp_resource_amount(resource_row, FORGECORE_MATERIAL_ICON, int(StoryStore.load_profile(username).get("materials", 0)), "Upgrade Materials")
+	var wallet := Label.new()
+	wallet.text = "Camp XP %d / %d  ·  Total %d\nNext unlock: %s" % [int(xp_info.current), int(xp_info.needed), int(xp_info.total), ProgressionStore.next_unlock(profile)]
+	wallet.add_theme_font_size_override("font_size", 30)
 	wallet.autowrap_mode = TextServer.AUTOWRAP_WORD
 	wallet.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(wallet)
 	var xp_bar := ProgressBar.new()
 	xp_bar.custom_minimum_size = Vector2(0, 38)
+	xp_bar.add_theme_font_size_override("font_size", 25)
 	xp_bar.max_value = maxi(int(xp_info.needed), 1)
 	xp_bar.value = int(xp_info.current)
 	xp_bar.show_percentage = true
@@ -243,7 +254,7 @@ func _show_camp(selected_upgrade: String = "") -> void:
 	vista_note.text = "TIP  ·  Tap a labeled camp building to inspect or upgrade it.  ✦ appears at Lv.4 and ✦✦ at Lv.8 as the building gains new details."
 	vista_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vista_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vista_note.add_theme_font_size_override("font_size", 21)
+	vista_note.add_theme_font_size_override("font_size", 28)
 	vista_note.add_theme_color_override("font_color", Color(0.76, 0.80, 0.88))
 	root.add_child(vista_note)
 	if not selected_upgrade.is_empty() and ProgressionStore.UPGRADES.has(selected_upgrade):
@@ -251,7 +262,7 @@ func _show_camp(selected_upgrade: String = "") -> void:
 		var level := ProgressionStore.upgrade_level(profile, selected_upgrade)
 		var upgrade_title := Label.new()
 		upgrade_title.text = "Selected Building  ·  %s" % String(def.get("name", selected_upgrade.capitalize()))
-		upgrade_title.add_theme_font_size_override("font_size", 34)
+		upgrade_title.add_theme_font_size_override("font_size", 40)
 		root.add_child(upgrade_title)
 		var btn := _build_upgrade_card(selected_upgrade, def, level, profile)
 		btn.disabled = level >= ProgressionStore.MAX_UPGRADE_LEVEL
@@ -265,7 +276,7 @@ func _show_camp(selected_upgrade: String = "") -> void:
 				btn.text = error
 		)
 		root.add_child(btn)
-		var overview_btn := _make_button("Back to Camp Buildings", 25, Vector2(0, 68))
+		var overview_btn := _make_button("Back to Camp Buildings", 30, Vector2(0, 74))
 		overview_btn.pressed.connect(func() -> void:
 			_close_camp()
 			_show_camp()
@@ -273,89 +284,98 @@ func _show_camp(selected_upgrade: String = "") -> void:
 		root.add_child(overview_btn)
 	elif selected_upgrade == "difficulty":
 		var difficulty_title := Label.new()
-		difficulty_title.text = "Expedition Gate  ·  Dungeon Difficulty"
-		difficulty_title.add_theme_font_size_override("font_size", 34)
+		difficulty_title.text = "Expedition Gate  ·  Resource Dungeons"
+		difficulty_title.add_theme_font_size_override("font_size", 40)
 		root.add_child(difficulty_title)
-		var mod := ProgressionStore.daily_modifier()
-		var challenge_row := HBoxContainer.new()
-		challenge_row.add_theme_constant_override("separation", 10)
-		root.add_child(challenge_row)
-		var challenge := Label.new()
-		challenge.text = "TODAY'S CHALLENGE: %s\n%s" % [String(mod.get("name", "")), String(mod.get("desc", ""))]
-		challenge.add_theme_font_size_override("font_size", 24)
-		challenge.add_theme_color_override("font_color", Color(0.55, 0.88, 1.0))
-		challenge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		challenge.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		challenge_row.add_child(challenge)
-		var info_btn := _make_button("ⓘ", 32, Vector2(66, 66))
-		info_btn.pressed.connect(_show_modifier_info)
-		challenge_row.add_child(info_btn)
-		for i in ProgressionStore.DIFFICULTIES.size():
-			var difficulty_index := i
-			var d: Dictionary = ProgressionStore.DIFFICULTIES[i] as Dictionary
-			var is_selected := i == int(profile.get("difficulty", 0))
-			var difficulty_label := "✓ ACTIVE  ·  %s" % String(d.name) if is_selected else String(d.name)
-			var details := "Enemy health ×%.2f  ·  Enemy damage ×%.2f  ·  Rewards ×%.2f" % [float(d.enemy_hp), float(d.enemy_damage), float(d.reward)]
-			var db := _make_button("%s\n%s" % [difficulty_label, details], 22, Vector2(0, 90))
-			db.disabled = ProgressionStore.account_level(profile) < int(d.unlock_level)
-			if db.disabled:
-				db.text += "\nUnlocks at Camp Level %d" % int(d.unlock_level)
-			if is_selected:
-				_style_selected_difficulty(db)
-			db.pressed.connect(func() -> void:
-				ProgressionStore.set_difficulty(username, difficulty_index)
-				cloud_sync_requested.emit()
-				_close_camp(); _show_camp("difficulty")
-			)
-			root.add_child(db)
+		var depths: Dictionary = profile.get("dungeon_depths", {}) as Dictionary
+		var coin := _make_button("CAMP COIN BURROW\nCurrent best: Depth %d\nTimed treasure extraction · Break deposits and carry loot\nExtract safely or risk everything by descending deeper." % int(depths.get("coin_burrow", 0)), 29, Vector2(0, 170), true)
+		coin.pressed.connect(func() -> void: _close_camp(); dungeon_requested.emit("coin_burrow"))
+		root.add_child(coin)
+		var forge := _make_button("FORGECORE DEPTHS\nCurrent best: Depth %d\nActivate and defend three forges · Defeat the guardian\nChoose a forge protocol before descending deeper." % int(depths.get("forgecore", 0)), 29, Vector2(0, 170), true)
+		forge.pressed.connect(func() -> void: _close_camp(); dungeon_requested.emit("forgecore"))
+		root.add_child(forge)
 		_add_camp_overview_button(root)
-	elif selected_upgrade == "missions":
+	elif selected_upgrade == "missions" or selected_upgrade == "missions_weekly":
+		var period := "weekly" if selected_upgrade == "missions_weekly" else "daily"
 		var mission_title := Label.new()
-		mission_title.text = "Mission Board  ·  Claim Rewards"
-		mission_title.add_theme_font_size_override("font_size", 34)
+		mission_title.text = "Mission Board  ·  Clear Objectives and Claim Rewards"
+		mission_title.add_theme_font_size_override("font_size", 38)
+		mission_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		mission_title.custom_minimum_size = Vector2(0, 100)
+		mission_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		root.add_child(mission_title)
+		var tabs := HBoxContainer.new(); tabs.add_theme_constant_override("separation", 12); root.add_child(tabs)
+		for tab_period in ["daily", "weekly"]:
+			var captured_period: String = tab_period
+			var tab := _make_button(tab_period.capitalize() + " Missions", 30, Vector2(0, 76), true); tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			if tab_period == period: _style_selected_difficulty(tab)
+			tab.pressed.connect(func() -> void: _close_camp(); _show_camp("missions_weekly" if captured_period == "weekly" else "missions")); tabs.add_child(tab)
 		var has_claimable := false
-		for mission in ProgressionStore.missions(profile):
+		for mission in ProgressionStore.missions(profile, period):
 			var row := HBoxContainer.new()
-			row.add_theme_constant_override("separation", 10)
+			row.add_theme_constant_override("separation", 8)
 			root.add_child(row)
 			var ml := Label.new()
 			var complete := int(mission.progress) >= int(mission.target)
 			var claimed := bool(mission.claimed)
-			ml.text = "%s  ·  %d/%d  ·  %d coins" % [String(mission.name), mini(int(mission.progress), int(mission.target)), int(mission.target), int(mission.reward)]
-			ml.add_theme_font_size_override("font_size", 24)
+			var progress_text := "%.1f of %.1f minutes" % [float(mini(int(mission.progress), int(mission.target))) / 60.0, float(mission.target) / 60.0] if String(mission.id) == "survival_time" else "%d of %d" % [mini(int(mission.progress), int(mission.target)), int(mission.target)]
+			ml.text = "%s\n%s\nProgress: %s" % [String(mission.name), String(mission.description), progress_text]
+			ml.add_theme_font_size_override("font_size", 29)
+			ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			ml.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			ml.size_flags_stretch_ratio = 1.0
 			row.add_child(ml)
+			var reward := HBoxContainer.new(); reward.alignment = BoxContainer.ALIGNMENT_CENTER; reward.custom_minimum_size = Vector2(100, 0); row.add_child(reward)
+			_add_camp_resource_amount(reward, CAMP_COIN_ICON, int(mission.reward), "Camp Coin reward", 34, 26)
 			var claim_text := "Collected" if claimed else ("Collect" if complete else "Incomplete")
-			var claim_btn := _make_button(claim_text, 21, Vector2(150, 62), complete and not claimed)
+			var claim_btn := _make_button(claim_text, 23, Vector2(156, 72), complete and not claimed)
 			claim_btn.disabled = not complete or claimed
 			var mission_id := String(mission.id)
 			var captured_mission_id := mission_id
 			claim_btn.pressed.connect(func() -> void:
-				ProgressionStore.claim_mission(username, captured_mission_id)
+				ProgressionStore.claim_mission(username, captured_mission_id, period)
 				cloud_sync_requested.emit()
-				_close_camp(); _show_camp("missions")
+				_close_camp(); _show_camp(selected_upgrade)
 			)
 			row.add_child(claim_btn)
 			has_claimable = has_claimable or (complete and not claimed)
-		var collect_all := _make_button("Collect All", 25, Vector2(0, 70), true)
+		var collect_all := _make_button("Collect All", 30, Vector2(0, 78), true)
 		collect_all.disabled = not has_claimable
 		collect_all.pressed.connect(func() -> void:
-			ProgressionStore.claim_all_missions(username)
+			ProgressionStore.claim_all_missions(username, period)
 			cloud_sync_requested.emit()
-			_close_camp(); _show_camp("missions")
+			_close_camp(); _show_camp(selected_upgrade)
 		)
 		root.add_child(collect_all)
 		_add_camp_overview_button(root)
-	var close := _make_button("Back to Play Modes", 30, Vector2(0, 82), true)
+	var close := _make_button("Back to Play Modes", 34, Vector2(0, 90), true)
 	close.pressed.connect(func() -> void:
 		_close_camp()
 		_show_play_hub()
 	)
 	root.add_child(close)
 
+func _add_camp_resource_amount(parent: Container, texture: Texture2D, amount: int, tooltip: String, icon_size: int = 48, font_size: int = 34) -> void:
+	var group := HBoxContainer.new()
+	group.add_theme_constant_override("separation", 7)
+	group.tooltip_text = tooltip
+	parent.add_child(group)
+	var icon := TextureRect.new()
+	icon.texture = texture
+	icon.custom_minimum_size = Vector2(icon_size, icon_size)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	group.add_child(icon)
+	var value := Label.new()
+	value.text = str(amount)
+	value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	value.add_theme_font_size_override("font_size", font_size)
+	value.add_theme_color_override("font_color", Color(1.0, 0.84, 0.36))
+	group.add_child(value)
+
 func _add_camp_overview_button(root: VBoxContainer) -> void:
-	var overview_btn := _make_button("Back to Camp Buildings", 25, Vector2(0, 68))
+	var overview_btn := _make_button("Back to Camp Buildings", 30, Vector2(0, 76))
 	overview_btn.pressed.connect(func() -> void:
 		_close_camp()
 		_show_camp()
@@ -421,21 +441,22 @@ func _build_upgrade_card(id: String, definition: Dictionary, level: int, profile
 	row.add_child(details)
 	var header := Label.new()
 	header.text = "%s  ·  Lv.%d/%d" % [String(definition.get("name", id.capitalize())), level, ProgressionStore.MAX_UPGRADE_LEVEL]
-	header.add_theme_font_size_override("font_size", 34)
+	header.add_theme_font_size_override("font_size", 40)
 	header.add_theme_color_override("font_color", accent.lightened(0.18))
 	details.add_child(header)
 	var desc := Label.new()
 	desc.text = "%s\nCurrent effect: %s" % [String(definition.get("desc", "")), ProgressionStore.upgrade_effect_text(profile, id)]
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	desc.add_theme_font_size_override("font_size", 24)
+	desc.add_theme_font_size_override("font_size", 29)
 	desc.add_theme_color_override("font_color", Color(0.90, 0.85, 0.74))
 	details.add_child(desc)
-	var cost := Label.new()
-	cost.text = "MAXIMUM LEVEL" if level >= ProgressionStore.MAX_UPGRADE_LEVEL else "Upgrade for %d camp coins" % ProgressionStore.upgrade_cost(profile, id)
-	cost.add_theme_font_size_override("font_size", 24)
-	cost.add_theme_color_override("font_color", Color(1.0, 0.79, 0.24))
-	details.add_child(cost)
+	if level >= ProgressionStore.MAX_UPGRADE_LEVEL:
+		var maximum := Label.new(); maximum.text = "MAXIMUM LEVEL"; maximum.add_theme_font_size_override("font_size", 30); maximum.add_theme_color_override("font_color", Color(1.0, 0.79, 0.24)); details.add_child(maximum)
+	else:
+		var cost_row := HBoxContainer.new(); cost_row.add_theme_constant_override("separation", 10); details.add_child(cost_row)
+		var upgrade_text := Label.new(); upgrade_text.text = "Upgrade"; upgrade_text.add_theme_font_size_override("font_size", 30); upgrade_text.add_theme_color_override("font_color", Color(1.0, 0.79, 0.24)); cost_row.add_child(upgrade_text)
+		_add_camp_resource_amount(cost_row, CAMP_COIN_ICON, ProgressionStore.upgrade_cost(profile, id), "Camp Coin cost", 38, 29)
 	return btn
 
 func _camp_card_style(border: Color, background: Color, radius: int = 16, width: int = 3) -> StyleBoxFlat:
@@ -490,14 +511,14 @@ func _show_modifier_info() -> void:
 	margin.add_child(root)
 	var title := Label.new()
 	title.text = "Daily Run Modifiers"
-	title.add_theme_font_size_override("font_size", 44)
+	title.add_theme_font_size_override("font_size", 50)
 	title.add_theme_color_override("font_color", Color(0.55, 0.88, 1.0))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(title)
 	var note := Label.new()
 	note.text = "One modifier is active for every player each day. The rotation changes automatically at your next local calendar day."
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.add_theme_font_size_override("font_size", 23)
+	note.add_theme_font_size_override("font_size", 28)
 	note.add_theme_color_override("font_color", Color(0.78, 0.82, 0.90))
 	root.add_child(note)
 	var active_id := String(ProgressionStore.daily_modifier().get("id", ""))
@@ -510,7 +531,7 @@ func _show_modifier_info() -> void:
 		var text := Label.new()
 		text.text = "%s%s\n%s" % ["ACTIVE TODAY  ·  " if is_active else "", String(modifier.get("name", "Unknown")), String(modifier.get("desc", ""))]
 		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		text.add_theme_font_size_override("font_size", 27)
+		text.add_theme_font_size_override("font_size", 32)
 		text.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42) if is_active else Color(0.88, 0.90, 0.96))
 		card.add_child(text)
 	var close := _make_button("Close", 30, Vector2(0, 78), true)

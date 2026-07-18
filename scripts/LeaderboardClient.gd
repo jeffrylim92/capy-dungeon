@@ -14,7 +14,7 @@ static func set_session_token(token: String) -> void:
 
 static func claim_session(host: Node, account_key: String, callback: Callable) -> void:
 	_post_json(host, "/session/claim", {"account_key":account_key}, func(payload: Dictionary) -> void:
-		callback.call(String(payload.get("session_token", "")) if bool(payload.get("ok", false)) else "")
+		callback.call(str(payload.get("session_token", "")) if bool(payload.get("ok", false)) else "")
 	)
 
 static func check_session(host: Node, account_key: String, session_token: String, callback: Callable) -> void:
@@ -130,6 +130,9 @@ static func fetch_user_stats(host: Node, username: String, callback: Callable) -
 	if err != OK:
 		http.queue_free()
 		callback.call({})
+
+static func fetch_adventure(host: Node, callback: Callable) -> void:
+	_fetch_payload(host, BASE_URL + "/stats/leaderboard/adventure", callback)
 
 ## Delete this user's cloud account data.
 ## callback receives { ok: bool, deleted: int, error: String }.

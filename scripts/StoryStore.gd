@@ -52,6 +52,9 @@ static func _save(username: String, profile: Dictionary) -> void:
 static func cloud_snapshot(username: String) -> Dictionary:
 	return load_profile(username).duplicate(true)
 
+static func replace_profile(username: String, profile: Dictionary) -> void:
+	_save(username, profile.duplicate(true))
+
 static func restore_from_server(username: String, server_profile: Dictionary) -> void:
 	if username.is_empty() or server_profile.is_empty():
 		return
@@ -84,9 +87,17 @@ static func stage(index: int) -> Dictionary:
 	var chapter_index := floori(float(safe) / 5.0)
 	var chapter_stage := safe % 5
 	var chapter: Dictionary = CHAPTERS[chapter_index] as Dictionary
-	var hp := 1.08 + float(safe) * 0.055
-	var damage := 1.0 + float(safe) * 0.04
-	return {"id":"ch%d_%d" % [chapter_index + 1, chapter_stage + 1], "chapter":chapter_index + 1, "chapter_stage":chapter_stage + 1, "name":"%d-%d  %s" % [chapter_index + 1, chapter_stage + 1, String((chapter.stages as Array)[chapter_stage])], "story":"Advance through the %s and uncover the path ahead." % String(chapter.theme), "challenge":"Enemy health +%d%% · damage +%d%%%s" % [roundi((hp - 1.0) * 100.0), roundi((damage - 1.0) * 100.0), " · Chapter boss" if chapter_stage == 4 else ""], "enemy_hp":hp, "enemy_damage":damage, "boss":"abyss_gate_warden" if chapter_stage == 4 else "", "coins":25 + safe * 4, "materials":1 + chapter_index}
+	var hp := 1.08 + float(safe) * 0.055 + float(chapter_index) * 0.08
+	var damage := 1.0 + float(safe) * 0.04 + float(chapter_index) * 0.05
+	var speed := 1.0 + float(safe) * 0.006 + float(chapter_index) * 0.02
+	var objectives: Array[String] = [
+		"Prepare, then escort a wandering scout for 90 seconds",
+		"Summon the shrine when ready, then defend it for 2 minutes",
+		"Manually awaken and destroy three escalating enemy nests",
+		"Defeat enemies until they drop three gate keys",
+		"Survive the fixed-arena projectile barrage and defeat enemies",
+	]
+	return {"id":"ch%d_%d" % [chapter_index + 1, chapter_stage + 1], "chapter":chapter_index + 1, "chapter_stage":chapter_stage + 1, "name":"%d-%d  %s" % [chapter_index + 1, chapter_stage + 1, String((chapter.stages as Array)[chapter_stage])], "story":"Advance through the %s and uncover the path ahead." % String(chapter.theme), "challenge":"%s\nEnemy health +%d%% · damage +%d%% · speed +%d%%" % [objectives[chapter_stage], roundi((hp - 1.0) * 100.0), roundi((damage - 1.0) * 100.0), roundi((speed - 1.0) * 100.0)], "enemy_hp":hp, "enemy_damage":damage, "enemy_speed":speed, "boss":"abyss_gate_warden" if chapter_stage == 4 else "", "coins":25 + safe * 4, "materials":1 + chapter_index}
 
 static func stage_count() -> int:
 	return CHAPTERS.size() * 5
@@ -96,16 +107,21 @@ static func chapter(index: int) -> Dictionary:
 
 static func unlocked_stage(profile: Dictionary) -> int:
 	for chapter_number in range(1, CHAPTERS.size() + 1):
-		if is_chapter_complete(profile, chapter_number) and chapter_number not in (profile.get("claimed_chapters", []) as Array):
+		if is_chapter_complete(profile, chapter_number) and not is_chapter_claimed(profile, chapter_number):
 			return chapter_number * 5 - 1
-	return mini((profile.get("cleared", []) as Array).size(), stage_count() - 1)
+	var highest_cleared := -1
+	for stage_id_variant in profile.get("cleared", []) as Array:
+		highest_cleared = maxi(highest_cleared, stage_index(String(stage_id_variant)))
+	return clampi(highest_cleared + 1, 0, stage_count() - 1)
 
 static func record_clear(username: String, stage_id: String) -> Dictionary:
 	var profile := load_profile(username)
 	var cleared: Array = profile.get("cleared", []) as Array
 	var first_clear := stage_id not in cleared
 	if stage_id in cleared:
-		var replay_materials := 1 + floori(float(stage_index(stage_id)) / 5.0)
+		# Story replays provide a useful mixed reward, while Forgecore Depths
+		# remains the strongest repeatable source of upgrade materials.
+		var replay_materials := 1 + floori(float(stage_index(stage_id)) / 10.0)
 		profile["materials"] = int(profile.get("materials", 0)) + replay_materials
 		_add_camp_coins(username, 8 + stage_index(stage_id) * 2)
 		_save(username, profile)
@@ -122,7 +138,7 @@ static func record_clear(username: String, stage_id: String) -> Dictionary:
 static func claim_chapter(username: String, chapter_number: int) -> Array[String]:
 	var profile := load_profile(username)
 	var final_stage_id := "ch%d_5" % chapter_number
-	if final_stage_id not in (profile.get("cleared", []) as Array) or chapter_number in (profile.get("claimed_chapters", []) as Array):
+	if final_stage_id not in (profile.get("cleared", []) as Array) or is_chapter_claimed(profile, chapter_number):
 		return []
 	var claimed: Array = profile.get("claimed_chapters", []) as Array
 	claimed.append(chapter_number)
@@ -144,6 +160,12 @@ static func stage_index(stage_id: String) -> int:
 
 static func is_chapter_complete(profile: Dictionary, chapter_number: int) -> bool:
 	return "ch%d_5" % chapter_number in (profile.get("cleared", []) as Array)
+
+static func is_chapter_claimed(profile: Dictionary, chapter_number: int) -> bool:
+	for claimed_variant in profile.get("claimed_chapters", []) as Array:
+		if int(claimed_variant) == chapter_number:
+			return true
+	return false
 
 static func _add_camp_coins(username: String, amount: int) -> void:
 	var camp := ProgressionStore.load_profile(username)
@@ -239,6 +261,12 @@ static func reset_upgrade(username: String, gear_id: String) -> int:
 	ProgressionStore.save_profile(username, camp)
 	return refund
 
+static func add_materials(username: String, amount: int) -> void:
+	if amount <= 0: return
+	var profile := load_profile(username)
+	profile["materials"] = int(profile.get("materials", 0)) + amount
+	_save(username, profile)
+
 static func effect_text(gear_id: String) -> String:
 	if not GEAR.has(gear_id): return ""
 	var effects: Dictionary = (GEAR[gear_id] as Dictionary).get("effects", {}) as Dictionary
@@ -256,14 +284,59 @@ static func scaled_effect_text(profile: Dictionary, gear_id: String) -> String:
 
 static func stat_name(key: String) -> String:
 	match key:
-		"skill_dmg": return "Attack"
-		"max_hp_pct": return "HP"
-		"damage_taken_mul": return "Defense"
-		"move_speed_mul": return "Move Speed"
+		"skill_dmg": return "Skill Damage"
+		"skill_cd": return "Skill Cooldown"
+		"max_hp_pct": return "Maximum Health"
+		"max_hp": return "Maximum Health"
+		"regen": return "Health Regeneration"
+		"damage_taken_mul": return "Damage Taken"
+		"move_speed_mul": return "Movement Speed"
 		"crit_chance": return "Critical Chance"
-		"boss_dmg": return "Boss Attack"
-		"xp_bonus": return "XP Gain"
+		"crit_dmg": return "Critical Damage"
+		"boss_dmg": return "Boss Damage"
+		"xp_bonus": return "Experience Bonus"
+		"aoe_radius": return "Area of Effect Radius"
+		"projectile_spd": return "Projectile Speed"
+		"projectile_dmg", "projectile_damage": return "Projectile Damage"
+		"revive_once": return "Revive Once"
+		"revive_hp_pct": return "Restore Health"
+		"timed_shield": return "Timed Shield"
+		"luck": return "Luck"
+		"ring_drop_rate": return "Ring Drop Rate"
+		"potion_drop_rate": return "Potion Drop Rate"
+		"freeze_duration": return "Freeze Duration"
+		"ice_dmg": return "Ice Damage"
+		"lightning_chain": return "Lightning Chain"
+		"lightning_dmg": return "Lightning Damage"
+		"burn_duration": return "Burn Duration"
+		"lifesteal": return "Lifesteal"
+		"healing_efficiency": return "Healing Effectiveness"
+		"enemy_hp_mul": return "Enemy Health"
+		"pickup_radius": return "Pickup Radius"
+		"projectile_homing": return "Projectile Homing"
+		"proj_dup_chance": return "Projectile Duplication Chance"
+		"regen_pulse_pct": return "Regeneration Pulse"
+		"regen_pulse_interval": return "Regeneration Pulse Interval"
+		"blink_interval": return "Blink Interval"
+		"blink_dist": return "Blink Distance"
+		"blink_iframes": return "Invulnerability Frames"
+		"chaos_mystery_box": return "Chaos Mystery Effect"
+		"chaos_wheel": return "Chaos Wheel Effect"
+		"wheel_duration": return "Wheel Duration"
+		"wheel_interval": return "Wheel Interval"
 		_: return key.replace("_", " ").capitalize()
+
+static func stat_value_text(key: String, value: float) -> String:
+	if key in ["skill_dmg", "projectile_spd", "projectile_dmg", "projectile_damage", "max_hp_pct", "xp_bonus", "crit_chance", "crit_dmg", "luck", "ring_drop_rate", "damage_taken_mul", "enemy_hp_mul", "move_speed_mul", "healing_efficiency", "freeze_duration", "ice_dmg", "lightning_dmg", "burn_duration", "pickup_radius", "projectile_homing", "proj_dup_chance", "regen_pulse_pct", "potion_drop_rate", "aoe_radius", "boss_dmg", "skill_cd"]:
+		var percentage := value * 100.0
+		return "%+.1f%%" % percentage if absf(percentage) < 1.0 and not is_zero_approx(percentage) else "%+d%%" % roundi(percentage)
+	if key in ["wheel_duration", "wheel_interval", "blink_interval", "regen_pulse_interval"]:
+		return "%s seconds" % String.num(value, 0)
+	if key == "blink_dist": return "%s meters" % String.num(value / 37.5, 0)
+	if key == "blink_iframes": return "%s seconds" % String.num(value, 1)
+	if key == "regen": return "%+.1f health per second" % value
+	if key in ["revive_once", "lightning_chain", "chaos_mystery_box", "chaos_wheel"]: return "+%d" % roundi(value)
+	return ("+" if value >= 0.0 else "") + String.num(value, 2)
 
 static func display_percent(key: String, value: float) -> int:
 	return roundi(absf(value) * 100.0) if key == "damage_taken_mul" else roundi(value * 100.0)

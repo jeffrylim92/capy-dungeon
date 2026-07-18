@@ -46,6 +46,19 @@ const LAVA_CHARGE_TIME: float = 1.35
 const LAVA_CHARGE_TRAIL_LIFE: float = 5.0
 const BOSS_ARENA_HALF: Vector2 = Vector2(610.0, 424.0)
 const ROOM_SPAN_WAVES: int = 4
+const STORY_KEY_DROP_START: float = 0.003
+const STORY_KEY_DROP_GROWTH_PER_SECOND: float = 0.0007
+const STORY_KEY_DROP_MAX: float = 0.08
+const STORY_NEST_SHIELD_SECONDS: float = 10.0
+const STORY_NEST_EFFECTIVE_RADIUS: float = 280.0
+const SAFE_INTERACTION_RADIUS: float = 190.0
+const FORGE_INTERACTION_RADIUS: float = 190.0
+const OBJECTIVE_NEST_PATH: String = "res://assets/story/objectives/enemy_nest.png"
+const OBJECTIVE_SHRINE_PATH: String = "res://assets/story/objectives/defense_shrine.png"
+const OBJECTIVE_SCOUT_PATH: String = "res://assets/story/objectives/scout_npc.png"
+const OBJECTIVE_HAZARD_PATH: String = "res://assets/story/objectives/hazard_emitter.png"
+const OBJECTIVE_SAFE_PATH: String = "res://assets/story/objectives/coin_safe.png"
+const OBJECTIVE_FORGE_PATH: String = "res://assets/story/objectives/forgecore_forge.png"
 const ROOM_ROUTE: Array = [
 	{"id": "lava", "name": "Lava Rooms", "short": "Damage over time", "col": Color(1.0, 0.42, 0.12), "desc": "The ground burns — take periodic fire damage while standing still."},
 	{"id": "frozen", "name": "Frozen Floors", "short": "Sliding movement", "col": Color(0.52, 0.84, 1.0), "desc": "Icy surface causes momentum — movement feels slippery and hard to stop."},
@@ -53,6 +66,7 @@ const ROOM_ROUTE: Array = [
 	{"id": "spike", "name": "Spike Corridors", "short": "HP regen suppressed", "col": Color(0.92, 0.18, 0.20), "desc": "Jagged spikes disrupt recovery — HP regeneration is fully suppressed."},
 	{"id": "darkness", "name": "Darkness Zones", "short": "Reduced vision", "col": Color(0.58, 0.42, 0.92), "desc": "Darkness closes in — vision range is drastically reduced."},
 ]
+const STORY_CHAPTER_ROOM_ROUTE: Array[int] = [2, 4, 0, 3, 1, 4]
 const LAVA_ROOM_BG_PATH: String = "res://assets/backgrounds/bg_lava.png"
 const LAVA_ROOM_TILE_BG_PATH: String = "res://assets/backgrounds/bg_lava_tile.png"
 const FROZEN_ROOM_BG_PATH: String = "res://assets/backgrounds/bg_frozen.png"
@@ -65,6 +79,7 @@ const DARKNESS_ROOM_TILE_BG_PATH: String = "res://assets/backgrounds/bg_darkness
 const DARKNESS_ROOM_BG_PATH: String = "res://assets/backgrounds/bg_darkness.png"
 const PORTAL_ICON_PATH: String = "res://assets/icons/icon_portal.png"
 const NEXT_LEVEL_ICON_PATH: String = "res://assets/icons/icon_next_level.png"
+const OBJECTIVE_ARROW_PATH: String = "res://assets/icons/objective_arrow.png"
 const HUD_LABEL_ICON_PATH: String = "res://assets/icons/icon_label.png"
 
 # ─── Skill definitions ────────────────────────────────────────────────────────
@@ -820,6 +835,7 @@ var _darkness_room_bg_tex: Texture2D = null
 var _darkness_room_overlay_tex: Texture2D = null
 var _portal_icon_tex: Texture2D = null
 var _next_level_icon_tex: Texture2D = null
+var _objective_arrow_tex: Texture2D = null
 
 # ─── Enemy modifier system (post wave 10) ───────────────────────────────────
 const ENEMY_MOD_POOL: Array = ["fast", "giant", "armored", "explosive", "frozen_trail", "burn_trail"]
@@ -929,7 +945,32 @@ var _run_difficulty: Dictionary = {}
 var _run_modifier: Dictionary = {}
 var _progression_reward: Dictionary = {}
 var story_stage: Dictionary = {}
+var dungeon_mode: String = ""
+var _dungeon_depth_cleared: int = 0
 var _story_victory_started := false
+var _adventure_state: String = ""
+var _adventure_props: Array[Dictionary] = []
+var _adventure_timer: float = 0.0
+var _adventure_spawn_timer: float = 0.0
+var _adventure_progress: int = 0
+var _adventure_target: int = 0
+var _story_key_drop_elapsed: float = 0.0
+var _story_nests_destroyed: int = 0
+var _objective_boss_active: bool = false
+var _coin_carried: int = 0
+var _coin_banked: int = 0
+var _forge_modifier: String = ""
+var _adventure_choice_layer: CanvasLayer = null
+var _objective_nest_tex: Texture2D = null
+var _objective_shrine_tex: Texture2D = null
+var _objective_scout_tex: Texture2D = null
+var _objective_hazard_tex: Texture2D = null
+var _objective_safe_tex: Texture2D = null
+var _objective_forge_tex: Texture2D = null
+var _objective_start_btn: Button = null
+var _story_hazard_arena_center: Vector2 = Vector2.ZERO
+var _story_hazard_shot_timer: float = 0.0
+var _story_hazard_pattern: int = 0
 
 # ─── Ads ──────────────────────────────────────────────────────────────────────
 var _ad_manager: AdManager = null
@@ -1007,6 +1048,9 @@ func _ready() -> void:
 	if not story_stage.is_empty():
 		_run_difficulty = {"name":"Story", "enemy_hp":1.0, "enemy_damage":1.0, "reward":1.0}
 		_run_modifier = {}
+	elif not dungeon_mode.is_empty():
+		_run_difficulty = {"name":"Resource Dungeon", "enemy_hp":1.0 + float(_wave) * 0.08, "enemy_damage":1.0 + float(_wave) * 0.06, "reward":1.0}
+		_run_modifier = {}
 	_sound = SoundManager.new()
 	add_child(_sound)
 	_combat_vfx = CombatVFX.new()
@@ -1021,6 +1065,8 @@ func _ready() -> void:
 		_player_speed  = 300.0 + float(selected_player_character.attack - 7) * 12.0
 		_player_tint   = selected_player_character.tint
 		_char_id = String(selected_player_character.id)
+		if not account_username.is_empty():
+			ProgressionStore.record_mission_event(account_username, "characters", 1, _char_id)
 		# Auto-grant character's starting skill
 		var base_sid: String = selected_player_character.base_skill
 		if not base_sid.is_empty() and SKILL_DEFS.has(base_sid):
@@ -1057,6 +1103,20 @@ func _ready() -> void:
 		_portal_icon_tex = load(PORTAL_ICON_PATH) as Texture2D
 	if ResourceLoader.exists(NEXT_LEVEL_ICON_PATH):
 		_next_level_icon_tex = load(NEXT_LEVEL_ICON_PATH) as Texture2D
+	if ResourceLoader.exists(OBJECTIVE_ARROW_PATH):
+		_objective_arrow_tex = load(OBJECTIVE_ARROW_PATH) as Texture2D
+	if ResourceLoader.exists(OBJECTIVE_NEST_PATH):
+		_objective_nest_tex = load(OBJECTIVE_NEST_PATH) as Texture2D
+	if ResourceLoader.exists(OBJECTIVE_SHRINE_PATH):
+		_objective_shrine_tex = load(OBJECTIVE_SHRINE_PATH) as Texture2D
+	if ResourceLoader.exists(OBJECTIVE_SCOUT_PATH):
+		_objective_scout_tex = load(OBJECTIVE_SCOUT_PATH) as Texture2D
+	if ResourceLoader.exists(OBJECTIVE_HAZARD_PATH):
+		_objective_hazard_tex = load(OBJECTIVE_HAZARD_PATH) as Texture2D
+	if ResourceLoader.exists(OBJECTIVE_SAFE_PATH):
+		_objective_safe_tex = load(OBJECTIVE_SAFE_PATH) as Texture2D
+	if ResourceLoader.exists(OBJECTIVE_FORGE_PATH):
+		_objective_forge_tex = load(OBJECTIVE_FORGE_PATH) as Texture2D
 
 	# ── Apply ring bonuses ────────────────────────────────────────────────
 	if not account_username.is_empty() and not _char_id.is_empty():
@@ -1110,6 +1170,7 @@ func _ready() -> void:
 	_between_t   = 2.0  # 2s grace period before first wave
 	_boss_wave_locked = false
 	_sync_room_state(true)
+	_setup_adventure_mode()
 
 	# Load enemy textures
 	var _enemy_tex_map: Dictionary = {
@@ -1233,6 +1294,7 @@ func _process(delta: float) -> void:
 	_player_move_dir    = _pmove
 	_update_idle_enemy_boost(delta, _pmove)
 	_apply_room_movement(delta, _pmove)
+	_apply_story_hazard_arena_bounds()
 	
 	# Update belly bounce jump
 	if _player_jump_vel_y != 0.0:
@@ -1242,7 +1304,7 @@ func _process(delta: float) -> void:
 	
 	if _pmove.x > 0.01:    _player_facing_x = 1
 	elif _pmove.x < -0.01: _player_facing_x = -1
-	_camera.position    = _player_pos
+	_camera.position = _story_hazard_arena_center if _adventure_state == "story_hazards" else _player_pos
 	_update_ring_shield(delta)
 	_apply_room_hazards(delta)
 	_update_enemy_trails(delta)
@@ -1286,7 +1348,10 @@ func _process(delta: float) -> void:
 	_update_mortar_strikes(delta)
 	_update_lava_lines(delta)
 	_update_lava_pools(delta)
-	_update_spawner(delta)
+	_update_adventure_mode(delta)
+	_lock_story_hazard_camera()
+	if story_stage.is_empty() and dungeon_mode.is_empty():
+		_update_spawner(delta)
 	_update_damage_popups(delta)
 	queue_redraw()
 	_update_hud()
@@ -1337,7 +1402,13 @@ func _sync_room_state(force_reset: bool = false) -> void:
 
 func _current_room_index() -> int:
 	var wave_slot: int = max(_wave, 1) - 1
-	return int(floor(float(wave_slot) / float(ROOM_SPAN_WAVES))) % ROOM_ROUTE.size()
+	var route_offset := 0
+	if not story_stage.is_empty():
+		var chapter_index := clampi(int(story_stage.get("chapter", 1)) - 1, 0, STORY_CHAPTER_ROOM_ROUTE.size() - 1)
+		return STORY_CHAPTER_ROOM_ROUTE[chapter_index]
+	elif dungeon_mode == "coin_burrow": route_offset = 2
+	elif dungeon_mode == "forgecore": route_offset = 3
+	return (int(floor(float(wave_slot) / float(ROOM_SPAN_WAVES))) + route_offset) % ROOM_ROUTE.size()
 
 func _current_room() -> Dictionary:
 	return ROOM_ROUTE[_room_index] as Dictionary
@@ -1362,6 +1433,27 @@ func _apply_room_movement(delta: float, move_dir: Vector2) -> void:
 		var ah: Vector2 = _boss_intermission.get("arena_half", BOSS_ARENA_HALF) as Vector2
 		_player_pos.x = clamp(_player_pos.x, ac.x - ah.x, ac.x + ah.x)
 		_player_pos.y = clamp(_player_pos.y, ac.y - ah.y, ac.y + ah.y)
+
+func _story_hazard_arena_half_size() -> Vector2:
+	var view := get_viewport_rect().size
+	return Vector2(maxf(120.0, view.x * 0.5 - PLAYER_R - 24.0), maxf(180.0, view.y * 0.5 - PLAYER_R - 24.0))
+
+func _apply_story_hazard_arena_bounds() -> void:
+	if _adventure_state != "story_hazards":
+		return
+	var half_size := _story_hazard_arena_half_size()
+	_player_pos.x = clampf(_player_pos.x, _story_hazard_arena_center.x - half_size.x, _story_hazard_arena_center.x + half_size.x)
+	_player_pos.y = clampf(_player_pos.y, _story_hazard_arena_center.y - half_size.y, _story_hazard_arena_center.y + half_size.y)
+
+func _lock_story_hazard_camera() -> void:
+	if _camera == null or _adventure_state != "story_hazards":
+		return
+	_camera.position_smoothing_enabled = false
+	_camera.drag_horizontal_enabled = false
+	_camera.drag_vertical_enabled = false
+	_camera.position = _story_hazard_arena_center
+	_camera.reset_smoothing()
+	_camera.force_update_scroll()
 
 func _apply_room_hazards(delta: float) -> void:
 	var room_type: String = _current_room().get("id", "lava") as String
@@ -2892,7 +2984,11 @@ func _update_enemies(delta: float) -> void:
 			e["spd"] = (e["spd"] as float) * ENEMY_SURVIVE_SPEEDUP_MULT
 		var ep: Vector2 = e["pos"] as Vector2
 		var ekind: String = e.get("kind", "normal") as String
-		var _emove_dir: Vector2 = (_player_pos - ep).normalized()
+		var objective_target_index := _enemy_objective_target_index()
+		var enemy_target := _player_pos
+		if objective_target_index >= 0:
+			enemy_target = _adventure_props[objective_target_index].pos as Vector2
+		var _emove_dir: Vector2 = (enemy_target - ep).normalized()
 		var move_speed: float = e["spd"] as float
 		if _idle_enemy_speed_boost_active:
 			var ep_screen: Vector2 = ep - _camera.position + get_viewport_rect().size * 0.5
@@ -2911,7 +3007,12 @@ func _update_enemies(delta: float) -> void:
 		e["pos"] = ep + _emove_dir * move_speed * delta
 		if abs(_emove_dir.x) > 0.05:
 			e["facing_x"] = 1 if _emove_dir.x > 0.0 else -1
-		if _player_iframes <= 0.0:
+		if objective_target_index >= 0:
+			e["objective_hit_t"] = maxf(float(e.get("objective_hit_t", 0.0)) - delta, 0.0)
+			if (_enemies[i]["pos"] as Vector2).distance_to(enemy_target) < 72.0 + (e["r"] as float) and float(e.objective_hit_t) <= 0.0:
+				e.objective_hit_t = 0.75
+				_damage_adventure_prop(objective_target_index, float(e.dmg) * 0.34)
+		elif _player_iframes <= 0.0:
 			if (_enemies[i]["pos"] as Vector2).distance_to(_player_pos) < PLAYER_R + (e["r"] as float):
 				if _has_skill("meatball_barrage"):
 					var mb_lvl: int = _get_skill("meatball_barrage").get("level", 1) as int
@@ -2951,6 +3052,20 @@ func _update_enemies(delta: float) -> void:
 			_update_blight_tyrant_special(e, delta)
 		elif ekind == "thunderforge_behemoth":
 			_update_thunderforge_special(e, delta)
+
+func _enemy_objective_target_index() -> int:
+	if _adventure_state == "story_escort":
+		return _find_adventure_prop("scout")
+	if _adventure_state == "story_defend":
+		return _find_adventure_prop("shrine")
+	return -1
+
+func _damage_adventure_prop(index: int, damage: float) -> void:
+	if index < 0 or index >= _adventure_props.size():
+		return
+	var prop := _adventure_props[index]
+	prop.hp = float(prop.get("hp", 1.0)) - damage
+	_adventure_props[index] = prop
 
 func _update_bolts(delta: float) -> void:
 	var vp: Rect2 = get_viewport_rect()
@@ -3903,14 +4018,14 @@ func _show_ladder_confirm() -> void:
 	panel.add_child(root)
 
 	var title := Label.new()
-	title.text = "Proceed to Next Wave?"
+	title.text = "Descend to Next Depth?" if not dungeon_mode.is_empty() else "Proceed to Next Wave?"
 	title.add_theme_font_size_override("font_size", 38)
 	title.add_theme_color_override("font_color", Color(1.0, 0.90, 0.76))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(title)
 
 	var msg := Label.new()
-	msg.text = "Use the ladder to advance to the next wave?"
+	msg.text = "Use the ladder to descend to the next dungeon depth?" if not dungeon_mode.is_empty() else "Use the ladder to advance to the next wave?"
 	msg.add_theme_font_size_override("font_size", 26)
 	msg.add_theme_color_override("font_color", Color(0.95, 0.82, 0.70))
 	msg.autowrap_mode = TextServer.AUTOWRAP_WORD
@@ -4652,6 +4767,430 @@ func _update_xp_orbs(delta: float) -> void:
 const MAX_ENEMIES: int = 150
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ADVENTURE OBJECTIVES
+# ─────────────────────────────────────────────────────────────────────────────
+
+func _setup_adventure_mode() -> void:
+	if not story_stage.is_empty():
+		var stage_number := int(story_stage.get("chapter_stage", 1))
+		match stage_number:
+			1:
+				_adventure_state = "story_escort_wait"
+				_adventure_timer = 90.0
+				_adventure_props.clear()
+			2:
+				_adventure_state = "story_defend_wait"
+				_adventure_timer = 120.0
+				_adventure_props.clear()
+			3:
+				_adventure_state = "story_nests"
+				_story_nests_destroyed = 0
+				_adventure_props.clear()
+			4:
+				_adventure_state = "story_keys"
+				_adventure_target = 3
+				_adventure_props.clear()
+				_story_key_drop_elapsed = 0.0
+			_:
+				_adventure_state = "story_hazards"
+				_adventure_timer = 55.0
+				_adventure_target = 55
+				_story_hazard_arena_center = _player_pos
+				_story_hazard_shot_timer = 1.2
+				_story_hazard_pattern = 0
+				_player_pos = _story_hazard_arena_center + Vector2(0, minf(280.0, _story_hazard_arena_half_size().y * 0.55))
+				_adventure_props = [{"kind":"hazard_emitter", "pos":_story_hazard_arena_center, "hp":1.0, "max_hp":1.0}]
+				_lock_story_hazard_camera()
+		_adventure_spawn_timer = 1.5
+	elif dungeon_mode == "coin_burrow":
+		_begin_coin_depth(_next_dungeon_depth())
+	elif dungeon_mode == "forgecore":
+		_begin_forge_depth(_next_dungeon_depth())
+
+func _make_objective_ring(kind: String, count: int, radius: float, hp: float) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for i in count:
+		var angle := float(i) / float(count) * TAU - PI * 0.5
+		result.append({"kind":kind, "pos":_player_pos + Vector2(cos(angle), sin(angle)) * radius, "hp":hp, "max_hp":hp})
+	return result
+
+func _begin_coin_depth(depth: int) -> void:
+	_wave = depth
+	_dungeon_depth_cleared = maxi(_dungeon_depth_cleared, depth - 1)
+	_adventure_state = "coin_hunt"
+	_adventure_timer = 55.0 + minf(float(depth) * 1.5, 30.0)
+	_adventure_progress = 0
+	_adventure_target = 5
+	_adventure_spawn_timer = 1.0
+	_adventure_props.clear()
+	_spawn_coin_safe()
+	_enemies.clear()
+	_sync_room_state(true)
+
+func _begin_forge_depth(depth: int) -> void:
+	_wave = depth
+	_dungeon_depth_cleared = maxi(_dungeon_depth_cleared, depth - 1)
+	_adventure_state = "forge_activate"
+	_adventure_progress = 0
+	_adventure_target = 3
+	_adventure_spawn_timer = 1.0
+	_adventure_props.clear()
+	_spawn_forge()
+	_enemies.clear()
+	_sync_room_state(true)
+
+func _next_dungeon_depth() -> int:
+	var profile := ProgressionStore.load_profile(account_username)
+	var depths: Dictionary = profile.get("dungeon_depths", {}) as Dictionary
+	return maxi(1, int(depths.get(dungeon_mode, 0)) + 1)
+
+func _dungeon_objective_position() -> Vector2:
+	var view := get_viewport_rect().size
+	var distance := maxf(maxf(view.x, view.y) * 0.62, 520.0)
+	return _player_pos + Vector2.RIGHT.rotated(randf_range(0.0, TAU)) * distance
+
+func _spawn_coin_safe() -> void:
+	var safe_hp := 85.0 + float(_wave) * 22.0
+	_adventure_props.append({"kind":"safe", "pos":_dungeon_objective_position(), "hp":safe_hp, "max_hp":safe_hp})
+
+func _spawn_forge() -> void:
+	var hp_bonus := 1.4 if _forge_modifier == "reinforced" else 1.0
+	var forge_hp := (180.0 + float(_wave) * 26.0) * hp_bonus
+	var process_time := 12.0 + minf(float(_wave) * 0.75, 12.0)
+	_adventure_props.append({"kind":"forge", "pos":_dungeon_objective_position(), "hp":forge_hp, "max_hp":forge_hp, "charge":0.0, "target_charge":process_time, "active":false})
+
+func _update_adventure_mode(delta: float) -> void:
+	if _adventure_state.is_empty() or _adventure_state.ends_with("choice") or _objective_boss_active:
+		return
+	_adventure_spawn_timer -= delta
+	var adventure_enemy_cap := 70 if _adventure_state == "story_defend" else (mini(48 + _wave * 5, 110) if not dungeon_mode.is_empty() else 42)
+	if _adventure_state != "story_nests" and _adventure_spawn_timer <= 0.0 and _enemies.size() < adventure_enemy_cap:
+		var defense_progress := clampf((120.0 - _adventure_timer) / 120.0, 0.0, 1.0) if _adventure_state == "story_defend" else 0.0
+		var spawn_interval := maxf(0.42, 0.85 - defense_progress * 0.38) if _adventure_state == "story_defend" else (1.05 if _adventure_state == "story_escort" else (maxf(0.42, 1.75 - float(max(_wave, 1)) * 0.055) if not dungeon_mode.is_empty() else maxf(0.8, 3.0 - float(max(_wave, 1)) * 0.08)))
+		_adventure_spawn_timer = spawn_interval
+		var count: int = 4 + floori(defense_progress * 4.0) if _adventure_state == "story_defend" else (3 if _adventure_state == "story_escort" else 2 + mini(floori(float(max(_wave, 1)) / 2.0), 8))
+		var story_defend_strength := 1.0
+		if _adventure_state == "story_defend": story_defend_strength += (120.0 - _adventure_timer) / 90.0
+		for i in count:
+			var kind := "normal_tank" if dungeon_mode == "forgecore" and randf() < 0.7 else ("normal_fast" if randf() < 0.45 else "normal")
+			var story_strength := _story_stage_strength() if not story_stage.is_empty() else 1.0
+			_spawn_enemy_from(_make_enemy_data(kind, (0.82 + float(max(_wave, 1)) * 0.12) * story_defend_strength * story_strength))
+	match _adventure_state:
+		"story_escort_wait": pass
+		"story_escort": _update_story_escort(delta)
+		"story_defend_wait": pass
+		"story_defend": _update_defense_objective(delta, true)
+		"story_nests": _update_story_nests(delta)
+		"story_keys": _update_story_keys(delta)
+		"story_hazards": _update_story_hazards(delta)
+		"coin_hunt": _update_coin_hunt(delta)
+		"forge_activate": _update_forges(delta)
+
+func _update_story_escort(delta: float) -> void:
+	var scout := _adventure_props[0]
+	var scout_pos: Vector2 = scout.pos
+	_adventure_timer -= delta
+	scout.wander_t = float(scout.get("wander_t", 0.0)) - delta
+	if float(scout.wander_t) <= 0.0:
+		scout.wander_t = randf_range(1.8, 4.2)
+		scout.wander_dir = Vector2.RIGHT.rotated(randf_range(0.0, TAU))
+	var wander_dir: Vector2 = scout.wander_dir
+	if scout_pos.distance_to(_player_pos) > 620.0:
+		wander_dir = scout_pos.direction_to(_player_pos)
+	scout_pos += wander_dir.normalized() * 82.0 * delta
+	scout.pos = scout_pos
+	_adventure_props[0] = scout
+	if float(scout.hp) <= 0.0:
+		_damage_player(_player_max_hp * 2.0, 0.1)
+	elif _adventure_timer <= 0.0:
+		_start_story_objective_boss()
+
+func _begin_story_escort() -> void:
+	_adventure_state = "story_escort"
+	_adventure_timer = 90.0
+	_adventure_spawn_timer = 0.4
+	_enemies.clear()
+	var scout_hp := 320.0
+	_adventure_props = [{"kind":"scout", "pos":_player_pos + Vector2(-90, 20), "hp":scout_hp, "max_hp":scout_hp, "wander_dir":Vector2.RIGHT.rotated(randf_range(0.0, TAU)), "wander_t":2.0}]
+
+func _begin_story_defense() -> void:
+	_adventure_state = "story_defend"
+	_adventure_timer = 120.0
+	_adventure_spawn_timer = 0.6
+	_enemies.clear()
+	var shrine_hp := 650.0
+	_adventure_props = [{"kind":"shrine", "pos":_player_pos + Vector2(240, 0), "hp":shrine_hp, "max_hp":shrine_hp}]
+
+func _update_defense_objective(delta: float, is_story: bool) -> void:
+	_adventure_timer -= delta
+	var shrine := _adventure_props[0]
+	if float(shrine.hp) <= 0.0:
+		_damage_player(_player_max_hp * 2.0, 0.1)
+	elif _adventure_timer <= 0.0 and is_story:
+		_start_story_objective_boss()
+
+func _update_story_nests(delta: float) -> void:
+	var nest_index := _find_adventure_prop("nest")
+	if nest_index < 0:
+		return
+	var nest := _adventure_props[nest_index]
+	nest.shield_t = maxf(float(nest.get("shield_t", 0.0)) - delta, 0.0)
+	_adventure_spawn_timer -= delta
+	var nest_number := _story_nests_destroyed + 1
+	var enemy_cap := 5 + nest_number * 5
+	if _adventure_spawn_timer <= 0.0 and _enemies.size() < enemy_cap:
+		_adventure_spawn_timer = maxf(0.32, 0.72 - float(nest_number) * 0.10)
+		var enemy_kind := "normal" if nest_number == 1 else ("normal_fast" if nest_number == 2 and randf() < 0.55 else "normal_tank")
+		_spawn_enemy_from(_make_enemy_data(enemy_kind, (0.75 + float(nest_number) * 0.42) * _story_stage_strength()))
+		if not _enemies.is_empty():
+			var spawned_enemy := _enemies[-1]
+			spawned_enemy.pos = (nest.pos as Vector2) + Vector2.RIGHT.rotated(randf_range(0.0, TAU)) * randf_range(70.0, 115.0)
+			_enemies[-1] = spawned_enemy
+	if float(nest.shield_t) <= 0.0 and (nest.pos as Vector2).distance_to(_player_pos) < STORY_NEST_EFFECTIVE_RADIUS:
+		nest.hp = float(nest.hp) - (28.0 + float(_level) * 3.0) * delta
+	_adventure_props[nest_index] = nest
+	if float(nest.hp) <= 0.0:
+		_adventure_props.remove_at(nest_index)
+		_story_nests_destroyed += 1
+		_adventure_spawn_timer = 0.8
+		if _story_nests_destroyed >= 3:
+			_start_story_objective_boss()
+
+func _spawn_story_nest() -> void:
+	if _adventure_state != "story_nests" or _story_nests_destroyed >= 3 or _find_adventure_prop("nest") >= 0:
+		return
+	var nest_number := _story_nests_destroyed + 1
+	var nest_hp := (160.0 + float(nest_number - 1) * 110.0) * _story_stage_strength()
+	var spawn_direction := Vector2.RIGHT.rotated(randf_range(0.0, TAU))
+	_adventure_props.append({"kind":"nest", "pos":_player_pos + spawn_direction * 360.0, "hp":nest_hp, "max_hp":nest_hp, "shield_t":STORY_NEST_SHIELD_SECONDS})
+	_adventure_spawn_timer = 0.0
+
+func _find_adventure_prop(kind: String) -> int:
+	for i in _adventure_props.size():
+		if String(_adventure_props[i].get("kind", "")) == kind:
+			return i
+	return -1
+
+func _update_breakables(delta: float, kind: String) -> void:
+	for i in range(_adventure_props.size() - 1, -1, -1):
+		var prop := _adventure_props[i]
+		if String(prop.kind) == kind and (prop.pos as Vector2).distance_to(_player_pos) < 150.0:
+			prop.hp = float(prop.hp) - (28.0 + float(_level) * 3.0) * delta
+			_adventure_props[i] = prop
+			if float(prop.hp) <= 0.0:
+				_adventure_props.remove_at(i)
+
+func _update_story_keys(delta: float) -> void:
+	_story_key_drop_elapsed += delta
+	for i in range(_adventure_props.size() - 1, -1, -1):
+		if String(_adventure_props[i].get("kind", "")) == "key" and (_adventure_props[i].pos as Vector2).distance_to(_player_pos) < 70.0:
+			_adventure_props.remove_at(i)
+			_adventure_progress += 1
+	if _adventure_progress >= _adventure_target:
+		_start_story_objective_boss()
+
+func _story_key_drop_chance() -> float:
+	return minf(STORY_KEY_DROP_START + _story_key_drop_elapsed * STORY_KEY_DROP_GROWTH_PER_SECOND, STORY_KEY_DROP_MAX)
+
+func _try_drop_story_key(pos: Vector2, is_boss: bool) -> void:
+	if _adventure_state != "story_keys" or is_boss:
+		return
+	var keys_on_ground := 0
+	for prop in _adventure_props:
+		if String(prop.get("kind", "")) == "key":
+			keys_on_ground += 1
+	if _adventure_progress + keys_on_ground >= _adventure_target:
+		return
+	if randf() <= _story_key_drop_chance():
+		_adventure_props.append({"kind":"key", "pos":pos, "hp":1.0, "max_hp":1.0})
+		_story_key_drop_elapsed = 0.0
+
+func _update_story_hazards(delta: float) -> void:
+	_adventure_timer -= delta
+	_story_hazard_shot_timer -= delta
+	if _story_hazard_shot_timer <= 0.0:
+		var elapsed_ratio := clampf(1.0 - _adventure_timer / float(_adventure_target), 0.0, 1.0)
+		_story_hazard_shot_timer = maxf(0.42, 0.82 - elapsed_ratio * 0.32)
+		_story_hazard_pattern += 1
+		var projectile_count := 8 + mini(floori(elapsed_ratio * 4.0), 4)
+		var angle_offset := float(_story_hazard_pattern) * 0.23
+		var projectile_speed := 250.0 + elapsed_ratio * 90.0
+		var projectile_damage := 5.5 + float(story_stage.get("chapter", 1)) * 0.8 + float(story_stage.get("chapter_stage", 1)) * 0.45
+		for projectile_index in projectile_count:
+			var angle := angle_offset + float(projectile_index) / float(projectile_count) * TAU
+			var direction := Vector2.from_angle(angle)
+			_boss_projs.append({"kind":"hazard_orb", "pos":_story_hazard_arena_center + direction * 92.0, "vel":direction * projectile_speed, "life":5.0, "dmg":projectile_damage})
+		if _story_hazard_pattern % 3 == 0:
+			var aimed_direction := _story_hazard_arena_center.direction_to(_player_pos)
+			for spread in [-0.22, 0.0, 0.22]:
+				var aimed_projectile_direction := aimed_direction.rotated(float(spread))
+				_boss_projs.append({"kind":"hazard_orb", "pos":_story_hazard_arena_center + aimed_projectile_direction * 92.0, "vel":aimed_projectile_direction * (projectile_speed + 45.0), "life":5.0, "dmg":projectile_damage})
+	if _adventure_timer <= 0.0:
+		_start_story_objective_boss()
+
+func _start_story_objective_boss() -> void:
+	if _objective_boss_active:
+		return
+	_objective_boss_active = true
+	_adventure_state = "story_boss"
+	_adventure_props.clear()
+	_enemies.clear()
+	_boss_projs.clear()
+	var bosses: Array[String] = ["blight_vine_tyrant", "teleporter_boss", "lava_boss", "prism_triarch", "shield_boss", "thunderforge_behemoth"]
+	var chapter_index := clampi(int(story_stage.get("chapter", 1)) - 1, 0, bosses.size() - 1)
+	var stage_in_chapter := maxi(int(story_stage.get("chapter_stage", 1)) - 1, 0)
+	var boss_strength := (0.95 + float(chapter_index) * 0.18 + float(stage_in_chapter) * 0.08) * _story_stage_strength()
+	_spawn_enemy_from(_make_enemy_data(bosses[chapter_index], boss_strength))
+
+func _story_stage_strength() -> float:
+	return float(story_stage.get("enemy_hp", 1.0)) if not story_stage.is_empty() else 1.0
+
+func _update_coin_hunt(delta: float) -> void:
+	_adventure_timer -= delta
+	var safe_index := _find_adventure_prop("safe")
+	if safe_index >= 0:
+		var safe := _adventure_props[safe_index]
+		if (safe.pos as Vector2).distance_to(_player_pos) < SAFE_INTERACTION_RADIUS:
+			safe.hp = float(safe.hp) - (28.0 + float(_level) * 3.0) * delta
+			_adventure_props[safe_index] = safe
+			if float(safe.hp) <= 0.0:
+				_adventure_props.remove_at(safe_index)
+				_adventure_progress += 1
+				_coin_carried += 12 + _wave * 5
+				if _adventure_progress < _adventure_target:
+					_spawn_coin_safe()
+	if _adventure_timer <= 0.0 or _adventure_progress >= _adventure_target:
+		if _adventure_progress >= _adventure_target:
+			ProgressionStore.record_dungeon_depth_completed(account_username, dungeon_mode, _wave)
+		_show_coin_extraction_choice()
+
+func _update_forges(delta: float) -> void:
+	var forge_index := _find_adventure_prop("forge")
+	if forge_index >= 0:
+		var forge := _adventure_props[forge_index]
+		if not bool(forge.active) and (forge.pos as Vector2).distance_to(_player_pos) < FORGE_INTERACTION_RADIUS:
+			forge.active = true
+		if bool(forge.active):
+			var speed := 1.45 if _forge_modifier == "overclock" else 1.0
+			forge.charge = float(forge.charge) + delta * speed
+			for enemy in _enemies:
+				if (enemy.pos as Vector2).distance_to(forge.pos as Vector2) < 105.0:
+					forge.hp = float(forge.hp) - float(enemy.dmg) * delta * 0.22
+			if float(forge.hp) <= 0.0:
+				_damage_player(_player_max_hp * 2.0, 0.1)
+				return
+			if float(forge.charge) >= float(forge.target_charge):
+				_adventure_props.remove_at(forge_index)
+				_adventure_progress += 1
+				if _adventure_progress < _adventure_target:
+					_spawn_forge()
+			else:
+				_adventure_props[forge_index] = forge
+	if _adventure_progress >= _adventure_target:
+		_objective_boss_active = true
+		_adventure_state = "forge_guardian"
+		_enemies.clear()
+		var guardian := "thunderforge_behemoth" if _wave % 3 == 0 else ("shield_boss" if _wave % 2 == 0 else "lava_boss")
+		_spawn_enemy_from(_make_enemy_data(guardian, 0.9 + float(_wave) * 0.16))
+
+func _show_coin_extraction_choice() -> void:
+	if _adventure_choice_layer != null:
+		return
+	_adventure_state = "coin_choice"
+	_enemies.clear()
+	_paused = true
+	var layer := CanvasLayer.new(); layer.layer = 130; add_child(layer); _adventure_choice_layer = layer
+	var view := get_viewport_rect().size
+	var shade := ColorRect.new(); shade.color = Color(0.02, 0.03, 0.02, 0.86); shade.size = view; layer.add_child(shade)
+	var panel := PanelContainer.new(); panel.position = Vector2(55, view.y * 0.23); panel.size = Vector2(view.x - 110, view.y * 0.54); panel.add_theme_stylebox_override("panel", _adventure_choice_panel_style()); layer.add_child(panel)
+	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 18); panel.add_child(box)
+	var title := Label.new(); title.text = "EXTRACT THE TREASURE?"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 46); box.add_child(title)
+	var depth_complete := _adventure_progress >= _adventure_target
+	var choice_text := "descend deeper for richer safes" if depth_complete else "replay Depth %d to finish cracking all five safes" % _wave
+	var body := Label.new(); body.text = "Safes cracked: %d of %d\nCarrying %d Camp Coins\nExtract now and keep everything, or %s.\nIf defeated, only 40%% of carried treasure is recovered." % [_adventure_progress, _adventure_target, _coin_carried, choice_text]; body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; body.add_theme_font_size_override("font_size", 27); box.add_child(body)
+	var extract := _pause_btn("Extract Safely", Color(0.18, 0.48, 0.25), Color.WHITE); extract.custom_minimum_size = Vector2(0, 82); box.add_child(extract)
+	var next_depth := _wave + 1 if depth_complete else _wave
+	var continue_text := "Risk It · Descend to Depth %d" % next_depth if depth_complete else "Replay Depth %d" % _wave
+	var deeper := _pause_btn(continue_text, Color(0.52, 0.28, 0.08), Color.WHITE); deeper.custom_minimum_size = Vector2(0, 82); box.add_child(deeper)
+	extract.pressed.connect(func() -> void:
+		_coin_banked = _coin_carried
+		var completed_depth := _wave if depth_complete else _wave - 1
+		_progression_reward = ProgressionStore.record_dungeon_run(account_username, dungeon_mode, completed_depth, _coin_banked)
+		_loss_recorded = true
+		_close_adventure_choice()
+		_show_dungeon_completion("TREASURE EXTRACTED!", "%d Camp Coins secured at Depth %d." % [_coin_banked, _wave])
+	)
+	deeper.pressed.connect(func() -> void:
+		_close_adventure_choice()
+		_begin_coin_depth(next_depth)
+	)
+
+func _show_forge_modifier_choice() -> void:
+	if _adventure_choice_layer != null:
+		return
+	_adventure_state = "forge_choice"
+	_paused = true
+	var layer := CanvasLayer.new(); layer.layer = 130; add_child(layer); _adventure_choice_layer = layer
+	var view := get_viewport_rect().size
+	var shade := ColorRect.new(); shade.color = Color(0.03, 0.02, 0.04, 0.88); shade.size = view; layer.add_child(shade)
+	var panel := PanelContainer.new(); panel.position = Vector2(55, view.y * 0.16); panel.size = Vector2(view.x - 110, view.y * 0.68); panel.add_theme_stylebox_override("panel", _adventure_choice_panel_style()); layer.add_child(panel)
+	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 14); panel.add_child(box)
+	var title := Label.new(); title.text = "FORGECORE STABILIZED"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 44); box.add_child(title)
+	var body := Label.new(); body.text = "Choose one forge protocol for the next depth."; body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; body.add_theme_font_size_override("font_size", 26); box.add_child(body)
+	var options := [
+		{"id":"reinforced", "text":"Reinforced Casings\nForges gain 40% durability"},
+		{"id":"overclock", "text":"Overclock\nForges process 45% faster"},
+		{"id":"rich_vein", "text":"Rich Vein\nGain 50% more materials when the run ends"},
+	]
+	for option in options:
+		var chosen: String = option.id
+		var button := _pause_btn(String(option.text), Color(0.24, 0.22, 0.38), Color.WHITE); button.custom_minimum_size = Vector2(0, 88); box.add_child(button)
+		button.pressed.connect(func() -> void:
+			_forge_modifier = chosen
+			_close_adventure_choice()
+			_begin_forge_depth(_wave + 1)
+		)
+	var finish := _pause_btn("End Expedition · Claim Materials", Color(0.22, 0.42, 0.30), Color.WHITE); finish.custom_minimum_size = Vector2(0, 78); box.add_child(finish)
+	finish.pressed.connect(func() -> void:
+		_progression_reward = ProgressionStore.record_dungeon_run(account_username, dungeon_mode, _dungeon_depth_cleared)
+		var materials := int(_progression_reward.get("materials", 0))
+		if _forge_modifier == "rich_vein": materials = ceili(float(materials) * 1.5)
+		_progression_reward["materials"] = materials
+		StoryStore.add_materials(account_username, materials)
+		_loss_recorded = true
+		_close_adventure_choice()
+		_show_dungeon_completion("FORGE EXPEDITION COMPLETE!", "%d upgrade materials recovered from Depth %d." % [materials, _dungeon_depth_cleared])
+	)
+
+func _close_adventure_choice() -> void:
+	if _adventure_choice_layer != null:
+		_adventure_choice_layer.queue_free()
+		_adventure_choice_layer = null
+	_paused = false
+
+func _adventure_choice_panel_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.055, 0.06, 0.09, 0.98)
+	style.border_color = Color(0.86, 0.66, 0.25, 0.92)
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(28)
+	style.set_content_margin_all(24.0)
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
+	style.shadow_size = 18
+	style.shadow_offset = Vector2(0, 8)
+	return style
+
+func _show_dungeon_completion(title_text: String, body_text: String) -> void:
+	_game_over = true
+	_paused = true
+	var layer := CanvasLayer.new(); layer.layer = 140; add_child(layer)
+	var view := get_viewport_rect().size
+	var shade := ColorRect.new(); shade.color = Color(0.02, 0.03, 0.04, 0.94); shade.size = view; shade.mouse_filter = Control.MOUSE_FILTER_STOP; layer.add_child(shade)
+	var title := Label.new(); title.text = title_text; title.position = Vector2(0, view.y * 0.24); title.size = Vector2(view.x, 90); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 58); title.add_theme_color_override("font_color", Color(1.0, 0.82, 0.32)); layer.add_child(title)
+	var body := Label.new(); body.text = body_text; body.position = Vector2(60, view.y * 0.40); body.size = Vector2(view.x - 120, 180); body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; body.add_theme_font_size_override("font_size", 32); layer.add_child(body)
+	var back := _pause_btn("Return to Camp", Color(0.20, 0.32, 0.48), Color.WHITE); back.position = Vector2((view.x - 430) * 0.5, view.y * 0.68); back.size = Vector2(430, 90); back.pressed.connect(func() -> void: match_ended.emit("dungeon")); layer.add_child(back)
+
+# ─────────────────────────────────────────────────────────────────────────────
 # WAVE SYSTEM
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -4676,11 +5215,16 @@ func _update_spawner(delta: float) -> void:
 			while _wave_spawn_t <= 0.0 and not _wave_spawn_q.is_empty():
 				var e_data: Dictionary = _wave_spawn_q.pop_front()
 				_spawn_enemy_from(e_data)
-				_wave_spawn_t += 0.38  # interval between spawns in a wave
+				var spawn_interval := 0.38
+				if dungeon_mode == "coin_burrow": spawn_interval = 0.22
+				elif dungeon_mode == "forgecore": spawn_interval = 0.30
+				_wave_spawn_t += spawn_interval
 		"waiting":
 			# Next wave starts after 5 s max, or immediately when all enemies cleared
 			_between_t -= delta
 			if _enemies.is_empty() or _between_t <= 0.0:
+				if not dungeon_mode.is_empty() and _enemies.is_empty():
+					_dungeon_depth_cleared = maxi(_dungeon_depth_cleared, _wave)
 				_wave_state = "between"
 				_between_t  = BETWEEN_DELAY
 
@@ -4692,6 +5236,8 @@ func _start_wave(w: int) -> void:
 	var ws: float  = 1.0 + float(w - 1) * 0.18
 	if not story_stage.is_empty():
 		ws *= float(story_stage.get("enemy_hp", 1.0))
+		if int(story_stage.get("chapter_stage", 1)) == 3:
+			ws *= 0.84
 
 	# After wave 10 pick one random enemy modifier per wave.
 	if w >= 10:
@@ -4701,27 +5247,94 @@ func _start_wave(w: int) -> void:
 		_active_enemy_mod_name = ""
 		_active_enemy_mod_desc = ""
 
-	# Boss wave every 4th, drawn from a shuffled bag so all 4 appear once per cycle.
-	if w % 4 == 0:
-		var btype: String = String(story_stage.get("boss", "")) if not story_stage.is_empty() else ""
-		if btype.is_empty():
-			btype = _next_boss_type()
+	# Each mode has its own guardian cadence instead of sharing Survival's wave-four boss.
+	if _is_mode_boss_wave(w):
+		var btype: String = _mode_boss_type(w)
 		# Every 8th wave: full-strength boss; every 4th (not 8th): 65% strength
 		var boss_ws: float = ws if (w % 8 == 0) else ws * 0.65
+		if dungeon_mode == "coin_burrow": boss_ws = ws * 0.82
+		elif dungeon_mode == "forgecore": boss_ws = ws * (0.78 + float(w) * 0.025)
+		elif not story_stage.is_empty(): boss_ws = ws * 0.90
 		_wave_spawn_q.append(_make_enemy_data(btype, boss_ws))
 		_boss_wave_locked = true
 	else:
 		_boss_wave_locked = false
-		var base_count: int = mini(40 + w * 8, MAX_ENEMIES)  # 48 wave 1 → 150 cap at wave 14
+		var base_count: int = mini(40 + w * 8, MAX_ENEMIES)
+		if dungeon_mode == "coin_burrow": base_count = mini(22 + w * 6, 100)
+		elif dungeon_mode == "forgecore": base_count = mini(18 + w * 4, 90)
+		elif not story_stage.is_empty():
+			match int(story_stage.get("chapter_stage", 1)):
+				1: base_count = mini(22 + w * 5, 75)
+				2: base_count = mini(34 + w * 10, 125)
+				3: base_count = mini(48 + w * 12, 140)
+				4: base_count = mini(20 + w * 4, 60)
+				_: base_count = mini(32 + w * 7, 120)
 		for _i in base_count:
 			# Randomly pick one of 3 normal subtypes
 			var roll: float = randf()
-			if roll < 0.30:
+			if dungeon_mode == "coin_burrow" and roll < 0.60:
+				_wave_spawn_q.append(_make_enemy_data("normal_fast", ws * 0.90))
+			elif dungeon_mode == "forgecore" and roll < 0.65:
+				_wave_spawn_q.append(_make_enemy_data("normal_tank", ws * 1.12))
+			elif not story_stage.is_empty() and int(story_stage.get("chapter_stage", 1)) == 1 and roll < 0.55:
+				_wave_spawn_q.append(_make_enemy_data("normal_fast", ws * 0.92))
+			elif not story_stage.is_empty() and int(story_stage.get("chapter_stage", 1)) == 3 and roll < 0.75:
+				_wave_spawn_q.append(_make_enemy_data("normal", ws))
+			elif not story_stage.is_empty() and int(story_stage.get("chapter_stage", 1)) == 5 and roll < 0.55:
+				_wave_spawn_q.append(_make_enemy_data("normal_tank", ws * 1.08))
+			elif roll < 0.30:
 				_wave_spawn_q.append(_make_enemy_data("normal_tank", ws))
 			elif roll < 0.60:
 				_wave_spawn_q.append(_make_enemy_data("normal_fast", ws))
 			else:
 				_wave_spawn_q.append(_make_enemy_data("normal", ws))
+
+func _story_victory_wave() -> int:
+	match int(story_stage.get("chapter_stage", 1)):
+		1: return 3
+		2: return 5
+		3: return 4
+		4: return 4
+		_: return 6
+
+func _is_mode_boss_wave(w: int) -> bool:
+	if dungeon_mode == "coin_burrow": return w % 5 == 0
+	if dungeon_mode == "forgecore": return w % 2 == 0
+	if not story_stage.is_empty():
+		var stage_number := int(story_stage.get("chapter_stage", 1))
+		return w == _story_victory_wave() or (stage_number == 4 and w == 2)
+	return w % 4 == 0
+
+func _mode_boss_type(w: int) -> String:
+	if dungeon_mode == "coin_burrow": return "teleporter_boss" if floori(float(w) / 5.0) % 2 == 1 else "shooter_boss"
+	if dungeon_mode == "forgecore": return "shield_boss" if floori(float(w) / 2.0) % 2 == 1 else "lava_boss"
+	if not story_stage.is_empty():
+		if int(story_stage.get("chapter_stage", 1)) == 4 and w == 2: return _next_boss_type()
+		if int(story_stage.get("chapter_stage", 1)) == 5:
+			return PORTAL_BOSS_TYPES[(int(story_stage.get("chapter", 1)) - 1) % PORTAL_BOSS_TYPES.size()] as String
+		var configured := str(story_stage.get("boss", ""))
+		return configured if not configured.is_empty() else _next_boss_type()
+	return _next_boss_type()
+
+func _mode_objective_text() -> String:
+	if dungeon_mode == "coin_burrow": return "Crack safe %d of %d · %d coins carried · %ds remaining" % [_adventure_progress + 1, _adventure_target, _coin_carried, maxi(0, ceili(_adventure_timer))]
+	if dungeon_mode == "forgecore": return "Activate and defend forge %d of %d" % [mini(_adventure_progress + 1, _adventure_target), _adventure_target]
+	if not story_stage.is_empty():
+		match int(story_stage.get("chapter_stage", 1)):
+			1:
+				if _adventure_state == "story_escort_wait": return "Prepare, then start the wandering scout escort"
+				return "Protect the wandering scout · %ds remaining" % maxi(0, ceili(_adventure_timer))
+			2:
+				if _adventure_state == "story_defend_wait": return "Prepare, then summon the shrine when ready"
+				return "Defend the shrine · %ds remaining" % maxi(0, ceili(_adventure_timer))
+			3:
+				var nest_index := _find_adventure_prop("nest")
+				if nest_index < 0: return "Prepare, then spawn nest %d of 3" % (_story_nests_destroyed + 1)
+				var shield_left := float(_adventure_props[nest_index].get("shield_t", 0.0))
+				return "Nest %d of 3 · %s" % [_story_nests_destroyed + 1, "Shielded %.1fs" % shield_left if shield_left > 0.0 else "Destroy it now"]
+			4: return "Keys %d of %d · Enemy drop chance %.1f%%" % [_adventure_progress, _adventure_target, _story_key_drop_chance() * 100.0]
+			_: return "Avoid the hazard barrage and defeat enemies · %ds remaining" % maxi(0, ceili(_adventure_timer))
+	return ""
 
 func _enemy_mod_display_name(mod: String) -> String:
 	match mod:
@@ -4869,6 +5482,8 @@ func _spawn_enemy_from(data: Dictionary) -> void:
 	else:
 		var wave_bonus: float = float(_wave) * 2.5
 		base_spd = (randf_range(72.0, 105.0) + wave_bonus) * (data["spd_mult"] as float)
+	if not story_stage.is_empty():
+		base_spd *= float(story_stage.get("enemy_speed", 1.0))
 	var base_dmg: float = (4.5 + float(_level) * 1.0) * (data["dmg_mult"] as float)
 	var base_r: float   = data["r"] as float
 	var base_col: Color = data["col"] as Color
@@ -4966,14 +5581,31 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 		_xp_orbs.append({"pos": ep, "val": _xp_drop()})
 		_kills += 1
 		var is_boss: bool = _is_boss_kind(ekind)
+		_try_drop_story_key(ep, is_boss)
 		# Potion drop: 25% base + ring bonus, from any boss
 		var potion_rate: float = 0.25 + _ring_bonus("potion_drop_rate")
 		if is_boss and randf() < potion_rate:
 			_potions.append({"pos": ep + Vector2(randf_range(-20, 20), randf_range(-20, 20)), "life": 15.0})
 		if is_boss:
+			if not account_username.is_empty(): ProgressionStore.record_mission_event(account_username, "boss_kills")
+			if not dungeon_mode.is_empty() and _adventure_state not in ["coin_hunt", "forge_activate"]:
+				_dungeon_depth_cleared = maxi(_dungeon_depth_cleared, _wave)
 			_boss_keys += 1
 			_try_drop_dungeon_key(ep, ekind)
-			if not story_stage.is_empty() and _wave >= 4 and not _story_victory_started:
+			if _objective_boss_active and not story_stage.is_empty() and not _story_victory_started:
+				_story_victory_started = true
+				_objective_boss_active = false
+				_enemies.remove_at(idx)
+				call_deferred("_show_story_victory")
+				return
+			if _objective_boss_active and dungeon_mode == "forgecore":
+				_objective_boss_active = false
+				_dungeon_depth_cleared = maxi(_dungeon_depth_cleared, _wave)
+				ProgressionStore.record_dungeon_depth_completed(account_username, dungeon_mode, _wave)
+				_enemies.remove_at(idx)
+				call_deferred("_show_forge_modifier_choice")
+				return
+			if not story_stage.is_empty() and _wave >= _story_victory_wave() and not _story_victory_started:
 				_story_victory_started = true
 				_enemies.remove_at(idx)
 				call_deferred("_show_story_victory")
@@ -4993,7 +5625,7 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 		elif is_boss and (_boss_intermission.get("state", "none") as String) == "none":
 			_enemies.clear()
 			_boss_intermission = {
-				"state": "await_choice",
+				"state": "await_ladder" if not story_stage.is_empty() or not dungeon_mode.is_empty() else "await_choice",
 				"door_pos": _player_pos + Vector2(250.0, 20.0),
 				"ladder_pos": _player_pos + Vector2(-250.0, 20.0),
 				"arena_center": _player_pos,
@@ -5318,8 +5950,114 @@ func _apply_level_up_hp_growth() -> void:
 # DRAWING
 # ═════════════════════════════════════════════════════════════════════════════
 
+func _draw_adventure_objectives() -> void:
+	var font := ThemeDB.fallback_font
+	if _adventure_state == "story_hazards":
+		var arena_half := _story_hazard_arena_half_size()
+		var arena_rect := Rect2(_story_hazard_arena_center - arena_half, arena_half * 2.0)
+		draw_rect(arena_rect, Color(0.96, 0.40, 0.12, 0.78), false, 8.0)
+		draw_rect(arena_rect.grow(-10.0), Color(1.0, 0.76, 0.26, 0.34), false, 3.0)
+	for prop in _adventure_props:
+		var pos: Vector2 = prop.pos
+		var kind := String(prop.kind)
+		match kind:
+			"scout":
+				if _objective_scout_tex != null: draw_texture_rect(_objective_scout_tex, Rect2(pos - Vector2(68, 68), Vector2(136, 136)), false)
+			"shrine":
+				if _objective_shrine_tex != null: draw_texture_rect(_objective_shrine_tex, Rect2(pos - Vector2(105, 105), Vector2(210, 210)), false)
+			"nest":
+				var shield_left := float(prop.get("shield_t", 0.0))
+				draw_circle(pos, STORY_NEST_EFFECTIVE_RADIUS, Color(0.56, 0.24, 0.76, 0.06 if shield_left > 0.0 else 0.10))
+				draw_arc(pos, STORY_NEST_EFFECTIVE_RADIUS, 0, TAU, 64, Color(0.58, 0.46, 0.68, 0.58) if shield_left > 0.0 else Color(0.84, 0.58, 1.0, 0.82), 5.0)
+				if _objective_nest_tex != null: draw_texture_rect(_objective_nest_tex, Rect2(pos - Vector2(92, 92), Vector2(184, 184)), false)
+				if shield_left > 0.0:
+					draw_circle(pos, 104.0 + sin(_elapsed * 5.0) * 5.0, Color(0.54, 0.28, 0.94, 0.16))
+					draw_arc(pos, 104.0, 0, TAU, 48, Color(0.78, 0.54, 1.0, 0.92), 6.0)
+					draw_string(font, pos + Vector2(-70, -112), "Shielded %.1fs" % shield_left, HORIZONTAL_ALIGNMENT_CENTER, 140, 20, Color.WHITE)
+			"hazard_emitter":
+				var emitter_size := Vector2(210, 210)
+				if _objective_hazard_tex != null: draw_texture_rect(_objective_hazard_tex, Rect2(pos - emitter_size * 0.5, emitter_size), false)
+				draw_arc(pos, 118.0 + sin(_elapsed * 7.0) * 5.0, 0, TAU, 48, Color(1.0, 0.38, 0.10, 0.82), 5.0)
+			"key":
+				draw_circle(pos, 18, Color(1.0, 0.82, 0.18)); draw_line(pos + Vector2(16, 0), pos + Vector2(58, 0), Color(1.0, 0.72, 0.10), 12); draw_line(pos + Vector2(43, 0), pos + Vector2(43, 17), Color(1.0, 0.72, 0.10), 9)
+			"safe":
+				draw_circle(pos, SAFE_INTERACTION_RADIUS, Color(1.0, 0.76, 0.18, 0.08))
+				draw_arc(pos, SAFE_INTERACTION_RADIUS, 0, TAU, 64, Color(1.0, 0.76, 0.18, 0.72), 5.0)
+				if _objective_safe_tex != null: draw_texture_rect(_objective_safe_tex, Rect2(pos - Vector2(105, 105), Vector2(210, 210)), false)
+			"forge":
+				var active := bool(prop.get("active", false))
+				if not active:
+					draw_circle(pos, FORGE_INTERACTION_RADIUS, Color(1.0, 0.40, 0.14, 0.08))
+					draw_arc(pos, FORGE_INTERACTION_RADIUS, 0, TAU, 64, Color(1.0, 0.48, 0.18, 0.72), 5.0)
+				if _objective_forge_tex != null: draw_texture_rect(_objective_forge_tex, Rect2(pos - Vector2(115, 115), Vector2(230, 230)), false)
+		if prop.has("hp") and float(prop.get("max_hp", 0.0)) > 1.0:
+			var ratio := clampf(float(prop.hp) / float(prop.max_hp), 0.0, 1.0)
+			draw_rect(Rect2(pos + Vector2(-55, 68), Vector2(110, 10)), Color(0.10,0.08,0.08,0.9), true)
+			draw_rect(Rect2(pos + Vector2(-55, 68), Vector2(110 * ratio, 10)), Color(0.30,0.92,0.48), true)
+		if kind == "forge" and bool(prop.get("active", false)):
+			var charge_ratio := clampf(float(prop.get("charge", 0.0)) / float(prop.get("target_charge", 12.0)), 0.0, 1.0)
+			draw_rect(Rect2(pos + Vector2(-55, 84), Vector2(110 * charge_ratio, 8)), Color(1.0,0.64,0.16), true)
+		var interaction_radius := STORY_NEST_EFFECTIVE_RADIUS if kind == "nest" else (SAFE_INTERACTION_RADIUS if kind == "safe" else FORGE_INTERACTION_RADIUS)
+		if pos.distance_to(_player_pos) < interaction_radius and kind in ["nest", "safe", "forge"]:
+			var prompt := "Stay inside the effective area" if kind == "nest" else ("Activating forge" if kind == "forge" and not bool(prop.get("active", false)) else ("Defend the forge" if kind == "forge" else "Cracking safe"))
+			draw_string(font, pos + Vector2(-110, -132 if kind == "nest" else -82), prompt, HORIZONTAL_ALIGNMENT_CENTER, 220 if kind == "nest" else 130, 19, Color.WHITE)
+
+func _draw_story_objective_indicators() -> void:
+	if story_stage.is_empty() and dungeon_mode.is_empty():
+		return
+	for prop in _adventure_props:
+		var kind := String(prop.get("kind", ""))
+		if kind not in ["scout", "shrine", "nest", "key", "hazard_emitter", "safe", "forge"]:
+			continue
+		if kind == "forge" and bool(prop.get("active", false)):
+			continue
+		var objective_pos: Vector2 = prop.pos
+		var near_radius := STORY_NEST_EFFECTIVE_RADIUS if kind == "nest" else (SAFE_INTERACTION_RADIUS if kind == "safe" else (FORGE_INTERACTION_RADIUS if kind == "forge" else 240.0))
+		if objective_pos.distance_to(_player_pos) < near_radius:
+			continue
+		var color := _story_objective_indicator_color(kind)
+		var marker_radius := 48.0 + sin(_elapsed * 4.0) * 6.0
+		draw_arc(objective_pos, marker_radius, 0, TAU, 32, color, 5.0)
+		_draw_player_direction_indicator(objective_pos, _story_objective_indicator_label(kind), color, near_radius)
+
+func _draw_player_direction_indicator(target_pos: Vector2, label: String, color: Color, near_radius: float) -> void:
+	if _objective_arrow_tex == null or target_pos.distance_to(_player_pos) < near_radius:
+		return
+	var direction := _player_pos.direction_to(target_pos)
+	if direction.is_zero_approx():
+		return
+	var pulse := 1.0 + sin(_elapsed * 5.0) * 0.08
+	var arrow_pos := _player_pos + direction * 132.0
+	var arrow_size := Vector2(76.0, 76.0) * pulse
+	draw_set_transform(arrow_pos, direction.angle() + PI * 0.5, Vector2.ONE)
+	draw_texture_rect(_objective_arrow_tex, Rect2(-arrow_size * 0.5, arrow_size), false, color)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_string(ThemeDB.fallback_font, arrow_pos + Vector2(-75, 58), label, HORIZONTAL_ALIGNMENT_CENTER, 150, 20, Color.WHITE)
+
+func _story_objective_indicator_color(kind: String) -> Color:
+	match kind:
+		"scout": return Color(0.46, 1.0, 0.58, 0.98)
+		"shrine": return Color(0.28, 0.90, 1.0, 0.98)
+		"nest": return Color(0.88, 0.48, 1.0, 0.98)
+		"hazard_emitter": return Color(1.0, 0.38, 0.10, 0.98)
+		"safe": return Color(1.0, 0.78, 0.16, 0.98)
+		"forge": return Color(1.0, 0.42, 0.12, 0.98)
+		_: return Color(1.0, 0.84, 0.18, 0.98)
+
+func _story_objective_indicator_label(kind: String) -> String:
+	match kind:
+		"scout": return "Scout"
+		"shrine": return "Shrine"
+		"nest": return "Enemy Nest"
+		"hazard_emitter": return "Hazard"
+		"safe": return "Coin Safe"
+		"forge": return "Forge"
+		_: return "Key"
+
 func _draw() -> void:
 	_draw_bg()
+	_draw_adventure_objectives()
+	_draw_story_objective_indicators()
 
 	# XP orbs
 	for orb in _xp_orbs:
@@ -7014,21 +7752,16 @@ func _draw() -> void:
 		draw_string(ThemeDB.fallback_font, warn_pos_2, warn_line_2, HORIZONTAL_ALIGNMENT_CENTER, warn_width, warn_font_size, Color(0.0, 0.0, 0.0, 0.70 * warn_flash))
 		draw_string(ThemeDB.fallback_font, warn_pos_2 + Vector2(0, -2), warn_line_2, HORIZONTAL_ALIGNMENT_CENTER, warn_width, warn_font_size, Color(1.0, 0.12, 0.08, 0.98 * warn_flash))
 
-	if (_current_room().get("id", "lava") as String) == "darkness":
-		var view: Vector2 = get_viewport_rect().size
-		_draw_darkness_overlay(Rect2(_player_pos - view * 0.5, view))
-	if (_current_room().get("id", "lava") as String) == "spike":
-		var view_spike: Vector2 = get_viewport_rect().size
-		_draw_spike_overlay(Rect2(_player_pos - view_spike * 0.5, view_spike))
-	if (_current_room().get("id", "lava") as String) == "lava":
-		var view_lava: Vector2 = get_viewport_rect().size
-		_draw_lava_overlay(Rect2(_player_pos - view_lava * 0.5, view_lava))
-	if (_current_room().get("id", "lava") as String) == "frozen":
-		var view_frozen: Vector2 = get_viewport_rect().size
-		_draw_frozen_overlay(Rect2(_player_pos - view_frozen * 0.5, view_frozen))
-	if (_current_room().get("id", "lava") as String) == "poison":
-		var view_poison: Vector2 = get_viewport_rect().size
-		_draw_poison_overlay(Rect2(_player_pos - view_poison * 0.5, view_poison))
+	var overlay_room_id := _current_room().get("id", "lava") as String
+	var overlay_view := get_viewport_rect().size
+	var overlay_center := _story_hazard_arena_center if _adventure_state == "story_hazards" else _player_pos
+	var overlay_rect := Rect2(overlay_center - overlay_view * 0.5, overlay_view)
+	match overlay_room_id:
+		"darkness": _draw_darkness_overlay(overlay_rect)
+		"spike": _draw_spike_overlay(overlay_rect)
+		"lava": _draw_lava_overlay(overlay_rect)
+		"frozen": _draw_frozen_overlay(overlay_rect)
+		"poison": _draw_poison_overlay(overlay_rect)
 
 func _draw_revamped_skill_effects() -> void:
 	_draw_revamped_persistent_skills()
@@ -7380,14 +8113,17 @@ func _draw_bg() -> void:
 	var view: Vector2 = get_viewport_rect().size
 	var hw: float     = view.x * 0.5 + 128.0
 	var hh: float     = view.y * 0.5 + 128.0
-	var cx: float     = _player_pos.x
-	var cy: float     = _player_pos.y
+	var background_center := _story_hazard_arena_center if _adventure_state == "story_hazards" else _player_pos
+	var cx: float     = background_center.x
+	var cy: float     = background_center.y
 	var room: Dictionary = _current_room()
 	var room_id: String = room.get("id", "lava") as String
 	var bg_view_rect: Rect2 = Rect2(cx - hw, cy - hh, hw * 2.0, hh * 2.0)
 	var room_bg_tex: Texture2D = _room_bg_texture(room_id)
 	if room_bg_tex != null:
-		if room_id == "darkness" or room_id == "spike" or room_id == "lava" or room_id == "frozen" or room_id == "poison":
+		if _adventure_state == "story_hazards":
+			_draw_room_bg(room_bg_tex, bg_view_rect)
+		elif room_id == "darkness" or room_id == "spike" or room_id == "lava" or room_id == "frozen" or room_id == "poison":
 			_draw_room_bg_tiled(room_bg_tex, bg_view_rect)
 		else:
 			_draw_room_bg(room_bg_tex, bg_view_rect)
@@ -7474,24 +8210,9 @@ func _draw_bg() -> void:
 	if bi_state == "await_choice" or bi_state == "await_ladder":
 		var dp: Vector2 = _boss_intermission.get("door_pos", _player_pos) as Vector2
 		var lp: Vector2 = _boss_intermission.get("ladder_pos", _player_pos) as Vector2
-		var view_size: Vector2 = get_viewport_rect().size
-		var view_rect: Rect2 = Rect2(_player_pos - view_size * 0.5, view_size)
-		if not view_rect.has_point(lp):
-			var center_target: Vector2 = (dp + lp) * 0.5
-			if bi_state == "await_ladder":
-				center_target = lp
-			var dir_to_center: Vector2 = (center_target - _player_pos).normalized()
-			var bounds_min: Vector2 = view_rect.position + Vector2(44.0, 44.0)
-			var bounds_max: Vector2 = view_rect.position + view_rect.size - Vector2(44.0, 44.0)
-			var edge_pos: Vector2 = _player_pos + dir_to_center * min(view_size.x, view_size.y) * 0.28
-			edge_pos = Vector2(clamp(edge_pos.x, bounds_min.x, bounds_max.x), clamp(edge_pos.y, bounds_min.y, bounds_max.y))
-			var nrm: Vector2 = dir_to_center
-			var perp: Vector2 = Vector2(-nrm.y, nrm.x)
-			var tip: Vector2 = edge_pos + nrm * 24.0
-			var base_l: Vector2 = edge_pos - nrm * 14.0 + perp * 16.0
-			var base_r: Vector2 = edge_pos - nrm * 14.0 - perp * 16.0
-			draw_colored_polygon(PackedVector2Array([tip, base_l, base_r]), Color(1.0, 0.92, 0.66, 0.96))
-			draw_colored_polygon(PackedVector2Array([tip - nrm * 5.0, base_l - nrm * 4.0, base_r - nrm * 4.0]), Color(0.58, 0.34, 0.10, 0.75))
+		_draw_player_direction_indicator(lp, "Next Level", Color.WHITE, PLAYER_R + 150.0)
+		if bi_state == "await_choice":
+			_draw_player_direction_indicator(dp, "Boss Portal", Color(0.82, 0.68, 1.0), PLAYER_R + 150.0)
 		if bi_state == "await_choice":
 			if _portal_icon_tex != null:
 				var portal_scale: float = 1.0 + sin(_elapsed * 3.4) * 0.08
@@ -7830,6 +8551,22 @@ func _build_hud() -> void:
 	pause_btn.pressed.connect(_show_pause_menu)
 	hud.add_child(pause_btn)
 
+	# Story objectives begin only when the player confirms they are prepared.
+	var objective_layer := CanvasLayer.new(); objective_layer.layer = 30; add_child(objective_layer)
+	_objective_start_btn = Button.new()
+	_objective_start_btn.position = Vector2((view.x - 420.0) * 0.5, 330)
+	_objective_start_btn.size = Vector2(420, 82)
+	_objective_start_btn.visible = false
+	_objective_start_btn.add_theme_font_size_override("font_size", 28)
+	_objective_start_btn.add_theme_color_override("font_color", Color(0.10, 0.05, 0.0))
+	_objective_start_btn.focus_mode = Control.FOCUS_NONE
+	_objective_start_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	var objective_normal := StyleBoxFlat.new(); objective_normal.bg_color = Color(0.98, 0.72, 0.08, 0.97); objective_normal.border_color = Color(0.72, 0.42, 0.0); objective_normal.set_border_width_all(3); objective_normal.corner_radius_top_left = 24; objective_normal.corner_radius_top_right = 24; objective_normal.corner_radius_bottom_left = 24; objective_normal.corner_radius_bottom_right = 24; objective_normal.shadow_color = Color(0, 0, 0, 0.42); objective_normal.shadow_size = 10; objective_normal.shadow_offset = Vector2(0, 4)
+	var objective_hover := objective_normal.duplicate() as StyleBoxFlat; objective_hover.bg_color = Color(1.0, 0.82, 0.25)
+	var objective_pressed := objective_normal.duplicate() as StyleBoxFlat; objective_pressed.bg_color = Color(0.80, 0.56, 0.03); objective_pressed.shadow_size = 4
+	var objective_disabled := objective_normal.duplicate() as StyleBoxFlat; objective_disabled.bg_color = Color(0.18, 0.16, 0.12, 0.94); objective_disabled.border_color = Color(0.38, 0.34, 0.26); objective_disabled.shadow_size = 0
+	_objective_start_btn.add_theme_stylebox_override("normal", objective_normal); _objective_start_btn.add_theme_stylebox_override("hover", objective_hover); _objective_start_btn.add_theme_stylebox_override("pressed", objective_pressed); _objective_start_btn.add_theme_stylebox_override("disabled", objective_disabled); _objective_start_btn.add_theme_color_override("font_disabled_color", Color(0.62, 0.58, 0.48)); _objective_start_btn.button_down.connect(_on_story_objective_start_pressed); objective_layer.add_child(_objective_start_btn)
+
 	# Passive attributes panel (top-right, collapsible)
 	var passive_w: float = clamp(view.x * 0.33, 320.0, 420.0)
 	_passive_panel = PanelContainer.new()
@@ -8094,10 +8831,13 @@ func _pause_btn(label: String, bg: Color, fg: Color) -> Button:
 	btn.focus_mode = Control.FOCUS_NONE
 	var s := StyleBoxFlat.new()
 	s.bg_color = bg
-	s.corner_radius_top_left    = 18
-	s.corner_radius_top_right   = 18
-	s.corner_radius_bottom_right = 18
-	s.corner_radius_bottom_left  = 18
+	s.set_corner_radius_all(26)
+	s.border_color = bg.lightened(0.38)
+	s.set_border_width_all(3)
+	s.set_content_margin_all(10.0)
+	s.shadow_color = Color(0.0, 0.0, 0.0, 0.45)
+	s.shadow_size = 8
+	s.shadow_offset = Vector2(0, 5)
 	var sh := s.duplicate() as StyleBoxFlat
 	sh.bg_color = bg.lightened(0.12)
 	var sp := s.duplicate() as StyleBoxFlat
@@ -8129,7 +8869,7 @@ func _update_hud() -> void:
 
 	if _room_detail_lbl != null:
 		_room_detail_lbl.add_theme_color_override("font_color", (room.get("col", Color(0.80, 0.76, 0.65)) as Color).lerp(Color(0.90, 0.86, 0.76), 0.4))
-		_room_detail_lbl.text = "Wave %d - %s" % [_wave, room_name]
+		_room_detail_lbl.text = ("Depth %d - %s" if not dungeon_mode.is_empty() else "Wave %d - %s") % [_wave, room_name]
 		_fit_hud_chip(_room_chip, _room_detail_lbl, 220.0, 740.0)
 
 	if _room_effect_lbl != null:
@@ -8138,7 +8878,10 @@ func _update_hud() -> void:
 		_fit_hud_chip(_room_effect_chip, _room_effect_lbl, 240.0, 620.0)
 
 	if _enemy_mod_lbl != null:
-		if _wave >= 10 and not _active_enemy_mod.is_empty():
+		var mode_objective := _mode_objective_text()
+		if not mode_objective.is_empty():
+			_enemy_mod_lbl.text = mode_objective
+		elif _wave >= 10 and not _active_enemy_mod.is_empty():
 			var affix_text: String = "Floor affix: %s" % _active_enemy_mod_name
 			if affix_text.length() > 40:
 				affix_text = affix_text.substr(0, 37) + "..."
@@ -8149,6 +8892,31 @@ func _update_hud() -> void:
 
 	_update_skill_cooldown_hud()
 	_refresh_passive_panel()
+	_update_story_objective_button()
+
+func _on_story_objective_start_pressed() -> void:
+	match _adventure_state:
+		"story_escort_wait": _begin_story_escort()
+		"story_defend_wait": _begin_story_defense()
+		"story_nests": _spawn_story_nest()
+	_update_story_objective_button()
+
+func _update_story_objective_button() -> void:
+	if _objective_start_btn == null:
+		return
+	_objective_start_btn.visible = false
+	_objective_start_btn.disabled = false
+	match _adventure_state:
+		"story_escort_wait":
+			_objective_start_btn.text = "START SCOUT ESCORT"
+			_objective_start_btn.visible = true
+		"story_defend_wait":
+			_objective_start_btn.text = "SUMMON SHRINE"
+			_objective_start_btn.visible = true
+		"story_nests":
+			if _story_nests_destroyed < 3 and _find_adventure_prop("nest") < 0:
+				_objective_start_btn.text = "SPAWN NEST %d OF 3" % (_story_nests_destroyed + 1)
+				_objective_start_btn.visible = true
 
 func _fit_hud_chip(chip: TextureRect, label: Label, min_width: float, max_width: float) -> void:
 	if chip == null or label == null:
@@ -9177,7 +9945,20 @@ func _on_death() -> void:
 
 	if not _loss_recorded and not account_username.is_empty() and selected_player_character != null:
 		_loss_recorded = true
-		_progression_reward = ProgressionStore.record_run(account_username, String(selected_player_character.id), _kills, _elapsed, _wave)
+		if not story_stage.is_empty():
+			_progression_reward = {}
+			ProgressionStore.record_mission_event(account_username, "enemy_kills", _kills)
+		elif dungeon_mode.is_empty():
+			_progression_reward = ProgressionStore.record_run(account_username, String(selected_player_character.id), _kills, _elapsed, _wave)
+		else:
+			var recovered_coins := floori(float(_coin_carried) * 0.40) if dungeon_mode == "coin_burrow" else -1
+			_progression_reward = ProgressionStore.record_dungeon_run(account_username, dungeon_mode, _dungeon_depth_cleared, recovered_coins)
+			ProgressionStore.record_mission_event(account_username, "enemy_kills", _kills)
+			if dungeon_mode == "forgecore":
+				var materials := int(_progression_reward.get("materials", 0))
+				if _forge_modifier == "rich_vein": materials = ceili(float(materials) * 1.5)
+				_progression_reward["materials"] = materials
+				StoryStore.add_materials(account_username, materials)
 		StatsStore.record_match_detail(
 			account_username,
 			String(selected_player_character.id),
@@ -9227,8 +10008,11 @@ func _on_death() -> void:
 	var m: int = int(_elapsed) / 60
 	var s: int = int(_elapsed) % 60
 	var stats := Label.new()
-	var reward_line := "+%d camp coins  ·  +%d XP  ·  Mastery Lv.%d" % [int(_progression_reward.get("coins", 0)), int(_progression_reward.get("xp", 0)), int(_progression_reward.get("mastery_level", 1))]
-	stats.text = "Survived  %d:%02d\nLevel %d  ·  %d kills\n%s\nNext: %s" % [m, s, _level, _kills, reward_line, String(_progression_reward.get("next_unlock", "Keep exploring the dungeon"))]
+	var reward_line := ""
+	if not story_stage.is_empty(): reward_line = "Story stage not cleared."
+	elif not dungeon_mode.is_empty(): reward_line = "Depth %d reached  ·  +%d Camp Coins  ·  +%d upgrade materials" % [int(_progression_reward.get("depth", _wave)), int(_progression_reward.get("coins", 0)), int(_progression_reward.get("materials", 0))]
+	else: reward_line = "+%d camp coins  ·  +%d XP  ·  Mastery Lv.%d" % [int(_progression_reward.get("coins", 0)), int(_progression_reward.get("xp", 0)), int(_progression_reward.get("mastery_level", 1))]
+	stats.text = "Survived  %d:%02d\nLevel %d  ·  %d kills\n%s%s" % [m, s, _level, _kills, reward_line, "" if not dungeon_mode.is_empty() or not story_stage.is_empty() else "\nNext: %s" % String(_progression_reward.get("next_unlock", "Keep exploring the dungeon"))]
 	stats.add_theme_font_size_override("font_size", 38)
 	stats.add_theme_color_override("font_color", Color(0.88, 0.82, 0.68))
 	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -9248,7 +10032,7 @@ func _on_death() -> void:
 		_add_death_artifact_reward(layer, view, art_y)
 
 	# ── Revive button (watch ad to revive, available if not already used) ───────────
-	if not _ad_revive_used:
+	if not _ad_revive_used and dungeon_mode.is_empty():
 		var revive_btn := Button.new()
 		revive_btn.text = "📺  Watch Ad to Revive"
 		revive_btn.add_theme_font_size_override("font_size", 34)
@@ -9295,8 +10079,14 @@ func _on_death() -> void:
 	var back_y: float = view.y * (0.90 if has_ring_rewards and has_artifact_reward else 0.82 if has_ring_rewards or has_artifact_reward else 0.74)
 	if _ad_revive_used:
 		back_y -= 0.12 * view.y
+	if not dungeon_mode.is_empty():
+		var replay := _pause_btn("Replay Depth %d" % _wave, Color(0.52, 0.28, 0.08), Color.WHITE)
+		replay.position = Vector2((view.x - 420) * 0.5, back_y - 108.0)
+		replay.size = Vector2(420, 84)
+		replay.pressed.connect(func() -> void: match_ended.emit("rematch"))
+		layer.add_child(replay)
 	var back := Button.new()
-	back.text = "Back to Story Map" if not story_stage.is_empty() else "Back to Lobby"
+	back.text = "Back to Story Map" if not story_stage.is_empty() else ("Extract to Camp" if not dungeon_mode.is_empty() else "Back to Lobby")
 	back.add_theme_font_size_override("font_size", 36)
 	back.custom_minimum_size = Vector2(420, 84)
 	back.size = Vector2(420, 84)
@@ -9319,13 +10109,15 @@ func _on_death() -> void:
 	bp.border_color = Color(0.46, 0.46, 0.68, 0.88)
 	back.add_theme_stylebox_override("hover", bh)
 	back.add_theme_stylebox_override("pressed", bp)
-	back.pressed.connect(func() -> void: match_ended.emit("story" if not story_stage.is_empty() else "lobby"))
+	back.pressed.connect(func() -> void: match_ended.emit("story" if not story_stage.is_empty() else ("dungeon" if not dungeon_mode.is_empty() else "lobby")))
 	layer.add_child(back)
 
 func _show_story_victory() -> void:
 	_game_over = true
 	_paused = true
 	var result := StoryStore.record_clear(account_username, String(story_stage.get("id", "")))
+	ProgressionStore.record_mission_event(account_username, "story_clears")
+	ProgressionStore.record_mission_event(account_username, "enemy_kills", _kills)
 	var view := get_viewport_rect().size
 	var layer := CanvasLayer.new(); layer.layer = 120; add_child(layer)
 	var shade := ColorRect.new(); shade.color = Color(0.02, 0.04, 0.06, 0.94); shade.size = view; shade.mouse_filter = Control.MOUSE_FILTER_STOP; layer.add_child(shade)
@@ -9335,7 +10127,7 @@ func _show_story_victory() -> void:
 	if int(story_stage.get("chapter_stage", 0)) == 5 and bool(result.get("first_clear", false)):
 		reward_message += "\nChapter reward chest is ready on the map!"
 	body.text = "%s\n\n%s" % [String(story_stage.get("story", "The road ahead is open.")), reward_message]; layer.add_child(body)
-	var back := Button.new(); back.text = "Return to Story Map"; back.position = Vector2((view.x - 460) * 0.5, view.y * 0.72); back.size = Vector2(460, 92); back.add_theme_font_size_override("font_size", 32); back.pressed.connect(func(): match_ended.emit("story")); layer.add_child(back)
+	var back := Button.new(); back.text = "Return to Story Map"; back.position = Vector2((view.x - 460) * 0.5, view.y * 0.72); back.size = Vector2(460, 92); back.add_theme_font_size_override("font_size", 32); back.pressed.connect(func(): match_ended.emit("story_clear")); layer.add_child(back)
 
 func _add_death_ring_rewards(layer: Node, view: Vector2, y: float) -> void:
 	var panel := PanelContainer.new()

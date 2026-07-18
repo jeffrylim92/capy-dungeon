@@ -20,6 +20,7 @@ var account: Dictionary = {}
 
 var _tab_panels:   Array[Control] = []
 var _tab_buttons:  Array[Button]  = []
+var _adventure_panel: Control = null
 var _global_panel: Control        = null
 var _global_loaded: bool          = false
 var _global_mode: String          = "kills"
@@ -40,8 +41,9 @@ var _global_list_scroll: ScrollContainer = null
 var _active_swipe_scroll: ScrollContainer = null
 
 const TAB_DEFS: Array[Dictionary] = [
-	{"title": "History", "icon": "icon_run.png"},
-	{"title": "Global", "icon": "icon_time.png"},
+	{"title": "Adventure", "icon": "icon_run.png"},
+	{"title": "Survival", "icon": "icon_run.png"},
+	{"title": "Rankings", "icon": "icon_time.png"},
 ]
 
 func _cloud_username_for_history() -> String:
@@ -97,7 +99,7 @@ func _build_ui() -> void:
 
 	# ── Title ──────────────────────────────────────────────────────────────────
 	var title := Label.new()
-	title.text = "History"
+	title.text = "ADVENTURE RECORDS"
 	title.add_theme_font_size_override("font_size", 66)
 	title.add_theme_color_override("font_color", Color(1.0, 0.96, 0.86))
 	title.add_theme_color_override("font_outline_color", Color(0.20, 0.11, 0.04, 0.95))
@@ -169,10 +171,11 @@ func _build_ui() -> void:
 	content_frame.add_theme_stylebox_override("panel", frame_style)
 	add_child(content_frame)
 
+	_adventure_panel = _build_adventure_panel(content_y, content_h, content_w)
 	var history_panel  := _build_history_panel(content_y, content_h, content_w)
 	_global_panel       = _build_global_panel(content_y, content_h, content_w)
 
-	_tab_panels = [history_panel, _global_panel]
+	_tab_panels = [_adventure_panel, history_panel, _global_panel]
 	for p in _tab_panels:
 		p.visible = false
 		content_frame.add_child(p)
@@ -198,9 +201,36 @@ func _switch_tab(idx: int) -> void:
 		_tab_panels[i].visible = (i == idx)
 	for i in _tab_buttons.size():
 		_style_tab_btn(_tab_buttons[i], i == idx)
-	if idx == 1 and not _global_loaded:
+	if idx == 2 and not _global_loaded:
 		_global_loaded = true
 		_fetch_global_rankings()
+
+func _build_adventure_panel(_content_y: float, content_h: float, content_w: float) -> Control:
+	var panel := Control.new(); panel.custom_minimum_size = Vector2(content_w, content_h)
+	var scroll := ScrollContainer.new(); scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); panel.add_child(scroll)
+	var list := VBoxContainer.new(); list.name = "AdventureList"; list.custom_minimum_size = Vector2(content_w - 30, 0); list.add_theme_constant_override("separation", 12); scroll.add_child(list)
+	var loading := Label.new(); loading.text = "Loading Adventure rankings..."; loading.add_theme_font_size_override("font_size", 28); loading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; list.add_child(loading)
+	LeaderboardClient.fetch_adventure(self, func(payload: Dictionary) -> void:
+		for child in list.get_children(): child.queue_free()
+		var entries: Array = payload.get("entries", []) as Array
+		if entries.is_empty():
+			var empty := Label.new(); empty.text = "No Adventure progress has been uploaded yet."; empty.add_theme_font_size_override("font_size", 28); list.add_child(empty); return
+		var rank := 1
+		for entry_variant in entries:
+			var entry: Dictionary = entry_variant as Dictionary
+			var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 12); list.add_child(row)
+			var summary := Label.new(); summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL; summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; summary.add_theme_font_size_override("font_size", 24)
+			summary.text = "%d. %s\nStory Stage Reached: %d  ·  Camp Coin Burrow Depth: %d  ·  Forgecore Depths Depth: %d" % [rank, str(entry.get("display_name", "Player")), int(entry.get("story_stage", 0)), int(entry.get("coin_depth", 0)), int(entry.get("forge_depth", 0))]; row.add_child(summary)
+			var details := Button.new(); details.text = "View Character Detail"; details.custom_minimum_size = Vector2(230, 76); details.add_theme_font_size_override("font_size", 19); details.pressed.connect(_show_adventure_detail.bind(entry)); row.add_child(details); rank += 1
+	)
+	return panel
+
+func _show_adventure_detail(entry: Dictionary) -> void:
+	var layer := CanvasLayer.new(); layer.layer = 240; add_child(layer); var view := get_viewport_rect().size
+	var shade := ColorRect.new(); shade.color = Color(0,0,0,0.90); shade.size = view; shade.mouse_filter = Control.MOUSE_FILTER_STOP; layer.add_child(shade)
+	var label := Label.new(); label.position = Vector2(70, view.y * 0.20); label.size = Vector2(view.x - 140, 850); label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; label.add_theme_font_size_override("font_size", 27)
+	label.text = "%s\nCharacter: %s\n\nEquipment\n%s\n\nRings\n%s\n\nArtifacts\n%s" % [str(entry.get("display_name", "Player")), str(entry.get("character", "Not recorded")), JSON.stringify(entry.get("equipment", {}), "  "), JSON.stringify(entry.get("rings", {}), "  "), JSON.stringify(entry.get("artifacts", {}), "  ")]; layer.add_child(label)
+	var close := Button.new(); close.text = "Close"; close.position = Vector2((view.x - 300) * 0.5, view.y - 160); close.size = Vector2(300, 82); close.add_theme_font_size_override("font_size", 30); close.pressed.connect(layer.queue_free); layer.add_child(close)
 
 func _style_tab_btn(btn: Button, active: bool) -> void:
 	var s := StyleBoxFlat.new()
@@ -543,7 +573,7 @@ func _refresh_global_view() -> void:
 			_style_retry(retry)
 			retry.pressed.connect(func() -> void:
 				_global_loaded = false
-				_switch_tab(1)
+				_switch_tab(2)
 			)
 			list.add_child(retry)
 		elif entries.is_empty():

@@ -8,12 +8,13 @@ signal back_requested
 signal cloud_sync_requested
 
 var account_username := ""
+var initial_stage_index := -1
 var _stage_index := 0
 var _page_root: CanvasLayer
 var _reward_layer: CanvasLayer
 
 func _ready() -> void:
-	_stage_index = StoryStore.unlocked_stage(StoryStore.load_profile(account_username))
+	_stage_index = clampi(initial_stage_index, 0, StoryStore.stage_count() - 1) if initial_stage_index >= 0 else StoryStore.unlocked_stage(StoryStore.load_profile(account_username))
 	_build_page()
 
 func _build_page() -> void:
@@ -26,7 +27,7 @@ func _build_page() -> void:
 	var profile := StoryStore.load_profile(account_username)
 	var cleared := String(stage.id) in (profile.get("cleared", []) as Array)
 	var unlocked := _stage_index == 0 or String(StoryStore.stage(_stage_index - 1).id) in (profile.get("cleared", []) as Array)
-	var chapter_claimed := chapter_number in (profile.get("claimed_chapters", []) as Array)
+	var chapter_claimed := StoryStore.is_chapter_claimed(profile, chapter_number)
 	_add_scene_layer("res://assets/story/chapters/ch%d_base.png" % chapter_number, view)
 	_add_parallax_layer("res://assets/story/chapters/ch%d_mid.png" % chapter_number, view, Vector2(-12, 4), Vector2(12, -4), 6.5)
 	var atmosphere := STORY_ATMOSPHERE.new() as StoryAtmosphere; atmosphere.setup(chapter_number - 1, view); _page_root.add_child(atmosphere)
@@ -37,10 +38,11 @@ func _build_page() -> void:
 		_add_nav_button("Previous Stage", Vector2(25, 48), Vector2(225, 78), true, -1)
 	if int(stage.chapter_stage) == 5:
 		if chapter_claimed:
+			_add_claimed_indicator(view)
 			if chapter_number < StoryStore.CHAPTERS.size():
-				_add_nav_button("Next Chapter", Vector2(view.x - 250, 48), Vector2(225, 78), true, 1)
+				_add_nav_button("Next Chapter", Vector2(view.x - 250, 140), Vector2(225, 78), true, 1)
 			else:
-				_add_nav_button("Story Complete", Vector2(view.x - 250, 48), Vector2(225, 78), false, 0)
+				_add_nav_button("Story Complete", Vector2(view.x - 250, 140), Vector2(225, 78), false, 0)
 		else:
 			_add_claim_button(view, chapter_number, cleared)
 	else:
@@ -60,6 +62,9 @@ func _build_page() -> void:
 func _add_claim_button(view: Vector2, chapter_number: int, enabled: bool) -> void:
 	var button := Button.new(); button.text = "Claim Chapter Reward"; button.position = Vector2(view.x - 280, 48); button.size = Vector2(255, 78); button.disabled = not enabled; button.add_theme_font_size_override("font_size", 19); button.pressed.connect(_show_chapter_reward.bind(chapter_number, false)); _style_button(button); _page_root.add_child(button)
 
+func _add_claimed_indicator(view: Vector2) -> void:
+	var claimed := Button.new(); claimed.text = "REWARD CLAIMED"; claimed.position = Vector2(view.x - 280, 48); claimed.size = Vector2(255, 78); claimed.disabled = true; claimed.add_theme_font_size_override("font_size", 20); _style_button(claimed); _page_root.add_child(claimed)
+
 func _show_chapter_reward(chapter_number: int, revealed: bool) -> void:
 	if _reward_layer != null and is_instance_valid(_reward_layer): _reward_layer.queue_free()
 	_reward_layer = CanvasLayer.new(); _reward_layer.layer = 180; add_child(_reward_layer)
@@ -67,8 +72,10 @@ func _show_chapter_reward(chapter_number: int, revealed: bool) -> void:
 	var shade := ColorRect.new(); shade.color = Color(0, 0, 0, 0.90); shade.size = view; shade.mouse_filter = Control.MOUSE_FILTER_STOP; _reward_layer.add_child(shade)
 	var title := Label.new(); title.text = "CHAPTER %d COMPLETE" % chapter_number; title.position = Vector2(60, 120); title.size = Vector2(view.x - 120, 80); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 48); title.add_theme_color_override("font_color", Color("ffd66b")); _reward_layer.add_child(title)
 	if not revealed:
-		var chest := Button.new(); chest.position = Vector2((view.x - 520) * 0.5, 330); chest.size = Vector2(520, 520); chest.icon = load("res://assets/story/chapters/chapter_chest.png") as Texture2D; chest.expand_icon = true; chest.add_theme_constant_override("icon_max_width", 450); chest.text = ""; chest.pressed.connect(_open_chapter_chest.bind(chapter_number)); _style_button(chest); _reward_layer.add_child(chest)
-		var instruction := Label.new(); instruction.text = "Tap the chest to claim"; instruction.position = Vector2(90, 885); instruction.size = Vector2(view.x - 180, 60); instruction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; instruction.add_theme_font_size_override("font_size", 30); instruction.add_theme_color_override("font_color", Color("ffe2a1")); _reward_layer.add_child(instruction)
+		var chest_size := Vector2(500, 500)
+		var chest := Button.new(); chest.position = (view - chest_size) * 0.5; chest.size = chest_size; chest.icon = load("res://assets/story/chapters/chapter_chest.png") as Texture2D; chest.expand_icon = true; chest.add_theme_constant_override("icon_max_width", 470); chest.text = ""; chest.focus_mode = Control.FOCUS_NONE
+		var empty_style := StyleBoxEmpty.new(); chest.add_theme_stylebox_override("normal", empty_style); chest.add_theme_stylebox_override("hover", empty_style); chest.add_theme_stylebox_override("pressed", empty_style); chest.add_theme_stylebox_override("focus", empty_style); chest.pressed.connect(_open_chapter_chest.bind(chapter_number)); _reward_layer.add_child(chest)
+		var instruction := Label.new(); instruction.text = "Tap the chest to claim"; instruction.position = Vector2(90, chest.position.y + chest.size.y + 24); instruction.size = Vector2(view.x - 180, 60); instruction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; instruction.add_theme_font_size_override("font_size", 30); instruction.add_theme_color_override("font_color", Color("ffe2a1")); _reward_layer.add_child(instruction)
 		return
 	var chapter := StoryStore.chapter(chapter_number - 1)
 	var rewards: Array = chapter.get("reward", []) as Array

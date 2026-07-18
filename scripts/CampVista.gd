@@ -80,7 +80,7 @@ func _add_upgrade_decor(id: String, anchor: Vector2, level: int) -> void:
 	decor.position = Vector2(anchor.x * 720.0 + 104.0, anchor.y * CAMP_HEIGHT + 8.0)
 	decor.size = Vector2(50, 28)
 	decor.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	decor.add_theme_font_size_override("font_size", 22)
+	decor.add_theme_font_size_override("font_size", 28)
 	decor.add_theme_color_override("font_color", Color(1.0, 0.76, 0.18))
 	decor.add_theme_color_override("font_outline_color", Color(0.12, 0.05, 0.01))
 	decor.add_theme_constant_override("outline_size", 4)
@@ -121,9 +121,9 @@ func _add_building_label(node_name: String, text: String, anchor: Vector2, y_off
 	label.name = node_name
 	label.text = text
 	label.position = Vector2(anchor.x * 720.0 - 5.0, anchor.y * CAMP_HEIGHT + y_offset)
-	label.size = Vector2(195, 58)
+	label.size = Vector2(205, 76)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 17)
+	label.add_theme_font_size_override("font_size", 22)
 	label.add_theme_color_override("font_color", Color(1.0, 0.90, 0.66))
 	label.add_theme_color_override("font_outline_color", Color(0.06, 0.03, 0.01))
 	label.add_theme_constant_override("outline_size", 5)
