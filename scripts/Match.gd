@@ -39,6 +39,13 @@ const ICE_ORB_LIFE: float = 2.0
 const PIERCE_ARROW_LIFE: float = 5.0
 const XP_ORB_R:    float = 9.0
 const XP_COLLECT_R: float = 80.0
+const XP_ORB_MAX: int = 240
+const XP_FAST_ENEMY_MULT: float = 1.25
+const XP_TANK_ENEMY_MULT: float = 1.75
+const XP_SPECIAL_ENEMY_MULT: float = 2.0
+const XP_BOSS_ENEMY_MULT: float = 6.0
+const XP_AFFIX_ENEMY_MULT: float = 1.25
+const HUD_UPDATE_INTERVAL: float = 0.10
 const ENEMY_HIT_IF: float = 0.28
 const ENEMY_SURVIVE_SPEEDUP_SEC: float = 5.0
 const ENEMY_SURVIVE_SPEEDUP_MULT: float = 1.10
@@ -806,6 +813,8 @@ var _skill_hud_widgets: Dictionary = {}  # sid -> {reveal, cooldown_label, level
 const DAMAGE_POPUP_MAX: int = 120
 const DAMAGE_POPUP_LIFE: float = 0.62
 var _damage_popups: Array[Dictionary] = []
+var _hud_update_timer: float = 0.0
+var _draw_world_rect: Rect2 = Rect2()
 
 # ─── Progression ──────────────────────────────────────────────────────────────
 var _xp:      int   = 0
@@ -1467,7 +1476,10 @@ func _process(delta: float) -> void:
 		_update_spawner(delta)
 	_update_damage_popups(delta)
 	queue_redraw()
-	_update_hud()
+	_hud_update_timer -= delta
+	if _hud_update_timer <= 0.0:
+		_hud_update_timer = HUD_UPDATE_INTERVAL
+		_update_hud()
 
 func _update_ring_shield(delta: float) -> void:
 	if _ring_bonus("timed_shield") <= 0.0:
@@ -9500,9 +9512,11 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 		final_dmg *= 1.8 + _ring_bonus("crit_dmg")
 	if _ring_bonus("lifesteal") > 0.0:
 		_player_hp = min(_player_max_hp, _player_hp + final_dmg * _ring_bonus("lifesteal"))
-	_spawn_damage_popup(e["pos"] as Vector2, final_dmg, did_crit)
-	if _combat_vfx != null:
-		_combat_vfx.emit_impact(e["pos"] as Vector2, did_crit, (e["hp"] as float) - final_dmg <= 0.0)
+	var impact_pos: Vector2 = e["pos"] as Vector2
+	if _draw_world_rect.size == Vector2.ZERO or _is_world_pos_visible(impact_pos, 120.0):
+		_spawn_damage_popup(impact_pos, final_dmg, did_crit)
+		if _combat_vfx != null:
+			_combat_vfx.emit_impact(impact_pos, did_crit, (e["hp"] as float) - final_dmg <= 0.0)
 	e["hp"]      = (e["hp"] as float) - final_dmg
 	e["iframes"] = ENEMY_HIT_IF
 	var story_enemy_tag: String = str(e.get("story_tag", ""))
@@ -9531,7 +9545,7 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 		e["hp"] = 1.0
 	if (e["hp"] as float) <= 0.0:
 		var ep: Vector2   = e["pos"] as Vector2
-		_xp_orbs.append({"pos": ep, "val": _xp_drop()})
+		_append_xp_orb(ep, _xp_drop(e))
 		_kills += 1
 		if _handle_custom_story_enemy_death(e):
 			return
@@ -9892,9 +9906,22 @@ func _update_lava_pools(delta: float) -> void:
 				if _damage_player(lp["dmg_per_tick"] as float, 0.4):
 					return
 
-func _xp_drop() -> int:
+func _xp_drop(enemy: Dictionary) -> int:
 	var out: float = 9.0 + float(_wave) * 1.35
 	out *= 1.0 + _ring_bonus("luck")
+	var kind: String = str(enemy.get("kind", "normal"))
+	var enemy_mult: float = 1.0
+	if _is_boss_kind(kind):
+		enemy_mult = XP_BOSS_ENEMY_MULT
+	elif kind == "normal_tank":
+		enemy_mult = XP_TANK_ENEMY_MULT
+	elif kind == "normal_fast":
+		enemy_mult = XP_FAST_ENEMY_MULT
+	elif kind != "normal":
+		enemy_mult = XP_SPECIAL_ENEMY_MULT
+	if not str(enemy.get("mod", "")).is_empty():
+		enemy_mult *= XP_AFFIX_ENEMY_MULT
+	out *= enemy_mult
 	return int(out)
 
 func _gain_xp(amount: int) -> void:
@@ -9906,6 +9933,22 @@ func _gain_xp(amount: int) -> void:
 		_apply_level_up_hp_growth()
 		_xp_next  = int(40.0 * pow(float(_level), 1.40))
 		_show_skill_select(false)
+
+func _append_xp_orb(pos: Vector2, value: int) -> void:
+	if _xp_orbs.size() < XP_ORB_MAX:
+		_xp_orbs.append({"pos": pos, "val": value})
+		return
+	var merged_orb: Dictionary = _xp_orbs[-1]
+	merged_orb["val"] = int(merged_orb.get("val", 0)) + value
+	_xp_orbs[-1] = merged_orb
+
+func _is_world_pos_visible(pos: Vector2, margin: float = 96.0) -> bool:
+	return (
+		pos.x >= _draw_world_rect.position.x - margin
+		and pos.x <= _draw_world_rect.end.x + margin
+		and pos.y >= _draw_world_rect.position.y - margin
+		and pos.y <= _draw_world_rect.end.y + margin
+	)
 
 func _apply_level_up_hp_growth() -> void:
 	var hp_gain: float = max(_player_base_max_hp * LEVEL_UP_HP_GAIN_PCT, LEVEL_UP_HP_GAIN_FLAT)
@@ -9930,12 +9973,16 @@ func _draw_adventure_objectives() -> void:
 		if str(background_prop.get("kind", "")) != "c1_extraction":
 			continue
 		var extraction_pos: Vector2 = background_prop.get("pos", Vector2.ZERO) as Vector2
+		if not _is_world_pos_visible(extraction_pos, 320.0):
+			continue
 		var extraction_size := Vector2(520.0, 520.0)
 		if _chapter_one_extraction_tex != null:
 			draw_texture_rect(_chapter_one_extraction_tex, Rect2(extraction_pos - extraction_size * 0.5, extraction_size), false)
 		draw_arc(extraction_pos, 210.0 + sin(_elapsed * 4.0) * 5.0, 0, TAU, 48, Color(1.0, 0.78, 0.22, 0.88), 5.0)
 	for prop in _adventure_props:
 		var pos: Vector2 = prop.pos
+		if not _is_world_pos_visible(pos, 340.0):
+			continue
 		var kind := String(prop.kind)
 		match kind:
 			"scout":
@@ -10362,6 +10409,9 @@ func _custom_story_indicator_label(kind: String) -> String:
 	return str(labels.get(kind, "Objective"))
 
 func _draw() -> void:
+	var view_size: Vector2 = get_viewport_rect().size
+	var draw_center: Vector2 = _camera.position if _camera != null else _player_pos
+	_draw_world_rect = Rect2(draw_center - view_size * 0.5, view_size)
 	_draw_bg()
 	_draw_adventure_objectives()
 	_draw_story_objective_indicators()
@@ -10369,6 +10419,8 @@ func _draw() -> void:
 	# XP orbs
 	for orb in _xp_orbs:
 		var op: Vector2 = orb["pos"] as Vector2
+		if not _is_world_pos_visible(op, 32.0):
+			continue
 		draw_circle(op, XP_ORB_R, Color(0.28, 0.88, 0.60, 0.9))
 		draw_arc(op, XP_ORB_R + 2.0, 0.0, TAU, 16, Color(0.5, 1.0, 0.8, 0.5), 1.5)
 
@@ -10840,6 +10892,8 @@ func _draw() -> void:
 	# Hawk companions
 	for h in _hawk_companions:
 		var hp: Vector2 = h["pos"] as Vector2
+		if not _is_world_pos_visible(hp, 80.0):
+			continue
 		draw_circle(hp, 10.0, Color(0.58, 0.38, 0.12, 0.94))
 		draw_circle(hp + Vector2(9.0, -3.0), 5.0, Color(0.66, 0.44, 0.16, 0.95))
 		draw_colored_polygon(PackedVector2Array([hp + Vector2(12.0, -2.0), hp + Vector2(20.0, -4.0), hp + Vector2(12.0, 1.0)]), Color(0.92, 0.76, 0.30, 0.95))
@@ -10849,6 +10903,8 @@ func _draw() -> void:
 	# Shadow clones — persistent ghost entities
 	for sc in _shadow_clones:
 		var scp: Vector2   = sc["pos"] as Vector2
+		if not _is_world_pos_visible(scp, 100.0):
+			continue
 		var sc_hp: float   = clamp((sc["hp"] as float) / max((sc["max_hp"] as float), 0.01), 0.0, 1.0)
 		var sc_life: float = clamp((sc["life"] as float) / max((sc["max_life"] as float), 0.01), 0.0, 1.0)
 		var sc_bob: float  = sin(_elapsed * 3.2 + scp.x * 0.01) * 5.0
@@ -10894,6 +10950,8 @@ func _draw() -> void:
 	# Enemies
 	for e in _enemies:
 		var ep: Vector2    = e["pos"] as Vector2
+		if not _is_world_pos_visible(ep, 180.0):
+			continue
 		var er: float      = (e["r"] as float) * ENEMY_DRAW_SCALE
 		var ec: Color      = e["col"] as Color
 		var ekind: String  = e.get("kind", "normal") as String
@@ -11271,6 +11329,8 @@ func _draw() -> void:
 	# Potions
 	for p in _potions:
 		var pp: Vector2 = p["pos"] as Vector2
+		if not _is_world_pos_visible(pp, 60.0):
+			continue
 		var pulse: float = 0.82 + sin(_elapsed * 5.0) * 0.18
 		draw_circle(pp, 14.0 * pulse, Color(0.15, 0.80, 0.25, 0.30))
 		draw_circle(pp, 10.0 * pulse, Color(0.25, 0.95, 0.40))
@@ -11280,6 +11340,8 @@ func _draw() -> void:
 	# Ring drops
 	for rd in _ring_drops:
 		var rp: Vector2 = rd["pos"] as Vector2
+		if not _is_world_pos_visible(rp, 80.0):
+			continue
 		var rpulse: float = 0.80 + sin(_elapsed * 4.0) * 0.20
 		draw_arc(rp, 14.0 * rpulse, 0.0, TAU, 24, Color(0.98, 0.82, 0.15, 0.90), 3.5)
 		draw_arc(rp, 8.0 * rpulse, 0.0, TAU, 16, Color(1.0, 0.95, 0.55, 0.55), 2.0)
@@ -11288,6 +11350,8 @@ func _draw() -> void:
 	# Artifact drops
 	for ad in _artifact_drops:
 		var ap: Vector2 = ad["pos"] as Vector2
+		if not _is_world_pos_visible(ap, 80.0):
+			continue
 		var apulse: float = 0.80 + sin(_elapsed * 3.5) * 0.20
 		draw_arc(ap, 14.0 * apulse, 0.0, TAU, 24, Color(0.98, 0.82, 0.15, 0.90), 3.5)
 		draw_arc(ap, 8.0 * apulse, 0.0, TAU, 16, Color(1.0, 0.95, 0.55, 0.55), 2.0)
@@ -12140,6 +12204,8 @@ func _draw_revamped_waves() -> void:
 		var ratio := clampf(float(wave["life"]) / float(wave["max_life"]), 0.0, 1.0)
 		var radius := float(wave["r"])
 		var pos: Vector2 = wave["pos"] as Vector2
+		if not _is_world_pos_visible(pos, radius + 40.0):
+			continue
 		var kind := String(wave.get("kind", "wave"))
 		var color := _revamped_skill_color(kind)
 		draw_circle(pos, radius * 0.94, Color(color.r, color.g, color.b, 0.07 * ratio))
@@ -12188,6 +12254,8 @@ func _draw_revamped_projectiles() -> void:
 		_draw_energy_projectile(projectile, Color(0.96, 0.74, 1.0), 14.0, "boomerang")
 	for rush in _capy_charge_rushes:
 		var pos: Vector2 = rush.get("pos", _player_pos) as Vector2
+		if not _is_world_pos_visible(pos, 180.0):
+			continue
 		var direction: Vector2 = rush.get("dir", Vector2.RIGHT) as Vector2
 		for echo in 6:
 			var p := pos - direction * float(echo) * 24.0
@@ -12195,6 +12263,8 @@ func _draw_revamped_projectiles() -> void:
 		draw_arc(pos, 31.0, -PI * 0.75, PI * 0.75, 20, Color(0.92, 0.74, 1.0, 0.90), 4.0)
 	for stampede in _stampedes:
 		var pos: Vector2 = stampede.get("pos", _player_pos) as Vector2
+		if not _is_world_pos_visible(pos, 160.0):
+			continue
 		var direction := (pos - (stampede.get("start_pos", _player_pos) as Vector2)).normalized()
 		if direction.length_squared() < 0.01: direction = Vector2.RIGHT
 		for segment in 7:
@@ -12228,6 +12298,8 @@ func _projectile_radius_for_shape(shape: String) -> float:
 
 func _draw_energy_projectile(projectile: Dictionary, color: Color, radius: float, shape: String) -> void:
 	var pos: Vector2 = projectile.get("pos", Vector2.ZERO) as Vector2
+	if not _is_world_pos_visible(pos, radius * 6.0):
+		return
 	var velocity: Vector2 = projectile.get("vel", Vector2.RIGHT) as Vector2
 	var direction := velocity.normalized()
 	if direction.length_squared() < 0.01: direction = Vector2.RIGHT
@@ -12371,6 +12443,8 @@ func _draw_revamped_skill_zones() -> void:
 		_draw_zone(zone, Color(0.62, 0.58, 0.72))
 	for mushroom in _toxic_mushrooms:
 		var mushroom_pos: Vector2 = mushroom.get("pos", Vector2.ZERO) as Vector2
+		if not _is_world_pos_visible(mushroom_pos, 60.0):
+			continue
 		var mushroom_alpha := clampf(float(mushroom.get("life", 1.0)) / float(mushroom.get("max_life", 1.0)), 0.0, 1.0)
 		draw_circle(mushroom_pos, 30.0, Color(0.28, 0.92, 0.22, 0.12 * mushroom_alpha))
 		draw_arc(mushroom_pos, 25.0, _elapsed, _elapsed + PI * 1.5, 18, Color(0.70, 1.0, 0.38, 0.74 * mushroom_alpha), 3.0)
@@ -12380,6 +12454,8 @@ func _draw_revamped_skill_zones() -> void:
 	for trap in _prism_traps:
 		var points: Array = trap.get("pts", []) as Array
 		if points.size() < 3: continue
+		if not _is_world_pos_visible(points[0] as Vector2, 260.0):
+			continue
 		var alpha := clampf(float(trap.get("life", 1.0)) / float(trap.get("max_life", 1.0)), 0.0, 1.0)
 		var polygon := PackedVector2Array([points[0] as Vector2, points[1] as Vector2, points[2] as Vector2])
 		draw_colored_polygon(polygon, Color(0.42, 0.78, 1.0, 0.13 * alpha))
@@ -12387,12 +12463,16 @@ func _draw_revamped_skill_zones() -> void:
 	for trap in _ground_traps:
 		var a: Vector2 = trap.get("a", Vector2.ZERO) as Vector2
 		var b: Vector2 = trap.get("b", Vector2.ZERO) as Vector2
+		if not _is_world_pos_visible(a, a.distance_to(b) + 80.0):
+			continue
 		draw_line(a, b, Color(0.38, 0.90, 0.20, 0.25), 16.0)
 		draw_line(a, b, Color(0.78, 1.0, 0.38, 0.82), 3.0)
 
 func _draw_zone(zone: Dictionary, color: Color) -> void:
 	var pos: Vector2 = zone.get("pos", Vector2.ZERO) as Vector2
 	var radius := float(zone.get("r", 55.0))
+	if not _is_world_pos_visible(pos, radius + 40.0):
+		return
 	var alpha := clampf(float(zone.get("life", 1.0)) / float(zone.get("max_life", zone.get("life", 1.0))), 0.0, 1.0)
 	var pulse := 0.96 + sin(_elapsed * 4.0 + pos.x * 0.01) * 0.04
 	draw_circle(pos, radius * pulse, Color(color.r, color.g, color.b, 0.12 * alpha))
@@ -12406,6 +12486,8 @@ func _draw_revamped_aoe() -> void:
 		var pos: Vector2 = flash.get("pos", _player_pos) as Vector2
 		var color := _revamped_skill_color(kind)
 		var radius := lerpf(70.0, 720.0, 1.0 - ratio)
+		if not _is_world_pos_visible(pos, radius + 60.0):
+			continue
 		draw_circle(pos, radius, Color(color.r, color.g, color.b, 0.075 * ratio))
 		for ring in 4:
 			var rr := radius * (0.42 + float(ring) * 0.18)
@@ -12888,7 +12970,7 @@ func _build_hud() -> void:
 	var objective_hover := objective_normal.duplicate() as StyleBoxFlat; objective_hover.bg_color = Color(1.0, 0.82, 0.25)
 	var objective_pressed := objective_normal.duplicate() as StyleBoxFlat; objective_pressed.bg_color = Color(0.80, 0.56, 0.03); objective_pressed.shadow_size = 4
 	var objective_disabled := objective_normal.duplicate() as StyleBoxFlat; objective_disabled.bg_color = Color(0.18, 0.16, 0.12, 0.94); objective_disabled.border_color = Color(0.38, 0.34, 0.26); objective_disabled.shadow_size = 0
-	_objective_start_btn.add_theme_stylebox_override("normal", objective_normal); _objective_start_btn.add_theme_stylebox_override("hover", objective_hover); _objective_start_btn.add_theme_stylebox_override("pressed", objective_pressed); _objective_start_btn.add_theme_stylebox_override("disabled", objective_disabled); _objective_start_btn.add_theme_color_override("font_disabled_color", Color(0.62, 0.58, 0.48)); _objective_start_btn.button_down.connect(_on_story_objective_start_pressed); objective_layer.add_child(_objective_start_btn)
+	_objective_start_btn.add_theme_stylebox_override("normal", objective_normal); _objective_start_btn.add_theme_stylebox_override("hover", objective_hover); _objective_start_btn.add_theme_stylebox_override("pressed", objective_pressed); _objective_start_btn.add_theme_stylebox_override("disabled", objective_disabled); _objective_start_btn.add_theme_color_override("font_disabled_color", Color(0.62, 0.58, 0.48)); _objective_start_btn.pressed.connect(_on_story_objective_start_pressed); objective_layer.add_child(_objective_start_btn)
 	if is_story_test_run:
 		var test_label := Label.new()
 		test_label.text = "DEV TEST — C%dS%d\nProgress and rewards are not saved" % [int(story_stage.get("chapter", 0)), int(story_stage.get("chapter_stage", 0))]

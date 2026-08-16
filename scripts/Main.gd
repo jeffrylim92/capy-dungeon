@@ -29,6 +29,7 @@ const BGM_LOBBY_VOLUME_DB: float = 0.0
 const BGM_DUNGEON_VOLUME_DB: float = -14.0
 const HISTORY_SYNC_COOLDOWN_MS: int = 45000
 const SESSION_CHECK_INTERVAL: float = 5.0
+const IOS_MAX_FPS: int = 60
 
 var _account: Dictionary = {}
 var _last_character: CharacterData = null
@@ -68,6 +69,7 @@ var _bgm_active_volume_db: float = BGM_LOBBY_VOLUME_DB
 var _bgm_next_volume_db: float = BGM_LOBBY_VOLUME_DB
 
 func _ready() -> void:
+	_configure_mobile_performance()
 	SettingsStore.apply.call_deferred(get_tree())
 	_setup_music()
 	_build_blocking_gate_ui()
@@ -83,6 +85,10 @@ func _ready() -> void:
 	_setup_runtime_network_timer()
 	if _runtime_net_timer != null and _runtime_net_timer.is_stopped() and _should_enforce_online_gate():
 		_runtime_net_timer.start()
+
+func _configure_mobile_performance() -> void:
+	if OS.get_name() == "iOS" and (Engine.max_fps <= 0 or Engine.max_fps > IOS_MAX_FPS):
+		Engine.max_fps = IOS_MAX_FPS
 
 func _should_enforce_online_gate() -> bool:
 	# Enforce startup connectivity/update gate on mobile platforms.

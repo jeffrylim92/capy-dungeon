@@ -5,15 +5,22 @@ extends Node2D
 ## effects and supplies consistent cast anticipation, sparks, trails and impacts.
 const MAX_PARTICLES := 260
 const MAX_PULSES := 48
+const IOS_MAX_PARTICLES := 140
+const IOS_MAX_PULSES := 28
 
 var _particles: Array[Dictionary] = []
 var _pulses: Array[Dictionary] = []
 var _streaks: Array[Dictionary] = []
 var _time: float = 0.0
+var _particle_limit: int = MAX_PARTICLES
+var _pulse_limit: int = MAX_PULSES
 
 func _ready() -> void:
 	z_index = 24
 	process_mode = Node.PROCESS_MODE_PAUSABLE
+	if OS.get_name() == "iOS":
+		_particle_limit = IOS_MAX_PARTICLES
+		_pulse_limit = IOS_MAX_PULSES
 
 func emit_cast(cue: String, position: Vector2) -> void:
 	var family := _family(cue)
@@ -130,9 +137,9 @@ func _add_pulse(pos: Vector2, color: Color, start_r: float, end_r: float, life: 
 	_pulses.append({"pos": pos, "color": color, "start_r": start_r, "end_r": end_r, "life": life, "max_life": life, "family": family})
 
 func _trim() -> void:
-	while _particles.size() > MAX_PARTICLES:
+	while _particles.size() > _particle_limit:
 		_particles.pop_front()
-	while _pulses.size() > MAX_PULSES:
+	while _pulses.size() > _pulse_limit:
 		_pulses.pop_front()
 	while _streaks.size() > 40:
 		_streaks.pop_front()
