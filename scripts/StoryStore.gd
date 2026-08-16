@@ -3,15 +3,53 @@ extends RefCounted
 
 const SAVE_PREFIX := "user://capy_story_"
 const MAX_GEAR_LEVEL := 10
+const REPLAY_REWARD_MULTIPLIER: float = 0.30
 const SLOTS := ["weapon", "armor", "pants", "offhand", "headwear", "boots"]
 
 const CHAPTERS := [
 	{"name":"THE STOLEN CAMP CREST", "theme":"mushroom woodland", "reward":["twig_blade", "scout_cap"], "stages":["The Broken Trail", "Mushroom Crossing", "Supply Thieves", "The Old Watchpath", "Crestkeeper's Gate"]},
-	{"name":"LANTERNS OF THE DROWNED MARSH", "theme":"drowned marsh", "reward":["moss_vest", "trail_boots"], "stages":["Fogbound Causeway", "Lantern Fen", "Roots Below", "The Sunken Bell", "Marshlight Guardian"]},
-	{"name":"THE EMBER PANTRY", "theme":"ember kitchen", "reward":["pan_lid", "forager_pants"], "stages":["Scorched Larder", "Boiling Galleries", "Spice-Mine Tunnels", "Furnace Feast", "The Cinder Chef"]},
-	{"name":"THORNWATCH SIEGE", "theme":"thorn ruins", "reward":["thorn_spear", "bark_mail"], "stages":["Briar Approach", "Vinebound Ruins", "The Green Rampart", "Heart of Thorns", "Thornwatch Tyrant"]},
-	{"name":"WARDEN OF THE HOLLOW", "theme":"root cathedral", "reward":["warden_helm", "root_guard"], "stages":["Rootbound Nave", "Antlered Hall", "Runestone Choir", "The Deep Sanctuary", "Hollow Warden"]},
-	{"name":"THE ECLIPSE CITADEL", "theme":"eclipse citadel", "reward":["warden_greaves", "hollow_treads"], "stages":["Starfall Ascent", "The Black-Gold Bridge", "Astral Courtyard", "Eclipse Throne", "Lord of the Last Night"]},
+	{"name":"FROSTBOUND HOLLOW", "theme":"frozen hollow", "reward":["moss_vest", "trail_boots"], "stages":["Rekindle the Way", "Frozen Captives", "Runes of Thaw", "The Mimic Treasury", "Frostbound Colossus"]},
+	{"name":"BLIGHTROOT MARSH", "theme":"blighted marsh", "reward":["pan_lid", "forager_pants"], "stages":["Cleanse the Mire", "Hunt the Plaguebeast", "Venom Harvest", "The Fragile Cure", "Brew the Grand Antidote"]},
+	{"name":"EMBERFORGE RUINS", "theme":"emberforge ruins", "reward":["thorn_spear", "bark_mail"], "stages":["Ore Rush", "Molten Circuit", "Golem Taming", "Forge the Lost Relic", "Stop the Meltdown"]},
+	{"name":"ABYSSAL CITADEL", "theme":"abyssal citadel", "reward":["warden_helm", "root_guard"], "stages":["Silent Descent", "Soul Liberation", "Mirror Labyrinth", "Twin Eclipse", "Throne of the Deep"]},
+]
+
+const STAGE_OBJECTIVES := [
+	[
+		{"id":"escort", "desc":"Command the Scout, open the barricade, and secure extraction", "target_seconds":210.0},
+		{"id":"defend", "desc":"Gather energy spores and power the Mushroom Shrine", "target_seconds":210.0},
+		{"id":"nests", "desc":"Destroy three different Supply Thief Nests", "count":3},
+		{"id":"keys", "desc":"Track three key carriers and cross the Watchpath Gate", "count":3},
+		{"id":"hazards", "desc":"Master the Crestkeeper barrage and defeat the Crestkeeper", "target_seconds":270.0},
+	],
+	[
+		{"id":"frozen_braziers", "desc":"Carry flame charges and stabilize four connected warmth zones", "count":4},
+		{"id":"ice_captives", "desc":"Release, protect and extract five frozen captives", "count":5},
+		{"id":"thaw_runes", "desc":"Memorize four runes and finish the sequence under spreading frost", "count":4, "simultaneous_objectives":true},
+		{"id":"frost_mimic", "desc":"Investigate clues, identify the real chest and defeat the Frost Mimic", "count":6, "simultaneous_objectives":true},
+		{"id":"frost_colossus", "desc":"Expose three integrated armour crystals and defeat the Frostbound Colossus", "count":3, "simultaneous_objectives":true},
+	],
+	[
+		{"id":"cleanse_mire", "desc":"Carry cleansing energy through three different purification mechanics", "count":3, "energy":6, "target_seconds":270.0},
+		{"id":"plaguebeast", "desc":"Read tracking clues, prepare traps, and hunt the Plaguebeast", "count":3, "target_seconds":300.0},
+		{"id":"venom_harvest", "desc":"Choose three ecosystems and extract guaranteed venom ingredients", "count":3, "target_seconds":270.0},
+		{"id":"fragile_cure", "desc":"Choose a route and deliver a fragile antidote vial", "count":3, "target_seconds":300.0},
+		{"id":"grand_antidote", "desc":"Manage recipe, heat, purity, and defeat the Blight Vine Tyrant", "count":3, "target_seconds":360.0},
+	],
+	[
+		{"id":"ore_rush", "desc":"Mine, carry and deliver Ember Ore, then escort the loaded mining cart", "count":12, "target_seconds":300.0},
+		{"id":"molten_circuit", "desc":"Route lava, traverse the powered circuit and defend its stabilization", "count":3, "target_seconds":300.0, "simultaneous_objectives":true},
+		{"id":"golem_taming", "desc":"Learn and complete four different nonlethal rogue golem captures", "count":4, "target_seconds":330.0},
+		{"id":"lost_relic", "desc":"Clear three forge chambers, assemble a relic and defeat its guardian", "count":3, "target_seconds":330.0},
+		{"id":"meltdown", "desc":"Complete the shutdown sequence while fighting the Thunderforge Behemoth", "count":4, "target_seconds":390.0, "simultaneous_objectives":true, "final_boss":"thunderforge_behemoth"},
+	],
+	[
+		{"id":"silent_descent", "desc":"Cross three stealth safe points and reach the inner citadel without filling the alert meter", "count":3},
+		{"id":"soul_liberation", "desc":"Rescue six moving spirits and seal the Abyss Portal", "count":6},
+		{"id":"mirror_labyrinth", "desc":"Solve four clue-driven mirror rooms and defeat the Mirror Guardian", "count":4},
+		{"id":"twin_eclipse", "desc":"Prepare both obelisks, synchronize them, and defeat the Eclipse Elite", "simultaneous_objectives":true},
+		{"id":"abyss_king", "desc":"Interrupt the ritual, break the crown, and defeat the Abyss King", "simultaneous_objectives":true},
+	],
 ]
 
 const GEAR := {
@@ -33,13 +71,25 @@ static func _path(username: String) -> String:
 	return SAVE_PREFIX + username.sha256_text().left(20) + ".json"
 
 static func load_profile(username: String) -> Dictionary:
-	var base := {"cleared":[], "claimed":[], "claimed_chapters":[], "owned":[], "equipped":{}, "materials":0, "levels":{}}
+	var base := {"cleared":[], "claimed":[], "claimed_chapters":[], "owned":[], "equipped":{}, "materials":0, "levels":{}, "results":{}, "highest_unlocked_chapter":1, "highest_unlocked_stage":1, "story_complete":false}
 	if username.is_empty() or not FileAccess.file_exists(_path(username)):
 		return base
 	var file := FileAccess.open(_path(username), FileAccess.READ)
 	var parsed: Variant = JSON.parse_string(file.get_as_text()) if file != null else null
 	if typeof(parsed) == TYPE_DICTIONARY:
 		base.merge(parsed as Dictionary, true)
+	var highest_cleared := -1
+	for stage_id in base.get("cleared", []) as Array:
+		highest_cleared = maxi(highest_cleared, stage_index(str(stage_id)))
+	var unlocked_index := clampi(highest_cleared + 1, 0, stage_count() - 1)
+	var derived_chapter := floori(float(unlocked_index) / 5.0) + 1
+	var derived_stage := unlocked_index % 5 + 1
+	if derived_chapter > int(base.get("highest_unlocked_chapter", 1)):
+		base["highest_unlocked_chapter"] = derived_chapter
+		base["highest_unlocked_stage"] = derived_stage
+	elif derived_chapter == int(base.get("highest_unlocked_chapter", 1)):
+		base["highest_unlocked_stage"] = maxi(int(base.get("highest_unlocked_stage", 1)), derived_stage)
+	base["story_complete"] = bool(base.get("story_complete", false)) or "ch5_5" in (base.get("cleared", []) as Array)
 	return base
 
 static func _save(username: String, profile: Dictionary) -> void:
@@ -75,6 +125,21 @@ static func restore_from_server(username: String, server_profile: Dictionary) ->
 	var server_equipped: Dictionary = server_profile.get("equipped", {}) as Dictionary
 	if server_is_newer or ((local.get("equipped", {}) as Dictionary).is_empty() and not server_equipped.is_empty()):
 		local["equipped"] = server_equipped.duplicate(true)
+	var results: Dictionary = local.get("results", {}) as Dictionary
+	for stage_id in (server_profile.get("results", {}) as Dictionary):
+		var server_result: Dictionary = (server_profile.get("results", {}) as Dictionary).get(stage_id, {}) as Dictionary
+		var local_result: Dictionary = results.get(stage_id, {}) as Dictionary
+		if local_result.is_empty() or int(server_result.get("updated_at", 0)) > int(local_result.get("updated_at", 0)):
+			results[stage_id] = server_result.duplicate(true)
+	local["results"] = results
+	var local_chapter := int(local.get("highest_unlocked_chapter", 1))
+	var server_chapter := int(server_profile.get("highest_unlocked_chapter", 1))
+	if server_chapter > local_chapter:
+		local["highest_unlocked_chapter"] = server_chapter
+		local["highest_unlocked_stage"] = int(server_profile.get("highest_unlocked_stage", 1))
+	elif server_chapter == local_chapter:
+		local["highest_unlocked_stage"] = maxi(int(local.get("highest_unlocked_stage", 1)), int(server_profile.get("highest_unlocked_stage", 1)))
+	local["story_complete"] = bool(local.get("story_complete", false)) or bool(server_profile.get("story_complete", false))
 	local["updated_at"] = maxi(int(local.get("updated_at", 0)), int(server_profile.get("updated_at", 0)))
 	_save(username, local)
 
@@ -90,14 +155,9 @@ static func stage(index: int) -> Dictionary:
 	var hp := 1.08 + float(safe) * 0.055 + float(chapter_index) * 0.08
 	var damage := 1.0 + float(safe) * 0.04 + float(chapter_index) * 0.05
 	var speed := 1.0 + float(safe) * 0.006 + float(chapter_index) * 0.02
-	var objectives: Array[String] = [
-		"Prepare, then escort a wandering scout for 90 seconds",
-		"Summon the shrine when ready, then defend it for 2 minutes",
-		"Manually awaken and destroy three escalating enemy nests",
-		"Defeat enemies until they drop three gate keys",
-		"Survive the fixed-arena projectile barrage and defeat enemies",
-	]
-	return {"id":"ch%d_%d" % [chapter_index + 1, chapter_stage + 1], "chapter":chapter_index + 1, "chapter_stage":chapter_stage + 1, "name":"%d-%d  %s" % [chapter_index + 1, chapter_stage + 1, String((chapter.stages as Array)[chapter_stage])], "story":"Advance through the %s and uncover the path ahead." % String(chapter.theme), "challenge":"%s\nEnemy health +%d%% · damage +%d%% · speed +%d%%" % [objectives[chapter_stage], roundi((hp - 1.0) * 100.0), roundi((damage - 1.0) * 100.0), roundi((speed - 1.0) * 100.0)], "enemy_hp":hp, "enemy_damage":damage, "enemy_speed":speed, "boss":"abyss_gate_warden" if chapter_stage == 4 else "", "coins":25 + safe * 4, "materials":1 + chapter_index}
+	var objective_config: Dictionary = (STAGE_OBJECTIVES[chapter_index][chapter_stage] as Dictionary).duplicate(true)
+	var objective := str(objective_config.get("id", "escort"))
+	return {"id":"ch%d_%d" % [chapter_index + 1, chapter_stage + 1], "chapter":chapter_index + 1, "chapter_stage":chapter_stage + 1, "name":"%d-%d  %s" % [chapter_index + 1, chapter_stage + 1, str((chapter.stages as Array)[chapter_stage])], "story":"Advance through the %s and uncover the path ahead." % str(chapter.theme), "challenge":"%s\nEnemy health +%d%% · damage +%d%% · speed +%d%%" % [str(objective_config.get("desc", "Complete the objective")), roundi((hp - 1.0) * 100.0), roundi((damage - 1.0) * 100.0), roundi((speed - 1.0) * 100.0)], "objective":objective, "objective_config":objective_config, "enemy_hp":hp, "enemy_damage":damage, "enemy_speed":speed, "boss":"" , "coins":25 + safe * 4, "materials":1 + chapter_index}
 
 static func stage_count() -> int:
 	return CHAPTERS.size() * 5
@@ -114,26 +174,44 @@ static func unlocked_stage(profile: Dictionary) -> int:
 		highest_cleared = maxi(highest_cleared, stage_index(String(stage_id_variant)))
 	return clampi(highest_cleared + 1, 0, stage_count() - 1)
 
-static func record_clear(username: String, stage_id: String) -> Dictionary:
+static func record_clear(username: String, stage_id: String, result: Dictionary = {}) -> Dictionary:
 	var profile := load_profile(username)
+	var results: Dictionary = profile.get("results", {}) as Dictionary
+	var previous: Dictionary = results.get(stage_id, {}) as Dictionary
+	var elapsed := float(result.get("elapsed", 0.0))
+	results[stage_id] = {"latest_seconds":elapsed, "best_seconds":elapsed if previous.is_empty() or elapsed < float(previous.get("best_seconds", elapsed)) else float(previous.get("best_seconds", elapsed)), "kills":int(result.get("kills", 0)), "level":int(result.get("level", 1)), "updated_at":int(Time.get_unix_time_from_system())}
+	profile["results"] = results
 	var cleared: Array = profile.get("cleared", []) as Array
 	var first_clear := stage_id not in cleared
 	if stage_id in cleared:
-		# Story replays provide a useful mixed reward, while Forgecore Depths
-		# remains the strongest repeatable source of upgrade materials.
-		var replay_materials := 1 + floori(float(stage_index(stage_id)) / 10.0)
+		var replay_reward: Dictionary = stage_reward(stage_id, true)
+		var replay_materials: int = int(replay_reward.get("materials", 0))
+		var replay_coins: int = int(replay_reward.get("coins", 0))
 		profile["materials"] = int(profile.get("materials", 0)) + replay_materials
-		_add_camp_coins(username, 8 + stage_index(stage_id) * 2)
+		_add_camp_coins(username, replay_coins)
 		_save(username, profile)
-		return {"first_clear":false, "materials":replay_materials, "coins":8 + stage_index(stage_id) * 2}
+		return {"first_clear":false, "materials":replay_materials, "coins":replay_coins, "reward_multiplier":REPLAY_REWARD_MULTIPLIER}
 	if first_clear:
 		cleared.append(stage_id)
 		profile["cleared"] = cleared
+		var next_index := mini(stage_index(stage_id) + 1, stage_count() - 1)
+		profile["highest_unlocked_chapter"] = floori(float(next_index) / 5.0) + 1
+		profile["highest_unlocked_stage"] = next_index % 5 + 1
+		if stage_id == "ch5_5": profile["story_complete"] = true
 	var stage_data := stage(stage_index(stage_id))
 	profile["materials"] = int(profile.get("materials", 0)) + int(stage_data.materials)
 	_add_camp_coins(username, int(stage_data.coins))
 	_save(username, profile)
-	return {"first_clear":true, "materials":int(stage_data.materials), "coins":int(stage_data.coins)}
+	return {"first_clear":true, "materials":int(stage_data.materials), "coins":int(stage_data.coins), "reward_multiplier":1.0}
+
+static func stage_reward(stage_id: String, replay: bool = false) -> Dictionary:
+	var stage_data: Dictionary = stage(stage_index(stage_id))
+	var multiplier: float = REPLAY_REWARD_MULTIPLIER if replay else 1.0
+	return {
+		"coins": floori(float(stage_data.get("coins", 0)) * multiplier),
+		"materials": floori(float(stage_data.get("materials", 0)) * multiplier),
+		"multiplier": multiplier,
+	}
 
 static func claim_chapter(username: String, chapter_number: int) -> Array[String]:
 	var profile := load_profile(username)

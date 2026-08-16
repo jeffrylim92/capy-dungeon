@@ -33,6 +33,9 @@ const SESSION_CHECK_INTERVAL: float = 5.0
 var _account: Dictionary = {}
 var _last_character: CharacterData = null
 var _story_stage: Dictionary = {}
+var _is_story_test_run: bool = false
+var _story_test_stage_id: String = ""
+var _open_story_test_selector: bool = false
 var _dungeon_mode: String = ""
 var _loadout_snapshot: Dictionary = {}
 
@@ -852,6 +855,9 @@ func _on_logged_in(account: Dictionary) -> void:
 	)
 
 func _show_lobby(open_play_hub: bool = false) -> void:
+	_is_story_test_run = false
+	_story_test_stage_id = ""
+	_open_story_test_selector = false
 	_sync_cloud_progress()
 	_clear_children()
 	_play_music(BGM_LOBBY_PATH, BGM_LOBBY_VOLUME_DB)
@@ -879,9 +885,13 @@ func _show_lobby(open_play_hub: bool = false) -> void:
 	add_child(lobby)
 
 func _show_story(advance_after_completion: bool = false) -> void:
-	_sync_cloud_progress()
+	if not _is_story_test_run:
+		_sync_cloud_progress()
+	elif not _story_test_stage_id.is_empty():
+		var exit_stage: Dictionary = StoryStore.stage(StoryStore.stage_index(_story_test_stage_id))
+		print("[Story][TEST][C%dS%d][0.00s] Test mode exited" % [int(exit_stage.chapter), int(exit_stage.chapter_stage)])
 	var initial_stage_index := -1
-	if not _story_stage.is_empty():
+	if not _story_stage.is_empty() and not _is_story_test_run:
 		var completed_index := StoryStore.stage_index(str(_story_stage.get("id", "")))
 		var profile := StoryStore.load_profile(str(_account.get("username", "")))
 		var completed_chapter := int(_story_stage.get("chapter", 1))
@@ -891,18 +901,39 @@ func _show_story(advance_after_completion: bool = false) -> void:
 		else:
 			initial_stage_index = mini(completed_index + 1, StoryStore.stage_count() - 1)
 	_story_stage = {}
+	_is_story_test_run = false
+	_story_test_stage_id = ""
 	_dungeon_mode = ""
 	_clear_children()
 	var story := STORY_SCENE.instantiate()
 	story.account_username = String(_account.get("username", ""))
 	story.initial_stage_index = initial_stage_index
+	story.open_dev_test_selector_on_ready = _open_story_test_selector
+	_open_story_test_selector = false
 	story.stage_selected.connect(func(stage: Dictionary) -> void:
+		_is_story_test_run = false
+		_story_test_stage_id = ""
 		_story_stage = stage
 		_show_select()
 	)
+	story.test_stage_selected.connect(_launch_story_test_stage)
 	story.back_requested.connect(_show_lobby.bind(true))
 	story.cloud_sync_requested.connect(_sync_cloud_progress)
 	add_child(story)
+
+func _launch_story_test_stage(stage: Dictionary) -> void:
+	if not OS.is_debug_build():
+		push_warning("Story test launch rejected in a release build.")
+		return
+	var stage_id: String = str(stage.get("id", ""))
+	if stage_id.is_empty():
+		push_warning("Story test launch rejected because the stage ID is missing.")
+		return
+	_story_stage = StoryStore.stage(StoryStore.stage_index(stage_id)).duplicate(true)
+	_is_story_test_run = true
+	_story_test_stage_id = stage_id
+	_dungeon_mode = ""
+	_show_select()
 
 func _show_survival_difficulty_picker() -> void:
 	var layer := CanvasLayer.new(); layer.layer = 160; add_child(layer)
@@ -1163,7 +1194,10 @@ func _show_select() -> void:
 func _on_character_chosen(data: CharacterData) -> void:
 	_last_character = data
 	if not _story_stage.is_empty():
-		_show_story_inventory(data)
+		if _is_story_test_run:
+			_start_match(data)
+		else:
+			_show_story_inventory(data)
 	else:
 		_show_inventory(data)
 
@@ -1215,19 +1249,33 @@ func _start_match(data: CharacterData) -> void:
 	m.account_cloud_id     = _cloud_username_for(_account)
 	m.account_display_name = _profile_display_name_for(_account)
 	m.story_stage = _story_stage.duplicate(true)
+	m.is_story_test_run = _is_story_test_run and OS.is_debug_build()
 	m.dungeon_mode = _dungeon_mode
 	m.match_ended.connect(_on_match_ended)
 	add_child(m)
 
 func _on_match_ended(next_action: String) -> void:
 	var username := str(_account.get("username", ""))
-	ArtifactStore.reconcile_loadout(username)
-	_sync_cloud_progress()
+	if not _is_story_test_run:
+		ArtifactStore.reconcile_loadout(username)
+		_sync_cloud_progress()
 	match next_action:
 		"story":
 			_show_story()
 		"story_clear":
 			_show_story(true)
+		"story_test_retry":
+			if OS.is_debug_build() and _is_story_test_run and not _story_test_stage_id.is_empty() and _last_character != null:
+				_story_stage = StoryStore.stage(StoryStore.stage_index(_story_test_stage_id)).duplicate(true)
+				_start_match(_last_character)
+			else:
+				push_warning("Story test retry rejected outside an active debug test run.")
+				_show_story()
+		"story_test_choose":
+			_open_story_test_selector = true
+			_show_story()
+		"story_test_exit":
+			_show_story()
 		"dungeon":
 			_show_lobby(true)
 		"rematch":

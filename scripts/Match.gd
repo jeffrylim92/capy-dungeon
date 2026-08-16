@@ -1,5 +1,13 @@
 extends Node2D
 
+const StoryTelemetryClass = preload("res://scripts/story/StoryTelemetry.gd")
+const StoryCompletionValidatorClass = preload("res://scripts/story/StoryCompletionValidator.gd")
+const ChapterOneStageControllerClass = preload("res://scripts/story/ChapterOneStageController.gd")
+const ChapterTwoStageControllerClass = preload("res://scripts/story/ChapterTwoStageController.gd")
+const ChapterThreeStageControllerClass = preload("res://scripts/story/ChapterThreeStageController.gd")
+const ChapterFourStageControllerClass = preload("res://scripts/story/ChapterFourStageController.gd")
+const ChapterFiveStageControllerClass = preload("res://scripts/story/ChapterFiveStageController.gd")
+
 ## Vampire Survivors-style roguelite.
 ## Move to survive, skills auto-cast, kill monsters, level up, pick new skills.
 
@@ -10,6 +18,7 @@ var selected_player_character: CharacterData = null
 var account_username: String = ""
 var account_cloud_id: String = ""
 var account_display_name: String = ""
+var is_story_test_run: bool = false
 
 # ─── Tuning constants ─────────────────────────────────────────────────────────
 const PLAYER_R:    float = 34.0
@@ -59,6 +68,14 @@ const OBJECTIVE_SCOUT_PATH: String = "res://assets/story/objectives/scout_npc.pn
 const OBJECTIVE_HAZARD_PATH: String = "res://assets/story/objectives/hazard_emitter.png"
 const OBJECTIVE_SAFE_PATH: String = "res://assets/story/objectives/coin_safe.png"
 const OBJECTIVE_FORGE_PATH: String = "res://assets/story/objectives/forgecore_forge.png"
+const CHAPTER_ONE_EXTRACTION_PATH: String = "res://assets/story/objectives/chapter1_scout_extraction.png"
+const CHAPTER_ONE_ENERGY_SPORE_PATH: String = "res://assets/story/objectives/chapter1_energy_spore.png"
+const CHAPTER_ONE_FEEDING_SAC_PATH: String = "res://assets/story/objectives/chapter1_feeding_sac.png"
+const CHAPTER_ONE_WATCHPATH_KEY_PATH: String = "res://assets/story/objectives/chapter1_watchpath_key.png"
+const CHAPTER_ONE_WATCHPATH_EXIT_PATH: String = "res://assets/story/objectives/chapter1_watchpath_exit.png"
+const CHAPTER_ONE_ANIMAL_TRACKS_PATH: String = "res://assets/story/objectives/chapter1_animal_tracks.png"
+const CHAPTER_ONE_BARRICADE_PATH: String = "res://assets/story/objectives/chapter1_barricade.png"
+const CHAPTER_ONE_OVERHEAT_BURST_PATH: String = "res://assets/story/objectives/chapter1_overheat_burst.png"
 const ROOM_ROUTE: Array = [
 	{"id": "lava", "name": "Lava Rooms", "short": "Damage over time", "col": Color(1.0, 0.42, 0.12), "desc": "The ground burns — take periodic fire damage while standing still."},
 	{"id": "frozen", "name": "Frozen Floors", "short": "Sliding movement", "col": Color(0.52, 0.84, 1.0), "desc": "Icy surface causes momentum — movement feels slippery and hard to stop."},
@@ -66,7 +83,7 @@ const ROOM_ROUTE: Array = [
 	{"id": "spike", "name": "Spike Corridors", "short": "HP regen suppressed", "col": Color(0.92, 0.18, 0.20), "desc": "Jagged spikes disrupt recovery — HP regeneration is fully suppressed."},
 	{"id": "darkness", "name": "Darkness Zones", "short": "Reduced vision", "col": Color(0.58, 0.42, 0.92), "desc": "Darkness closes in — vision range is drastically reduced."},
 ]
-const STORY_CHAPTER_ROOM_ROUTE: Array[int] = [2, 4, 0, 3, 1, 4]
+const STORY_CHAPTER_ROOM_ROUTE: Array[int] = [2, 1, 2, 0, 4]
 const LAVA_ROOM_BG_PATH: String = "res://assets/backgrounds/bg_lava.png"
 const LAVA_ROOM_TILE_BG_PATH: String = "res://assets/backgrounds/bg_lava_tile.png"
 const FROZEN_ROOM_BG_PATH: String = "res://assets/backgrounds/bg_frozen.png"
@@ -781,6 +798,7 @@ var _player_facing_x: int     = 1  # 1 = right, -1 = left
 var _player_move_dir: Vector2 = Vector2.ZERO
 var _enemy_tex:       Dictionary = {}  # kind -> Texture2D
 var _enemy_walk_tex:  Dictionary = {}  # kind -> 4-frame horizontal sheet
+var _custom_story_asset_tex: Dictionary = {}  # objective/boss asset id -> Texture2D
 var _skill_icon_cache: Dictionary = {}  # sid -> cropped Texture2D
 var _evolution_definition_cache: Dictionary = {}  # "skill:evolution" -> definition
 var _skill_greyscale_material: ShaderMaterial = null
@@ -948,6 +966,19 @@ var story_stage: Dictionary = {}
 var dungeon_mode: String = ""
 var _dungeon_depth_cleared: int = 0
 var _story_victory_started := false
+var _story_victory_validated: bool = false
+var _story_primary_complete: bool = false
+var _story_required_boss_defeated: bool = false
+var _story_required_target_survived: bool = false
+var _story_telemetry: StoryTelemetry = null
+var _story_debug_overlay: PanelContainer = null
+var _story_debug_label: Label = null
+var _story_debug_toggle: Button = null
+var _story_debug_overlay_visible: bool = false
+var _story_debug_update_timer: float = 0.0
+var _story_debug_signature: String = ""
+var _story_last_victory_request: String = "none"
+var _story_last_victory_result: String = "No request yet"
 var _adventure_state: String = ""
 var _adventure_props: Array[Dictionary] = []
 var _adventure_timer: float = 0.0
@@ -955,22 +986,78 @@ var _adventure_spawn_timer: float = 0.0
 var _adventure_progress: int = 0
 var _adventure_target: int = 0
 var _story_key_drop_elapsed: float = 0.0
+var _story_keys_generated: int = 0
 var _story_nests_destroyed: int = 0
+var _story_nests_generated: int = 0
+var _story_route_waypoints: Array[Vector2] = []
+var _story_route_index: int = 0
 var _objective_boss_active: bool = false
 var _coin_carried: int = 0
 var _coin_banked: int = 0
 var _forge_modifier: String = ""
 var _adventure_choice_layer: CanvasLayer = null
+var _story_custom_id: String = ""
+var _story_custom_data: Dictionary = {}
+var _story_custom_progress: Dictionary = {}
+var _story_custom_sequence: Array[int] = []
+var _story_custom_timer: float = 0.0
+var _story_custom_interaction: float = 0.0
+var _story_custom_touch_lock: String = ""
+var _story_custom_carried: String = ""
+var _story_custom_phase: int = 0
+var _story_custom_alert: float = 0.0
+var _story_custom_target_enemy: int = -1
+var _story_custom_failure: String = ""
+var _staged_objective_enabled: bool = false
+var _staged_objective_required: int = 0
+var _staged_objective_generated: int = 0
+var _staged_objective_active: int = 0
+var _staged_objective_completed: int = 0
+var _staged_objective_spawn_timer: float = 0.0
+var _story_stage_origin: Vector2 = Vector2.ZERO
+var _story_previous_objective_pos: Vector2 = Vector2.ZERO
+var _story_gate_remaining: int = 0
+var _story_final_triggered: bool = false
+var _story_final_completed: bool = false
+var _story_final_remaining: int = 0
 var _objective_nest_tex: Texture2D = null
 var _objective_shrine_tex: Texture2D = null
 var _objective_scout_tex: Texture2D = null
 var _objective_hazard_tex: Texture2D = null
 var _objective_safe_tex: Texture2D = null
 var _objective_forge_tex: Texture2D = null
+var _chapter_one_extraction_tex: Texture2D = null
+var _chapter_one_energy_spore_tex: Texture2D = null
+var _chapter_one_feeding_sac_tex: Texture2D = null
+var _chapter_one_watchpath_key_tex: Texture2D = null
+var _chapter_one_watchpath_exit_tex: Texture2D = null
+var _chapter_one_animal_tracks_tex: Texture2D = null
+var _chapter_one_barricade_tex: Texture2D = null
+var _chapter_one_overheat_burst_tex: Texture2D = null
 var _objective_start_btn: Button = null
 var _story_hazard_arena_center: Vector2 = Vector2.ZERO
 var _story_hazard_shot_timer: float = 0.0
 var _story_hazard_pattern: int = 0
+var _chapter_one: RefCounted = null
+var _chapter_two: RefCounted = null
+var _chapter_three: RefCounted = null
+var _chapter_four: RefCounted = null
+var _chapter_five: RefCounted = null
+var _c2_spawn_timer: float = 0.0
+var _c3_spawn_timer: float = 0.0
+var _c3_action_timer: float = 0.0
+var _c4_spawn_timer: float = 0.0
+var _c4_action_timer: float = 0.0
+var _c2_interaction: float = 0.0
+var _c2_cold_threshold: int = 0
+var _c2_bonus_levels_pending: int = 0
+var _c1_phase_timer: float = 0.0
+var _c1_interaction: float = 0.0
+var _c1_spawn_budget: float = 0.0
+var _c1_command: String = "follow"
+var _c1_route_choice: String = ""
+var _c1_threshold: int = 0
+var _c1_milestones: int = 0
 
 # ─── Ads ──────────────────────────────────────────────────────────────────────
 var _ad_manager: AdManager = null
@@ -1041,6 +1128,10 @@ var _boss_wave_locked: bool = false
 # ═════════════════════════════════════════════════════════════════════════════
 
 func _ready() -> void:
+	if is_story_test_run and not OS.is_debug_build():
+		push_warning("Story test run rejected in a release build.")
+		is_story_test_run = false
+		story_stage = {}
 	SettingsStore.apply(get_tree())
 	_progression_profile = ProgressionStore.load_profile(account_username) if not account_username.is_empty() else {}
 	_run_difficulty = ProgressionStore.difficulty(_progression_profile) if not _progression_profile.is_empty() else {"name": "Cozy", "enemy_hp": 1.0, "enemy_damage": 1.0, "reward": 1.0}
@@ -1065,7 +1156,7 @@ func _ready() -> void:
 		_player_speed  = 300.0 + float(selected_player_character.attack - 7) * 12.0
 		_player_tint   = selected_player_character.tint
 		_char_id = String(selected_player_character.id)
-		if not account_username.is_empty():
+		if not account_username.is_empty() and not is_story_test_run:
 			ProgressionStore.record_mission_event(account_username, "characters", 1, _char_id)
 		# Auto-grant character's starting skill
 		var base_sid: String = selected_player_character.base_skill
@@ -1117,6 +1208,22 @@ func _ready() -> void:
 		_objective_safe_tex = load(OBJECTIVE_SAFE_PATH) as Texture2D
 	if ResourceLoader.exists(OBJECTIVE_FORGE_PATH):
 		_objective_forge_tex = load(OBJECTIVE_FORGE_PATH) as Texture2D
+	if ResourceLoader.exists(CHAPTER_ONE_EXTRACTION_PATH):
+		_chapter_one_extraction_tex = load(CHAPTER_ONE_EXTRACTION_PATH) as Texture2D
+	if ResourceLoader.exists(CHAPTER_ONE_ENERGY_SPORE_PATH):
+		_chapter_one_energy_spore_tex = load(CHAPTER_ONE_ENERGY_SPORE_PATH) as Texture2D
+	if ResourceLoader.exists(CHAPTER_ONE_FEEDING_SAC_PATH):
+		_chapter_one_feeding_sac_tex = load(CHAPTER_ONE_FEEDING_SAC_PATH) as Texture2D
+	if ResourceLoader.exists(CHAPTER_ONE_WATCHPATH_KEY_PATH):
+		_chapter_one_watchpath_key_tex = load(CHAPTER_ONE_WATCHPATH_KEY_PATH) as Texture2D
+	if ResourceLoader.exists(CHAPTER_ONE_WATCHPATH_EXIT_PATH):
+		_chapter_one_watchpath_exit_tex = load(CHAPTER_ONE_WATCHPATH_EXIT_PATH) as Texture2D
+	if ResourceLoader.exists(CHAPTER_ONE_ANIMAL_TRACKS_PATH):
+		_chapter_one_animal_tracks_tex = load(CHAPTER_ONE_ANIMAL_TRACKS_PATH) as Texture2D
+	if ResourceLoader.exists(CHAPTER_ONE_BARRICADE_PATH):
+		_chapter_one_barricade_tex = load(CHAPTER_ONE_BARRICADE_PATH) as Texture2D
+	if ResourceLoader.exists(CHAPTER_ONE_OVERHEAT_BURST_PATH):
+		_chapter_one_overheat_burst_tex = load(CHAPTER_ONE_OVERHEAT_BURST_PATH) as Texture2D
 
 	# ── Apply ring bonuses ────────────────────────────────────────────────
 	if not account_username.is_empty() and not _char_id.is_empty():
@@ -1170,6 +1277,11 @@ func _ready() -> void:
 	_between_t   = 2.0  # 2s grace period before first wave
 	_boss_wave_locked = false
 	_sync_room_state(true)
+	if not story_stage.is_empty():
+		_story_telemetry = StoryTelemetryClass.new()
+		_story_telemetry.start(story_stage, is_story_test_run)
+		if is_story_test_run:
+			_story_telemetry.log_event("Test stage started")
 	_setup_adventure_mode()
 
 	# Load enemy textures
@@ -1198,6 +1310,7 @@ func _ready() -> void:
 		var walk_path: String = enemy_walk_paths[enemy_kind]
 		if ResourceLoader.exists(walk_path):
 			_enemy_walk_tex[enemy_kind] = load(walk_path) as Texture2D
+	_load_custom_story_assets()
 
 	# Initialise ad manager
 	_ad_manager = AdManager.new()
@@ -1303,7 +1416,7 @@ func _process(delta: float) -> void:
 	
 	if _pmove.x > 0.01:    _player_facing_x = 1
 	elif _pmove.x < -0.01: _player_facing_x = -1
-	_camera.position = _story_hazard_arena_center if _adventure_state == "story_hazards" else _player_pos
+	_camera.position = _story_hazard_arena_center if _is_story_hazard_arena_active() else _player_pos
 	_update_ring_shield(delta)
 	_apply_room_hazards(delta)
 	_update_enemy_trails(delta)
@@ -1348,6 +1461,7 @@ func _process(delta: float) -> void:
 	_update_lava_lines(delta)
 	_update_lava_pools(delta)
 	_update_adventure_mode(delta)
+	_update_story_debug_overlay(delta)
 	_lock_story_hazard_camera()
 	if story_stage.is_empty() and dungeon_mode.is_empty():
 		_update_spawner(delta)
@@ -1417,6 +1531,13 @@ func _apply_room_movement(delta: float, move_dir: Vector2) -> void:
 	var move_mul: float = 1.0 + _artifact_wheel_move_mul
 	if _ice_patch_slow_t > 0.0:
 		move_mul *= ICE_PATCH_SLOW_MULT
+	if _chapter_two != null and int(story_stage.get("chapter", 0)) == 2:
+		if _chapter_two.cold_exposure >= 100.0:
+			move_mul *= 0.85
+		elif _chapter_two.cold_exposure >= 75.0:
+			move_mul *= 0.92
+	if _chapter_five != null and _chapter_five.stage_number == 4 and _chapter_five.phase == "sync_attempt" and _chapter_five.flag("route_prepared"):
+		move_mul *= 1.15
 	if room_type == "frozen":
 		var target_vel: Vector2 = move_dir * _player_speed * 1.08 * move_mul
 		if move_dir == Vector2.ZERO:
@@ -1437,15 +1558,18 @@ func _story_hazard_arena_half_size() -> Vector2:
 	var view := get_viewport_rect().size
 	return Vector2(maxf(120.0, view.x * 0.5 - PLAYER_R - 24.0), maxf(180.0, view.y * 0.5 - PLAYER_R - 24.0))
 
+func _is_story_hazard_arena_active() -> bool:
+	return _adventure_state == "story_hazards" or (_adventure_state == "story_chapter_one" and _chapter_one != null and _chapter_one.stage_number == 5)
+
 func _apply_story_hazard_arena_bounds() -> void:
-	if _adventure_state != "story_hazards":
+	if not _is_story_hazard_arena_active():
 		return
 	var half_size := _story_hazard_arena_half_size()
 	_player_pos.x = clampf(_player_pos.x, _story_hazard_arena_center.x - half_size.x, _story_hazard_arena_center.x + half_size.x)
 	_player_pos.y = clampf(_player_pos.y, _story_hazard_arena_center.y - half_size.y, _story_hazard_arena_center.y + half_size.y)
 
 func _lock_story_hazard_camera() -> void:
-	if _camera == null or _adventure_state != "story_hazards":
+	if _camera == null or not _is_story_hazard_arena_active():
 		return
 	_camera.position_smoothing_enabled = false
 	_camera.drag_horizontal_enabled = false
@@ -1485,11 +1609,29 @@ func _room_vision_radius() -> float:
 	return 290.0 if (_current_room().get("id", "lava") as String) == "darkness" else 520.0
 
 func _damage_player(amount: float, iframe_time: float) -> bool:
+	if _is_inside_vulnerable_crown_window():
+		_player_iframes = maxf(_player_iframes, minf(iframe_time, 0.2))
+		return false
 	if _is_ring_shield_active():
 		_player_iframes = max(_player_iframes, min(iframe_time, 0.25))
 		return false
 	var story_damage: float = float(story_stage.get("enemy_damage", 1.0)) if not story_stage.is_empty() else 1.0
-	_player_hp -= amount * (1.0 + _ring_bonus("damage_taken_mul")) * float(_run_difficulty.get("enemy_damage", 1.0)) * float(_run_modifier.get("damage_taken", 1.0)) * story_damage
+	var final_amount := amount * (1.0 + _ring_bonus("damage_taken_mul")) * float(_run_difficulty.get("enemy_damage", 1.0)) * float(_run_modifier.get("damage_taken", 1.0)) * story_damage
+	_player_hp -= final_amount
+	if _chapter_two != null and _chapter_two.stage_number == 1 and _story_custom_carried == "flame_charge" and final_amount >= _player_max_hp * 0.08:
+		_chapter_two.cold_exposure = minf(100.0, _chapter_two.cold_exposure + 6.0)
+		_story_log("Flame charge weakened by heavy frost damage")
+	if _chapter_three != null and _chapter_three.stage_number == 4 and _story_custom_carried == "antidote_vial" and final_amount >= _player_max_hp * 0.04:
+		var vial_damage: float = clampf(final_amount / maxf(_player_max_hp, 1.0) * 70.0, 6.0, 14.0)
+		_chapter_three.adjust_meter("vial_integrity", -vial_damage)
+		_story_log("Vial damaged: integrity %d%%" % roundi(_chapter_three.meter("vial_integrity")))
+		if _chapter_three.meter("vial_integrity") <= 0.0:
+			_story_custom_failure = "The antidote vial shattered."
+			_player_hp = 0.0
+			_handle_player_death()
+			return true
+	elif _story_custom_id == "cleanse_mire" and final_amount >= _player_max_hp * 0.05:
+		_story_custom_progress["energy"] = maxi(0, int(_story_custom_progress.get("energy", 0)) - 1)
 	_player_iframes = iframe_time
 	if _player_hp <= 0.0:
 		_handle_player_death()
@@ -2459,14 +2601,18 @@ func _update_abyss_warden_special(boss: Dictionary, delta: float) -> void:
 		boss["pulse_fired"] = false
 		boss["summon_fired"] = false
 	var skill_cycle: float = fmod(st, 7.5)
+	var chapter_five_king: bool = str(boss.get("story_tag", "")) == "abyss_king" and _chapter_five != null
 	if skill_cycle < 2.25 and not boss.get("chain_fired", false):
-		_fire_abyss_chain(boss, phase)
+		if not chapter_five_king or _chapter_five.boss_ability_enabled("mirrored_projectiles"):
+			_fire_abyss_chain(boss, phase)
 		boss["chain_fired"] = true
 	elif skill_cycle >= 2.25 and skill_cycle < 4.5 and not boss.get("pulse_fired", false):
-		_fire_abyss_pulse(boss, phase)
+		if not chapter_five_king or _chapter_five.boss_ability_enabled("corruption"):
+			_fire_abyss_pulse(boss, phase)
 		boss["pulse_fired"] = true
 	elif skill_cycle >= 4.5 and not boss.get("summon_fired", false):
-		_fire_abyss_summon(boss)
+		if not chapter_five_king or _chapter_five.boss_ability_enabled("summons"):
+			_fire_abyss_summon(boss)
 		boss["summon_fired"] = true
 
 func _fire_abyss_chain(boss: Dictionary, phase: int) -> void:
@@ -2518,7 +2664,7 @@ func _fire_abyss_summon(boss: Dictionary) -> void:
 		var spawn_dist: float = 200.0
 		var spawn_pos: Vector2 = (boss["pos"] as Vector2) + Vector2(cos(spawn_angle), sin(spawn_angle)) * spawn_dist
 		var summon_kind: String = ["normal", "normal_tank", "normal_fast"][randi() % 3]
-		_enemies.append(_make_enemy_data(summon_kind, ws))
+		_spawn_enemy_from(_make_enemy_data(summon_kind, ws))
 		_enemies[-1]["pos"] = spawn_pos
 		_enemies[-1]["corrupted"] = true
 
@@ -2724,29 +2870,33 @@ func _update_thunderforge_special(boss: Dictionary, delta: float) -> void:
 		boss["special_timer"] = 0.0
 	
 	boss["special_timer"] = (boss["special_timer"] as float) + delta
+	var chapter_four_boss: bool = str(boss.get("story_tag", "")) == "c4_thunderforge_behemoth" and _chapter_four != null
+	if chapter_four_boss and not bool(boss.get("system_1_disabled", false)):
+		boss["hp"] = minf(float(boss.get("max_hp", boss.hp)), float(boss.hp) + float(boss.get("max_hp", boss.hp)) * 0.0025 * delta)
 	
 	var st: float = boss["special_timer"] as float
-	var cycle_num: int = int(st / 7.5)
+	var cycle_duration: float = 6.2 if chapter_four_boss and _chapter_four.flag("shutdown_complete") else 7.5
+	var cycle_num: int = int(st / cycle_duration)
 	if cycle_num != (boss.get("skill_cycle_num", -1) as int):
 		boss["skill_cycle_num"] = cycle_num
 		boss["hammer_fired"] = false
 		boss["coil_fired"] = false
 		boss["hammer2_fired"] = false
 		boss["cataclysm_fired"] = false
-	var skill_cycle: float = fmod(st, 7.5)
+	var skill_cycle: float = fmod(st, cycle_duration)
 	
 	# Skill rotation: Hammer (1.5s) → Coil (1.5s) → Hammer (1.5s) → Cataclysm (3s)
 	if skill_cycle < 1.5 and not boss.get("hammer_fired", false):
-		_fire_thunder_hammer(boss)
+		if not chapter_four_boss or not bool(boss.get("system_0_disabled", false)): _fire_thunder_hammer(boss)
 		boss["hammer_fired"] = true
 	elif skill_cycle >= 1.5 and skill_cycle < 3.0 and not boss.get("coil_fired", false):
-		_fire_arc_coil(boss)
+		if not chapter_four_boss or not bool(boss.get("system_2_disabled", false)): _fire_arc_coil(boss)
 		boss["coil_fired"] = true
 	elif skill_cycle >= 3.0 and skill_cycle < 4.5 and not boss.get("hammer2_fired", false):
-		_fire_thunder_hammer(boss)
+		if not chapter_four_boss or not bool(boss.get("system_0_disabled", false)): _fire_thunder_hammer(boss)
 		boss["hammer2_fired"] = true
 	elif skill_cycle >= 4.5 and not boss.get("cataclysm_fired", false):
-		_fire_storm_cataclysm(boss)
+		if not chapter_four_boss or not bool(boss.get("system_3_disabled", false)): _fire_storm_cataclysm(boss)
 		boss["cataclysm_fired"] = true
 
 func _fire_thunder_hammer(boss: Dictionary) -> void:
@@ -2985,7 +3135,9 @@ func _update_enemies(delta: float) -> void:
 		var ekind: String = e.get("kind", "normal") as String
 		var objective_target_index := _enemy_objective_target_index()
 		var enemy_target := _player_pos
-		if objective_target_index >= 0:
+		if e.has("objective_target_pos") and e["objective_target_pos"] is Vector2:
+			enemy_target = e["objective_target_pos"] as Vector2
+		elif objective_target_index >= 0:
 			enemy_target = _adventure_props[objective_target_index].pos as Vector2
 		var _emove_dir: Vector2 = (enemy_target - ep).normalized()
 		var move_speed: float = e["spd"] as float
@@ -3011,7 +3163,8 @@ func _update_enemies(delta: float) -> void:
 			if (_enemies[i]["pos"] as Vector2).distance_to(enemy_target) < 72.0 + (e["r"] as float) and float(e.objective_hit_t) <= 0.0:
 				e.objective_hit_t = 0.75
 				_damage_adventure_prop(objective_target_index, float(e.dmg) * 0.34)
-		elif _player_iframes <= 0.0:
+		var damages_player_while_targeting: bool = _adventure_state == "story_chapter_one" and _chapter_one != null and _chapter_one.stage_number == 1
+		if (objective_target_index < 0 or damages_player_while_targeting) and _player_iframes <= 0.0:
 			if (_enemies[i]["pos"] as Vector2).distance_to(_player_pos) < PLAYER_R + (e["r"] as float):
 				if _has_skill("meatball_barrage"):
 					var mb_lvl: int = _get_skill("meatball_barrage").get("level", 1) as int
@@ -3051,12 +3204,31 @@ func _update_enemies(delta: float) -> void:
 			_update_blight_tyrant_special(e, delta)
 		elif ekind == "thunderforge_behemoth":
 			_update_thunderforge_special(e, delta)
+		elif ekind == "portal_keeper_boss":
+			e["special_timer"] = float(e.get("special_timer", 0.0)) + delta
+			if float(e["special_timer"]) >= 1.8:
+				e["special_timer"] = 0.0
+				_fire_shooter_boss_pattern(e)
+		elif ekind == "mirror_guardian_boss":
+			_update_prism_triarch_special(e, delta)
+		elif ekind == "eclipse_elite_boss":
+			_update_abyss_warden_special(e, delta)
+		elif ekind == "abyss_king_boss":
+			if _chapter_five != null and _chapter_five.phase in ["final_boss_c", "desperation"]:
+				_update_prism_triarch_special(e, delta)
+			else:
+				_update_abyss_warden_special(e, delta)
 
 func _enemy_objective_target_index() -> int:
 	if _adventure_state == "story_escort":
 		return _find_adventure_prop("scout")
 	if _adventure_state == "story_defend":
 		return _find_adventure_prop("shrine")
+	if _adventure_state == "story_chapter_one" and _chapter_one != null:
+		if _chapter_one.stage_number == 1:
+			return _find_adventure_prop("scout")
+		if _chapter_one.stage_number == 2:
+			return _find_adventure_prop("shrine")
 	return -1
 
 func _damage_adventure_prop(index: int, damage: float) -> void:
@@ -3065,6 +3237,13 @@ func _damage_adventure_prop(index: int, damage: float) -> void:
 	var prop := _adventure_props[index]
 	prop.hp = float(prop.get("hp", 1.0)) - damage
 	_adventure_props[index] = prop
+	if _adventure_state == "story_chapter_one" and _chapter_one != null:
+		var ratio: float = clampf(float(prop.get("hp", 0.0)) / maxf(float(prop.get("max_hp", 1.0)), 1.0), 0.0, 1.0)
+		for threshold in [0.75, 0.50, 0.25, 0.0]:
+			var threshold_key: String = "%s_hp_%d" % [str(prop.get("kind", "target")), roundi(threshold * 100.0)]
+			if ratio <= threshold and not bool(_story_custom_progress.get(threshold_key, false)):
+				_story_custom_progress[threshold_key] = true
+				_story_log("Defence health state: %s %d%%" % [str(prop.get("kind", "target")), roundi(ratio * 100.0)])
 
 func _update_bolts(delta: float) -> void:
 	var vp: Rect2 = get_viewport_rect()
@@ -4128,6 +4307,9 @@ func _show_boss_portal_confirm() -> void:
 			_boss_portal_confirm_layer = null
 	)
 	use_btn.pressed.connect(func() -> void:
+		if is_story_test_run:
+			push_warning("Permanent key use is disabled during a Story test run.")
+			return
 		if PurchaseStore.consume_key(account_username):
 			_boss_key_spent_this_run += 1
 			if _boss_portal_confirm_layer != null:
@@ -4170,7 +4352,7 @@ func _on_arena_boss_cleared() -> void:
 		"arena_half": BOSS_ARENA_HALF,
 		"last_boss_wave": _wave,
 	}
-	var reward: Dictionary = _award_random_artifact()
+	var reward: Dictionary = {} if is_story_test_run else _award_random_artifact()
 	if not reward.is_empty():
 		_boss_artifact_results.append(reward)
 	if reward.get("duplicated", false) as bool and _boss_key_spent_this_run > 0:
@@ -4770,41 +4952,295 @@ const MAX_ENEMIES: int = 150
 # ─────────────────────────────────────────────────────────────────────────────
 
 func _setup_adventure_mode() -> void:
+	_reset_staged_objective_state()
+	_chapter_one = null
+	_chapter_two = null
+	_chapter_three = null
+	_chapter_four = null
+	_chapter_five = null
+	_story_stage_origin = _player_pos
+	_story_previous_objective_pos = _player_pos
+	_story_victory_started = false
+	_story_victory_validated = false
+	_story_primary_complete = false
+	_story_required_boss_defeated = false
+	_story_required_target_survived = false
+	_objective_boss_active = false
 	if not story_stage.is_empty():
-		var stage_number := int(story_stage.get("chapter_stage", 1))
-		match stage_number:
-			1:
-				_adventure_state = "story_escort_wait"
-				_adventure_timer = 90.0
-				_adventure_props.clear()
-			2:
-				_adventure_state = "story_defend_wait"
-				_adventure_timer = 120.0
-				_adventure_props.clear()
-			3:
-				_adventure_state = "story_nests"
-				_story_nests_destroyed = 0
-				_adventure_props.clear()
-			4:
-				_adventure_state = "story_keys"
-				_adventure_target = 3
-				_adventure_props.clear()
-				_story_key_drop_elapsed = 0.0
-			_:
-				_adventure_state = "story_hazards"
-				_adventure_timer = 55.0
-				_adventure_target = 55
-				_story_hazard_arena_center = _player_pos
-				_story_hazard_shot_timer = 1.2
-				_story_hazard_pattern = 0
-				_player_pos = _story_hazard_arena_center + Vector2(0, minf(280.0, _story_hazard_arena_half_size().y * 0.55))
-				_adventure_props = [{"kind":"hazard_emitter", "pos":_story_hazard_arena_center, "hp":1.0, "max_hp":1.0}]
-				_lock_story_hazard_camera()
+		var objective := str(story_stage.get("objective", "escort"))
+		if int(story_stage.get("chapter", 1)) > 1:
+			_setup_custom_story_objective(objective, story_stage.get("objective_config", {}) as Dictionary)
+			return
+		_setup_chapter_one_stage(objective)
 		_adventure_spawn_timer = 1.5
 	elif dungeon_mode == "coin_burrow":
 		_begin_coin_depth(_next_dungeon_depth())
 	elif dungeon_mode == "forgecore":
 		_begin_forge_depth(_next_dungeon_depth())
+
+func _setup_custom_story_objective(objective: String, config: Dictionary) -> void:
+	_story_custom_id = objective
+	_story_custom_data = config.duplicate(true)
+	_story_custom_progress = {}
+	_story_custom_sequence.clear()
+	_story_custom_timer = float(config.get("timer", 0.0))
+	_story_custom_interaction = 0.0
+	_story_custom_touch_lock = ""
+	_story_custom_carried = ""
+	_story_custom_phase = 0
+	_story_custom_alert = 0.0
+	_story_custom_target_enemy = -1
+	_story_custom_failure = ""
+	_reset_staged_objective_state()
+	_story_stage_origin = _player_pos
+	_story_previous_objective_pos = _player_pos
+	_story_gate_remaining = 0
+	_story_final_triggered = false
+	_story_final_completed = false
+	_story_final_remaining = 0
+	_adventure_state = "story_custom"
+	_adventure_progress = 0
+	_adventure_target = int(config.get("count", 1))
+	_adventure_props.clear()
+	_enemies.clear()
+	if int(story_stage.get("chapter", 0)) == 2:
+		_setup_chapter_two_stage(objective)
+		_adventure_spawn_timer = 0.8
+		_sync_room_state(true)
+		return
+	if int(story_stage.get("chapter", 0)) == 3:
+		_setup_chapter_three_stage(objective)
+		_adventure_spawn_timer = 0.8
+		_sync_room_state(true)
+		return
+	if int(story_stage.get("chapter", 0)) == 4:
+		_setup_chapter_four_stage(objective)
+		_adventure_spawn_timer = 1.2
+		_sync_room_state(true)
+		return
+	if int(story_stage.get("chapter", 0)) == 5:
+		_setup_chapter_five_stage(objective)
+		_adventure_spawn_timer = 1.4
+		_sync_room_state(true)
+		return
+	match objective:
+		"frozen_braziers":
+			_configure_staged_objectives(config)
+		"ice_captives":
+			_configure_staged_objectives(config)
+		"thaw_runes":
+			_story_custom_sequence = [0, 1, 2, 3]
+			_story_custom_sequence.shuffle()
+			_story_custom_timer = 5.0
+			_story_custom_progress["entered"] = 0
+			for i in 4:
+				_spawn_custom_prop("thaw_rune", _story_objective_zone_position(i, 620.0), {"rune":i})
+		"frost_mimic":
+			_story_custom_timer = 1.0
+			_spawn_next_mimic_chest()
+		"frost_colossus":
+			_configure_staged_objectives(config)
+			_spawn_story_objective_enemy("shield_boss", "frost_colossus", 1.25, _player_pos + Vector2(0, -430))
+		"cleanse_mire":
+			_story_custom_progress = {"energy":0, "energy_needed":int(config.get("energy", 3))}
+			_configure_staged_objectives(config)
+		"plaguebeast":
+			_story_custom_progress["escapes"] = 0
+			_spawn_story_objective_enemy("normal_tank", "plaguebeast", 4.2, _custom_objective_position(1150.0))
+			_spawn_custom_prop("tracker", _player_pos, {})
+		"venom_harvest":
+			_story_custom_progress = {"spider":0, "toad":0, "wasp":0, "phase":0}
+		"fragile_cure":
+			_story_custom_progress = {"vial":100.0, "checkpoints":0}
+			_spawn_cure_checkpoint(0)
+			_adventure_props.append_array(_custom_prop_ring("healing_fountain", 2, 480.0, 1.0))
+		"grand_antidote":
+			_story_custom_sequence = [0, 1, 2]
+			_story_custom_sequence.shuffle()
+			_story_custom_progress["submitted"] = 0
+			_spawn_custom_prop("cauldron", _player_pos + Vector2(0, -160), {})
+			_spawn_current_antidote_ingredient()
+		"silent_descent":
+			_story_custom_progress = {"alert":0.0, "lockdowns":0, "safe_points":0}
+			var descent_direction: Vector2 = Vector2.UP.rotated(randf_range(-0.45, 0.45))
+			var descent_side: Vector2 = descent_direction.rotated(PI * 0.5)
+			for section in 3:
+				var section_center: Vector2 = _story_stage_origin + descent_direction * (1150.0 + float(section) * 1250.0)
+				_spawn_custom_prop("hiding_zone", section_center, {"section":section, "visited":false, "activation_progress":0.0})
+				for side_sign in [-1.0, 1.0]:
+					var patrol_side: Vector2 = descent_side * side_sign * (265.0 + float(section % 2) * 45.0)
+					var patrol_start: Vector2 = section_center + patrol_side - descent_direction * 250.0
+					var patrol_end: Vector2 = section_center + patrol_side + descent_direction * 250.0
+					if side_sign < 0.0:
+						var swap_position: Vector2 = patrol_start
+						patrol_start = patrol_end
+						patrol_end = swap_position
+					_spawn_custom_prop("sentry", patrol_start, {"facing":patrol_start.direction_to(patrol_end), "patrol_start":patrol_start, "patrol_end":patrol_end, "patrol_target":patrol_end, "patrol_speed":82.0 + float(section) * 8.0})
+			_spawn_custom_prop("citadel_gate", _story_stage_origin + descent_direction * 4900.0, {})
+		"soul_liberation":
+			_spawn_custom_prop("abyss_portal", _player_pos + Vector2(0, -650), {})
+			_spawn_soul_chain()
+		"mirror_labyrinth":
+			_story_custom_progress["room"] = 0
+			_spawn_mirror_room()
+		"twin_eclipse":
+			_story_custom_progress = {"first":-1, "window":0.0}
+			_spawn_custom_prop("eclipse_obelisk", _story_stage_origin + Vector2(-700.0, 0.0), {"obelisk":0})
+			_spawn_custom_prop("eclipse_obelisk", _story_stage_origin + Vector2(700.0, 0.0), {"obelisk":1})
+			_spawn_story_gate_ambush(12)
+		"abyss_king":
+			_story_custom_phase = 1
+			_story_custom_timer = 150.0
+			_spawn_next_ritual_anchor()
+	_adventure_spawn_timer = 0.8
+	_story_log_phase("setup", objective)
+	if _story_custom_timer > 0.0:
+		_story_log("Timer started: %.2fs" % _story_custom_timer)
+	_sync_room_state(true)
+
+func _reset_staged_objective_state() -> void:
+	_staged_objective_enabled = false
+	_staged_objective_required = 0
+	_staged_objective_generated = 0
+	_staged_objective_active = 0
+	_staged_objective_completed = 0
+	_staged_objective_spawn_timer = 0.0
+	_story_gate_remaining = 0
+
+func _configure_staged_objectives(config: Dictionary) -> void:
+	_staged_objective_enabled = bool(config.get("progressive_spawn", false))
+	_staged_objective_required = int(config.get("count", 1))
+	_staged_objective_spawn_timer = float(config.get("first_spawn_delay", 0.0))
+
+func _update_staged_objective_spawning(delta: float) -> void:
+	if not _staged_objective_enabled or _staged_objective_generated >= _staged_objective_required:
+		return
+	_staged_objective_spawn_timer = maxf(0.0, _staged_objective_spawn_timer - delta)
+	var max_active: int = maxi(1, int(_story_custom_data.get("max_active_objectives", 1)))
+	var wait_for_previous: bool = bool(_story_custom_data.get("spawn_after_previous_completed", true))
+	if _staged_objective_spawn_timer > 0.0 or _staged_objective_active >= max_active or _story_gate_remaining > 0:
+		return
+	if wait_for_previous and _staged_objective_completed < _staged_objective_generated:
+		return
+	_spawn_next_staged_objective()
+
+func _spawn_next_staged_objective() -> void:
+	if _staged_objective_generated >= _staged_objective_required:
+		return
+	var sequence_index: int = _staged_objective_generated
+	var zone_distance: float = float(_story_custom_data.get("objective_zone_distance", 700.0))
+	var objective_pos: Vector2 = _story_objective_zone_position(sequence_index, zone_distance)
+	match _story_custom_id:
+		"frozen_braziers":
+			_spawn_custom_prop("brazier", objective_pos, {"active":false, "order":sequence_index})
+		"ice_captives":
+			var prison_hp: float = 140.0 + float(sequence_index) * 28.0
+			_spawn_custom_prop("ice_prison", objective_pos, {"hp":prison_hp, "max_hp":prison_hp})
+		"frost_colossus":
+			var crystal_hp: float = 200.0 + float(sequence_index) * 65.0
+			_spawn_custom_prop("armour_crystal", objective_pos, {"hp":crystal_hp, "max_hp":crystal_hp})
+		"cleanse_mire":
+			_story_custom_progress["energy_needed"] = 3 + sequence_index
+			_spawn_custom_prop("corrupted_pool", objective_pos, {})
+		_:
+			return
+	_staged_objective_generated += 1
+	_staged_objective_active += 1
+	if _story_telemetry != null:
+		_story_telemetry.objective_spawned(_story_custom_id, "required_generated=%d/%d active=%d" % [_staged_objective_generated, _staged_objective_required, _staged_objective_active])
+	_story_previous_objective_pos = objective_pos
+
+func _story_objective_zone_position(sequence_index: int, distance: float) -> Vector2:
+	var directions: Array[Vector2] = [Vector2.UP, Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2(0.72, -0.69), Vector2(0.72, 0.69), Vector2(-0.72, 0.69), Vector2(-0.72, -0.69)]
+	var direction: Vector2 = directions[sequence_index % directions.size()].normalized()
+	var candidate := _story_stage_origin + direction * (distance + float(sequence_index % 3) * 110.0)
+	if candidate.distance_to(_story_previous_objective_pos) < distance * 0.75:
+		candidate = _story_stage_origin - direction * (distance + 160.0)
+	return candidate
+
+func _complete_staged_objective_instance() -> void:
+	if not _staged_objective_enabled:
+		_adventure_progress += 1
+		return
+	_staged_objective_active = maxi(0, _staged_objective_active - 1)
+	_staged_objective_completed = mini(_staged_objective_required, _staged_objective_completed + 1)
+	if _story_telemetry != null:
+		_story_telemetry.objective_completed(_story_custom_id, "required_completed=%d/%d active=%d" % [_staged_objective_completed, _staged_objective_required, _staged_objective_active])
+	_adventure_progress = _staged_objective_completed
+	_staged_objective_spawn_timer = float(_story_custom_data.get("spawn_interval", 0.0))
+	if _staged_objective_completed < _staged_objective_required:
+		var ambush_counts: Array = _story_custom_data.get("ambush_counts", []) as Array
+		var ambush_index: int = _staged_objective_completed - 1
+		if ambush_index >= 0 and ambush_index < ambush_counts.size():
+			_spawn_story_gate_ambush(int(ambush_counts[ambush_index]))
+	_try_finish_staged_objectives()
+
+func _spawn_story_gate_ambush(count: int) -> void:
+	_story_gate_remaining = maxi(0, count)
+	for enemy_index in count:
+		var kind := "normal_tank" if enemy_index % 5 == 4 else ("normal_fast" if enemy_index % 3 == 2 else "normal")
+		_spawn_story_objective_enemy(kind, "objective_gate", 1.0 + float(_staged_objective_completed) * 0.22, _player_pos + Vector2.RIGHT.rotated(float(enemy_index) * TAU / float(maxi(count, 1))) * randf_range(330.0, 470.0))
+
+func _retry_staged_objective_instance() -> void:
+	if not _staged_objective_enabled:
+		return
+	_staged_objective_active = maxi(0, _staged_objective_active - 1)
+	_staged_objective_generated = maxi(_staged_objective_completed, _staged_objective_generated - 1)
+	_staged_objective_spawn_timer = float(_story_custom_data.get("spawn_interval", 0.0))
+	if _story_telemetry != null:
+		_story_telemetry.retry("staged_objective_instance")
+
+func _try_finish_staged_objectives() -> void:
+	if not _staged_objective_enabled:
+		return
+	if _staged_objective_generated < _staged_objective_required or _staged_objective_completed < _staged_objective_required or _staged_objective_active > 0:
+		return
+	if bool(_story_custom_data.get("final_objective_requires_boss", false)):
+		_story_custom_phase = maxi(_story_custom_phase, 1)
+	else:
+		_complete_custom_story_stage()
+
+func _custom_objective_position(distance: float) -> Vector2:
+	return _player_pos + Vector2.RIGHT.rotated(randf_range(0.0, TAU)) * distance
+
+func _custom_prop_ring(kind: String, count: int, radius: float, hp: float) -> Array[Dictionary]:
+	var props: Array[Dictionary] = []
+	for i in count:
+		var angle := float(i) / float(count) * TAU - PI * 0.5
+		props.append({"kind":kind, "pos":_player_pos + Vector2.from_angle(angle) * radius, "hp":hp, "max_hp":hp, "inside":false})
+	return props
+
+func _spawn_custom_prop(kind: String, pos: Vector2, extra: Dictionary) -> void:
+	var prop := {"kind":kind, "pos":pos, "hp":1.0, "max_hp":1.0, "inside":false}
+	prop.merge(extra, true)
+	_adventure_props.append(prop)
+	if _story_telemetry != null:
+		_story_telemetry.objective_spawned(kind)
+
+func _spawn_story_objective_enemy(kind: String, tag: String, strength: float, pos: Vector2) -> void:
+	_spawn_enemy_from(_make_enemy_data(kind, strength * _story_stage_strength()))
+	if _enemies.is_empty(): return
+	var index := _enemies.size() - 1
+	_enemies[index]["story_tag"] = tag
+	_enemies[index]["pos"] = pos
+	_enemies[index]["objective_max_hp"] = float(_enemies[index].get("hp", 1.0))
+	_story_custom_target_enemy = index
+	if _story_telemetry != null:
+		var required_remaining: int = _story_final_remaining if tag == "story_final" else 0
+		_story_telemetry.story_enemy_spawned(tag, _enemies.size(), required_remaining, 0)
+		if _is_boss_kind(kind):
+			_story_telemetry.log_event("Boss spawned: %s · objective=%s" % [kind, tag])
+
+func _spawn_soul_chain() -> void:
+	if _adventure_progress >= _adventure_target: return
+	var chain_hp: float = 95.0 + float(_adventure_progress) * 18.0
+	_spawn_custom_prop("soul_chain", _story_objective_zone_position(_adventure_progress, 720.0), {"hp":chain_hp, "max_hp":chain_hp})
+
+func _spawn_mirror_room() -> void:
+	_adventure_props = _custom_prop_ring("mirror_portal", 3, 360.0, 1.0)
+	var correct := randi_range(0, 2)
+	_story_custom_progress["correct"] = correct
+	for i in _adventure_props.size(): _adventure_props[i]["portal"] = i
 
 func _make_objective_ring(kind: String, count: int, radius: float, hp: float) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
@@ -4862,19 +5298,35 @@ func _update_adventure_mode(delta: float) -> void:
 	if _adventure_state.is_empty() or _adventure_state.ends_with("choice") or _objective_boss_active:
 		return
 	_adventure_spawn_timer -= delta
-	var adventure_enemy_cap := 70 if _adventure_state == "story_defend" else (mini(48 + _wave * 5, 110) if not dungeon_mode.is_empty() else 42)
-	if _adventure_state != "story_nests" and _adventure_spawn_timer <= 0.0 and _enemies.size() < adventure_enemy_cap:
+	var is_c3_venom_harvest: bool = _adventure_state == "story_custom" and _chapter_three != null and _chapter_three.stage_number == 3
+	var is_story_ambient: bool = _adventure_state == "story_custom" and not story_stage.is_empty()
+	var is_silent_descent: bool = _adventure_state == "story_custom" and _story_custom_id == "silent_descent"
+	var adventure_enemy_cap := 70 if _adventure_state == "story_defend" else (mini(48 + _wave * 5, 110) if not dungeon_mode.is_empty() else (32 if is_silent_descent else (50 if is_c3_venom_harvest else (48 if is_story_ambient else 42))))
+	var custom_spawns_enabled := _adventure_state != "story_chapter_one" and _story_gate_remaining <= 0 and not _story_final_triggered
+	if _chapter_two != null and _chapter_two.stage_number == 3 and _chapter_two.phase == "sequence_reveal":
+		custom_spawns_enabled = false
+	if _chapter_two != null and _chapter_two.stage_number == 5:
+		custom_spawns_enabled = false
+	if custom_spawns_enabled and _adventure_state != "story_nests" and _adventure_spawn_timer <= 0.0 and _enemies.size() < adventure_enemy_cap:
 		var defense_progress := clampf((120.0 - _adventure_timer) / 120.0, 0.0, 1.0) if _adventure_state == "story_defend" else 0.0
 		var spawn_interval := maxf(0.42, 0.85 - defense_progress * 0.38) if _adventure_state == "story_defend" else (1.05 if _adventure_state == "story_escort" else (maxf(0.42, 1.75 - float(max(_wave, 1)) * 0.055) if not dungeon_mode.is_empty() else maxf(0.8, 3.0 - float(max(_wave, 1)) * 0.08)))
+		if is_story_ambient:
+			spawn_interval = 1.65 if is_silent_descent else (1.55 if is_c3_venom_harvest else 1.70)
 		_adventure_spawn_timer = spawn_interval
 		var count: int = 4 + floori(defense_progress * 4.0) if _adventure_state == "story_defend" else (3 if _adventure_state == "story_escort" else 2 + mini(floori(float(max(_wave, 1)) / 2.0), 8))
+		if is_story_ambient:
+			count = 3 + (mini(_chapter_three.count("regions_complete"), 1) if is_c3_venom_harvest else 0)
 		var story_defend_strength := 1.0
 		if _adventure_state == "story_defend": story_defend_strength += (120.0 - _adventure_timer) / 90.0
 		for i in count:
 			var kind := "normal_tank" if dungeon_mode == "forgecore" and randf() < 0.7 else ("normal_fast" if randf() < 0.45 else "normal")
+			if _adventure_state == "story_custom" and _story_custom_id == "venom_harvest":
+				var venom_phase: int = int(_story_custom_progress.get("phase", 0))
+				kind = "normal_fast" if venom_phase == 0 else ("normal_tank" if venom_phase == 1 else "normal")
 			var story_strength := _story_stage_strength() if not story_stage.is_empty() else 1.0
 			_spawn_enemy_from(_make_enemy_data(kind, (0.82 + float(max(_wave, 1)) * 0.12) * story_defend_strength * story_strength))
 	match _adventure_state:
+		"story_chapter_one": _update_chapter_one_stage(delta)
 		"story_escort_wait": pass
 		"story_escort": _update_story_escort(delta)
 		"story_defend_wait": pass
@@ -4882,51 +5334,3235 @@ func _update_adventure_mode(delta: float) -> void:
 		"story_nests": _update_story_nests(delta)
 		"story_keys": _update_story_keys(delta)
 		"story_hazards": _update_story_hazards(delta)
+		"story_custom": _update_custom_story_objective(delta)
 		"coin_hunt": _update_coin_hunt(delta)
 		"forge_activate": _update_forges(delta)
 
+func _update_custom_story_objective(delta: float) -> void:
+	if _chapter_two != null and int(story_stage.get("chapter", 0)) == 2:
+		_update_chapter_two_stage(delta)
+		return
+	if _chapter_three != null and int(story_stage.get("chapter", 0)) == 3:
+		_update_chapter_three_stage(delta)
+		return
+	if _chapter_four != null and int(story_stage.get("chapter", 0)) == 4:
+		_update_chapter_four_stage(delta)
+		return
+	if _chapter_five != null and int(story_stage.get("chapter", 0)) == 5:
+		_update_chapter_five_stage(delta)
+		return
+	_update_staged_objective_spawning(delta)
+	match _story_custom_id:
+		"frozen_braziers": _update_frozen_braziers(delta)
+		"ice_captives": _update_custom_breakables(delta, "ice_prison", 185.0)
+		"thaw_runes": _update_thaw_runes(delta)
+		"frost_mimic": _update_frost_mimic(delta)
+		"frost_colossus": _update_custom_breakables(delta, "armour_crystal", 185.0)
+		"cleanse_mire": _update_cleanse_mire(delta)
+		"plaguebeast": _update_plaguebeast()
+		"venom_harvest": _update_venom_harvest()
+		"fragile_cure": _update_fragile_cure(delta)
+		"grand_antidote": _update_grand_antidote()
+		"silent_descent": _update_silent_descent(delta)
+		"soul_liberation": _update_soul_liberation(delta)
+		"mirror_labyrinth": _update_mirror_labyrinth()
+		"twin_eclipse": _update_twin_eclipse(delta)
+		"abyss_king": _update_abyss_king(delta)
+
+func _setup_chapter_five_stage(objective: String) -> void:
+	_chapter_five = ChapterFiveStageControllerClass.new()
+	_chapter_five.reset(int(story_stage.get("chapter_stage", 1)))
+	_story_custom_phase = 1
+	_story_custom_progress = {}
+	_story_custom_timer = 0.0
+	match objective:
+		"silent_descent":
+			_chapter_five.enter("route_selection")
+			_story_custom_progress = {"detection_time":0.0, "scan_ambush_cooldown":0.0}
+		"soul_liberation":
+			_chapter_five.enter("spirit_rescue")
+			_chapter_five.set_count("spirits_required", 6)
+			_spawn_custom_prop("abyss_portal", _story_stage_origin + Vector2(0.0, -920.0), {"suppression":0.0})
+			_spawn_custom_prop("spirit_safe_zone", _story_stage_origin + Vector2(0.0, 280.0), {})
+			_spawn_c5_soul_chain(0)
+		"mirror_labyrinth":
+			_chapter_five.enter("mirror_room")
+			_spawn_c5_mirror_room()
+		"twin_eclipse":
+			_chapter_five.enter("obelisk_preparation")
+			var obelisk_a: Vector2 = _story_stage_origin + Vector2(-1250.0, -180.0)
+			var obelisk_b: Vector2 = _story_stage_origin + Vector2(1250.0, 180.0)
+			_spawn_custom_prop("eclipse_obelisk", obelisk_a, {"obelisk":0, "stabilized":false, "progress":0.0})
+			_spawn_custom_prop("eclipse_obelisk", obelisk_b, {"obelisk":1, "stabilized":false, "progress":0.0})
+			_spawn_custom_prop("eclipse_seal", obelisk_a + Vector2(230.0, 0.0), {"obelisk":0, "hp":180.0, "max_hp":180.0})
+			_spawn_custom_prop("eclipse_ring", obelisk_b + Vector2(-230.0, 0.0), {"obelisk":1, "progress":0.0})
+			_spawn_custom_prop("eclipse_shortcut", _story_stage_origin, {"active":false, "progress":0.0})
+		"abyss_king":
+			_chapter_five.enter("ritual_anchors")
+			_chapter_five.set_timer("ritual", 210.0)
+			_chapter_five.set_count("anchors_destroyed", 0)
+			_chapter_five.set_flag("boss_spawned")
+			_spawn_story_objective_enemy("abyss_king_boss", "abyss_king", 2.4, _story_stage_origin + Vector2(0.0, -430.0))
+			_spawn_c5_anchors()
+	_story_log_phase("setup", _chapter_five.phase)
+
+func _c5_enter_phase(next_phase: String) -> void:
+	var previous: String = _chapter_five.enter(next_phase)
+	_story_custom_phase += 1
+	_story_log_phase(previous, next_phase)
+
+func _update_chapter_five_stage(delta: float) -> void:
+	match _chapter_five.stage_number:
+		1: _update_c5_silent_descent(delta)
+		2: _update_c5_soul_liberation(delta)
+		3: _update_c5_mirror_labyrinth()
+		4: _update_c5_twin_eclipse(delta)
+		5: _update_c5_abyss_king(delta)
+
+func _begin_c5_infiltration(route: String) -> void:
+	if _chapter_five == null or _chapter_five.stage_number != 1 or _chapter_five.phase != "route_selection":
+		return
+	_chapter_five.route = route
+	_chapter_five.set_flag("route_selected")
+	_chapter_five.set_flag("infiltration_started")
+	_c5_enter_phase("infiltration")
+	var direction: Vector2 = Vector2.UP.rotated(randf_range(-0.30, 0.30))
+	var side: Vector2 = direction.rotated(PI * 0.5)
+	var spacing: float = 1450.0 if route == "shadow" else (1120.0 if route == "mechanism" else 900.0)
+	var sentries_per_section: int = 1 if route == "shadow" else (2 if route == "mechanism" else 3)
+	for section in 3:
+		var center: Vector2 = _story_stage_origin + direction * (1100.0 + float(section) * spacing)
+		_spawn_custom_prop("hiding_zone", center + (side * 230.0 if route == "shadow" else Vector2.ZERO), {"section":section, "visited":false, "activation_progress":0.0})
+		if route == "mechanism":
+			_spawn_custom_prop("security_switch", center - side * 330.0, {"section":section, "disabled":false, "progress":0.0})
+		for sentry_index in sentries_per_section:
+			var lateral: float = (float(sentry_index) - float(sentries_per_section - 1) * 0.5) * 280.0
+			var start: Vector2 = center + side * lateral - direction * 310.0
+			var finish: Vector2 = center + side * lateral + direction * 310.0
+			_spawn_custom_prop("sentry", start, {"section":section, "state":"unaware", "suspicion":0.0, "facing":start.direction_to(finish), "patrol_start":start, "patrol_end":finish, "patrol_target":finish, "patrol_speed":72.0 + float(sentry_index) * 9.0, "disabled":false})
+	var gate_distance: float = 1100.0 + spacing * 3.0
+	_spawn_custom_prop("citadel_gate", _story_stage_origin + direction * gate_distance, {"unlock":0.0, "opened":false})
+	_story_log("Route selected: %s" % route)
+
+func _update_c5_silent_descent(delta: float) -> void:
+	if _chapter_five.phase == "route_selection":
+		return
+	var hidden: bool = false
+	var detected: bool = false
+	var current_checkpoint: int = _chapter_five.count("checkpoints_reached")
+	for prop_index in _adventure_props.size():
+		var prop: Dictionary = _adventure_props[prop_index]
+		var kind: String = str(prop.get("kind", ""))
+		var pos: Vector2 = prop.get("pos", Vector2.ZERO) as Vector2
+		if kind == "hiding_zone" and pos.distance_to(_player_pos) < 165.0:
+			hidden = true
+			if int(prop.get("section", -1)) == current_checkpoint and not bool(prop.get("visited", false)):
+				prop["activation_progress"] = minf(10.0, float(prop.get("activation_progress", 0.0)) + delta)
+				if float(prop["activation_progress"]) >= 10.0:
+					prop["visited"] = true
+					current_checkpoint = _chapter_five.add_count("checkpoints_reached")
+					_story_log("Infiltration checkpoint reached: %d/3" % current_checkpoint)
+				_adventure_props[prop_index] = prop
+		elif kind == "security_switch" and not bool(prop.get("disabled", false)) and pos.distance_to(_player_pos) < 170.0:
+			prop["progress"] = minf(4.0, float(prop.get("progress", 0.0)) + delta)
+			if float(prop["progress"]) >= 4.0:
+				prop["disabled"] = true
+				_chapter_five.add_count("mechanisms_disabled")
+				_story_log("Security mechanism disabled")
+			_adventure_props[prop_index] = prop
+		elif kind == "sentry" and not bool(prop.get("disabled", false)):
+			if _chapter_five.route == "mechanism" and int(prop.get("section", -1)) < _chapter_five.count("mechanisms_disabled"):
+				prop["disabled"] = true
+				prop["state"] = "disabled"
+				_adventure_props[prop_index] = prop
+				continue
+			var target: Vector2 = prop.get("patrol_target", pos) as Vector2
+			var start: Vector2 = prop.get("patrol_start", pos) as Vector2
+			var finish: Vector2 = prop.get("patrol_end", pos) as Vector2
+			if pos.distance_to(target) < 8.0:
+				target = start if target.distance_to(finish) < 8.0 else finish
+				prop["patrol_target"] = target
+			var move_direction: Vector2 = pos.direction_to(target)
+			prop["facing"] = move_direction
+			pos = pos.move_toward(target, float(prop.get("patrol_speed", 78.0)) * delta)
+			prop["pos"] = pos
+			var in_cone: bool = pos.distance_to(_player_pos) < 410.0 and absf(move_direction.angle_to(pos.direction_to(_player_pos))) < 0.58 and not hidden
+			var suspicion: float = clampf(float(prop.get("suspicion", 0.0)) + (38.0 if in_cone else -24.0) * delta, 0.0, 100.0)
+			prop["suspicion"] = suspicion
+			prop["state"] = "alerted" if suspicion >= 100.0 else ("searching" if suspicion >= 65.0 else ("suspicious" if suspicion > 0.0 else "unaware"))
+			detected = detected or in_cone
+			if suspicion >= 100.0 and not bool(prop.get("ambush_triggered", false)):
+				prop["ambush_triggered"] = true
+				_spawn_silent_descent_ambush(4)
+				_story_log("Detection state: Alerted")
+			_adventure_props[prop_index] = prop
+		elif kind == "citadel_gate" and current_checkpoint >= 3:
+			if pos.distance_to(_player_pos) < 180.0:
+				if _chapter_five.count("lockdowns") == 0:
+					prop["unlock"] = minf(8.0, float(prop.get("unlock", 0.0)) + delta)
+					if float(prop["unlock"]) >= 8.0:
+						prop["opened"] = true
+						_chapter_five.set_flag("gate_opened")
+						_chapter_five.set_flag("silent_finale_selected")
+						_c5_enter_phase("quiet_exit")
+						_spawn_custom_prop("final_threshold", pos + _story_stage_origin.direction_to(pos) * 650.0, {})
+				else:
+					prop["opened"] = true
+					_chapter_five.set_flag("gate_opened")
+					_chapter_five.set_flag("detected_finale_selected")
+					_c5_enter_phase("moving_escape")
+					_spawn_custom_prop("final_threshold", pos + pos.direction_to(_player_pos) * -850.0, {})
+					_spawn_silent_descent_ambush(8)
+					_story_log("Detected finale started: moving escape")
+				_adventure_props[prop_index] = prop
+		elif kind == "final_threshold" and pos.distance_to(_player_pos) < 160.0:
+			_chapter_five.set_flag("final_threshold_crossed")
+	if hidden != _chapter_five.flag("hidden"):
+		_chapter_five.set_flag("hidden", hidden)
+		_story_log("Hiding state changed: %s" % ("hidden" if hidden else "exposed"))
+	if _chapter_five.flag("final_threshold_crossed") and not _chapter_five.flag("transition_pending"):
+		_chapter_five.set_flag("final_route_complete")
+		_chapter_five.set_flag("primary_complete")
+		_story_primary_complete = true
+		_request_story_victory("chapter_five_infiltration_complete")
+	var alert_rate: float = -18.0 if hidden else (13.0 if detected else -7.0)
+	_chapter_five.adjust_meter("alert", alert_rate * delta)
+	_story_custom_alert = _chapter_five.meter("alert")
+	if _story_custom_alert >= 100.0:
+		if _chapter_five.count("lockdowns") == 0:
+			_chapter_five.set_count("lockdowns", 1)
+			_chapter_five.set_meter("alert", 55.0)
+			_story_custom_alert = 55.0
+			_spawn_silent_descent_ambush(6)
+			_story_log("Alert threshold: first lockdown")
+		else:
+			_fail_custom_story_stage("Second citadel lockdown triggered.")
+
+func _spawn_c5_soul_chain(index: int) -> void:
+	var chain_pos: Vector2 = _story_objective_zone_position(index + 1, 700.0 + float(index % 2) * 180.0)
+	_spawn_custom_prop("soul_chain", chain_pos, {"soul":index, "hp":125.0 + float(index) * 22.0, "max_hp":125.0 + float(index) * 22.0})
+	_chapter_five.add_count("chains_generated")
+
+func _update_c5_soul_liberation(delta: float) -> void:
+	if _chapter_five.phase == "portal_sealing":
+		_update_c5_portal_seal(delta)
+		return
+	for prop_index in range(_adventure_props.size() - 1, -1, -1):
+		var prop: Dictionary = _adventure_props[prop_index]
+		var kind: String = str(prop.get("kind", ""))
+		var pos: Vector2 = prop.get("pos", Vector2.ZERO) as Vector2
+		if kind == "soul_chain" and pos.distance_to(_player_pos) < 180.0:
+			prop["hp"] = float(prop.get("hp", 1.0)) - (34.0 + float(_level) * 3.0) * delta
+			if float(prop["hp"]) <= 0.0:
+				var soul_id: int = int(prop.get("soul", 0))
+				_adventure_props.remove_at(prop_index)
+				_spawn_custom_prop("released_soul", pos, {"soul":soul_id, "spirit_type":soul_id % 3, "captured":false, "saved":false})
+				_chapter_five.add_count("spirits_released")
+				_story_log("Spirit released: %d" % (soul_id + 1))
+				continue
+			_adventure_props[prop_index] = prop
+		elif kind == "released_soul":
+			var portal_index: int = _find_adventure_prop("abyss_portal")
+			var safe_index: int = _find_adventure_prop("spirit_safe_zone")
+			if portal_index < 0 or safe_index < 0: continue
+			var portal_pos: Vector2 = _adventure_props[portal_index].pos as Vector2
+			var safe_pos: Vector2 = _adventure_props[safe_index].pos as Vector2
+			var binder_near: bool = false
+			for enemy in _enemies:
+				if str(enemy.get("story_tag", "")) == "c5_soul_binder" and (enemy.pos as Vector2).distance_to(pos) < 220.0:
+					binder_near = true
+					break
+			var was_captured: bool = bool(prop.get("captured", false))
+			prop["captured"] = binder_near
+			if binder_near != was_captured:
+				_story_log("Spirit capture state changed: %s" % ("captured" if binder_near else "released"))
+			if not binder_near:
+				var guided: bool = pos.distance_to(_player_pos) < 230.0
+				var target: Vector2 = safe_pos if guided else portal_pos
+				var speed: float = [62.0, 88.0, 52.0][int(prop.get("spirit_type", 0))]
+				pos = pos.move_toward(target, speed * delta)
+				prop["pos"] = pos
+			if pos.distance_to(safe_pos) < 105.0:
+				_adventure_props.remove_at(prop_index)
+				var saved: int = _chapter_five.add_count("spirits_saved")
+				_player_hp = minf(_player_max_hp, _player_hp + _player_max_hp * 0.08)
+				_story_log("Spirit saved: %d/6" % saved)
+				continue
+			if pos.distance_to(portal_pos) < 90.0:
+				_adventure_props.remove_at(prop_index)
+				_chapter_five.add_count("spirits_lost")
+				_chapter_five.adjust_meter("abyss_pressure", 18.0)
+				var recovery_id: int = _chapter_five.count("chains_generated")
+				_spawn_c5_soul_chain(recovery_id)
+				_story_log("Spirit lost: recovery chain generated")
+				continue
+			_adventure_props[prop_index] = prop
+	var active_spirits: int = _count_adventure_props("released_soul")
+	var active_chains: int = _count_adventure_props("soul_chain")
+	var unresolved: int = active_spirits + active_chains
+	var generated: int = _chapter_five.count("chains_generated")
+	if _chapter_five.count("spirits_saved") < 6 and generated < 6 + _chapter_five.count("spirits_lost") and unresolved < (2 if generated >= 2 else 1):
+		_spawn_c5_soul_chain(generated)
+	if active_spirits > 0 and _find_story_enemy("c5_soul_binder") < 0 and _enemies.size() < 28:
+		_spawn_story_objective_enemy("normal_tank", "c5_soul_binder", 1.35, _custom_objective_position(520.0))
+	if _chapter_five.count("spirits_saved") >= 6 and active_spirits == 0:
+		_c5_enter_phase("portal_sealing")
+		_adventure_props.clear()
+		for seal_index in 3:
+			_spawn_custom_prop("portal_seal", _story_stage_origin + Vector2.from_angle(float(seal_index) * TAU / 3.0) * 420.0, {"seal":seal_index, "progress":0.0, "stable":false})
+		_spawn_story_objective_enemy("portal_keeper_boss", "c5_portal_keeper", 2.2, _story_stage_origin + Vector2(0.0, -520.0))
+		_chapter_five.set_flag("portal_sealing_started")
+		_chapter_five.set_flag("boss_spawned")
+
+func _update_c5_portal_seal(delta: float) -> void:
+	var stable_count: int = 0
+	for prop_index in _adventure_props.size():
+		var prop: Dictionary = _adventure_props[prop_index]
+		if str(prop.get("kind", "")) != "portal_seal": continue
+		if (prop.pos as Vector2).distance_to(_player_pos) < 175.0:
+			prop["progress"] = minf(6.0, float(prop.get("progress", 0.0)) + delta)
+		if float(prop.get("progress", 0.0)) >= 6.0:
+			prop["stable"] = true
+		if bool(prop.get("stable", false)): stable_count += 1
+		_adventure_props[prop_index] = prop
+	_chapter_five.set_count("seals_stable", stable_count)
+	if stable_count >= 3 and _chapter_five.flag("boss_defeated"):
+		_chapter_five.set_flag("portal_sealed")
+		_chapter_five.set_flag("primary_complete")
+		_story_primary_complete = true
+		_request_story_victory("chapter_five_portal_sealed")
+
+func _spawn_c5_mirror_room() -> void:
+	var room_index: int = _chapter_five.count("rooms_completed")
+	var room: Dictionary = _chapter_five.generate_mirror_room(room_index, int(story_stage.get("chapter_stage", 3)) * 1000 + room_index)
+	_adventure_props.clear()
+	var mirrors: Array = room.get("mirrors", []) as Array
+	for portal_index in 3:
+		var portal_data: Dictionary = mirrors[portal_index] as Dictionary
+		var portal_position: Vector2 = _story_stage_origin + Vector2.from_angle(-PI * 0.5 + float(portal_index - 1) * 1.25) * 480.0
+		_spawn_custom_prop("mirror_portal", portal_position, {"portal":portal_index, "symbol":portal_data.symbol, "direction":portal_data.direction, "pulses":portal_data.pulses, "inside":portal_position.distance_to(_player_pos) < 115.0})
+	_spawn_custom_prop("mirror_clue", _story_stage_origin + Vector2(0.0, 180.0), {"text":str(room.get("clue", ""))})
+	_chapter_five.set_flag("clue_state_valid", ChapterFiveStageControllerClass.validate_mirror_room(room))
+	_story_log("Mirror clue generated: room=%d clue=%s" % [room_index + 1, str(room.get("clue", ""))])
+
+func _update_c5_mirror_labyrinth() -> void:
+	if _chapter_five.phase == "guardian":
+		var exit_index: int = _find_adventure_prop("labyrinth_exit")
+		if exit_index >= 0 and (_adventure_props[exit_index].pos as Vector2).distance_to(_player_pos) < 160.0:
+			_chapter_five.set_flag("labyrinth_exit_reached")
+			if _chapter_five.flag("guardian_defeated"):
+				_finish_c5_mirror_guardian()
+		return
+	for prop_index in _adventure_props.size():
+		var prop: Dictionary = _adventure_props[prop_index]
+		if str(prop.get("kind", "")) != "mirror_portal": continue
+		var inside: bool = (prop.pos as Vector2).distance_to(_player_pos) < 115.0
+		if inside and not bool(prop.get("inside", false)):
+			var selected: int = int(prop.get("portal", -1))
+			var correct: int = int(_chapter_five.mirror_room.get("correct", -2))
+			_story_log("Mirror selected: room=%d portal=%d" % [_chapter_five.count("rooms_completed") + 1, selected + 1])
+			if selected == correct:
+				_chapter_five.remember_mirror()
+				var completed: int = _chapter_five.add_count("rooms_completed")
+				_story_log("Mirror room solved: %d/4" % completed)
+				if completed >= 4:
+					_c5_enter_phase("guardian")
+					_adventure_props.clear()
+					_spawn_custom_prop("labyrinth_exit", _story_stage_origin + Vector2(0.0, -250.0), {"reached":false})
+					_spawn_story_objective_enemy("mirror_guardian_boss", "c5_mirror_guardian", 2.1 + float(_chapter_five.count("wrong_choices")) * 0.16, _story_stage_origin + Vector2(0.0, -520.0))
+					_chapter_five.set_flag("guardian_spawned")
+					_chapter_five.set_flag("boss_spawned")
+				else: _spawn_c5_mirror_room()
+			else:
+				_chapter_five.add_count("wrong_choices")
+				_chapter_five.adjust_meter("abyss_pressure", 12.0)
+				_spawn_silent_descent_ambush(3)
+				_story_log("Wrong mirror: recoverable reflection room")
+				_spawn_c5_mirror_room()
+			return
+		prop["inside"] = inside
+		_adventure_props[prop_index] = prop
+
+func _finish_c5_mirror_guardian() -> void:
+	if _chapter_five == null or _chapter_five.stage_number != 3: return
+	if not _chapter_five.flag("labyrinth_exit_reached"):
+		_story_log("Guardian defeated: reach the Labyrinth Exit")
+		return
+	_chapter_five.set_flag("primary_complete")
+	_story_primary_complete = true
+	_request_story_victory("chapter_five_mirror_guardian_defeated")
+
+func _update_c5_twin_eclipse(delta: float) -> void:
+	if _chapter_five.phase == "obelisk_preparation":
+		var obelisk_a_was_stable: bool = _chapter_five.flag("obelisk_a_stabilized")
+		var obelisk_b_was_stable: bool = _chapter_five.flag("obelisk_b_stabilized")
+		_update_custom_breakables(delta, "eclipse_seal", 190.0)
+		for prop_index in _adventure_props.size():
+			var prop: Dictionary = _adventure_props[prop_index]
+			var kind: String = str(prop.get("kind", ""))
+			if kind == "eclipse_ring" and (prop.pos as Vector2).distance_to(_player_pos) < 185.0:
+				prop["progress"] = minf(6.0, float(prop.get("progress", 0.0)) + delta)
+				if float(prop["progress"]) >= 6.0: _chapter_five.set_flag("obelisk_b_stabilized")
+				_adventure_props[prop_index] = prop
+			elif kind == "eclipse_shortcut" and (prop.pos as Vector2).distance_to(_player_pos) < 175.0:
+				prop["progress"] = minf(4.0, float(prop.get("progress", 0.0)) + delta)
+				if float(prop["progress"]) >= 4.0:
+					prop["active"] = true
+					_chapter_five.set_flag("route_prepared")
+				_adventure_props[prop_index] = prop
+		if _find_adventure_prop("eclipse_seal") < 0: _chapter_five.set_flag("obelisk_a_stabilized")
+		if not obelisk_a_was_stable and _chapter_five.flag("obelisk_a_stabilized"):
+			_story_log("Obelisk A stabilized")
+		if not obelisk_b_was_stable and _chapter_five.flag("obelisk_b_stabilized"):
+			_story_log("Obelisk B stabilized")
+		if _chapter_five.flag("obelisk_a_stabilized") and _chapter_five.flag("obelisk_b_stabilized"):
+			_chapter_five.set_flag("preparation_complete")
+	elif _chapter_five.phase == "sync_attempt":
+		if _chapter_five.tick_timer("sync", delta) <= 0.0:
+			_chapter_five.adjust_meter("eclipse_pressure", 12.0)
+			_chapter_five.add_count("sync_failures")
+			_c5_enter_phase("obelisk_preparation")
+			_story_log("Synchronization failed: attempt reset")
+			return
+		for prop in _adventure_props:
+			if str(prop.get("kind", "")) == "eclipse_obelisk" and int(prop.get("obelisk", -1)) == 1 and (prop.pos as Vector2).distance_to(_player_pos) < 170.0:
+				_chapter_five.set_flag("sync_succeeded")
+				_chapter_five.set_timer("hold", 25.0)
+				_chapter_five.set_timer("elite_disrupt", 4.0)
+				_c5_enter_phase("sync_hold")
+				_spawn_story_objective_enemy("eclipse_elite_boss", "c5_eclipse_elite", 2.2, _story_stage_origin)
+				_chapter_five.set_flag("boss_spawned")
+				_story_log("Synchronization succeeded")
+				return
+	elif _chapter_five.phase == "sync_hold":
+		_update_custom_breakables(delta, "eclipse_disruption", 175.0)
+		var disruption_active: bool = _find_adventure_prop("eclipse_disruption") >= 0
+		if disruption_active:
+			_chapter_five.set_flag("elite_disruption_active")
+		elif _chapter_five.flag("elite_disruption_active"):
+			_chapter_five.set_flag("elite_disruption_active", false)
+			_chapter_five.set_timer("elite_disrupt", 5.0)
+			_story_log("Eclipse Elite disruption interrupted")
+		elif not _chapter_five.flag("boss_defeated") and _chapter_five.tick_timer("elite_disrupt", delta) <= 0.0 and not _chapter_five.flag("sync_hold_complete"):
+			var target_obelisk: int = _chapter_five.count("elite_disruptions") % 2
+			var target_position: Vector2 = _story_stage_origin + Vector2(-1250.0, -180.0) if target_obelisk == 0 else _story_stage_origin + Vector2(1250.0, 180.0)
+			_spawn_custom_prop("eclipse_disruption", target_position, {"hp":150.0, "max_hp":150.0, "obelisk":target_obelisk})
+			_chapter_five.add_count("elite_disruptions")
+			_chapter_five.set_flag("elite_disruption_active")
+			_story_log("Eclipse Elite disruption started: Obelisk %s" % ("A" if target_obelisk == 0 else "B"))
+		if not _chapter_five.flag("elite_disruption_active") and _chapter_five.tick_timer("hold", delta) <= 0.0:
+			_chapter_five.set_flag("sync_hold_complete")
+		if _chapter_five.flag("sync_hold_complete") and _chapter_five.flag("boss_defeated"):
+			_chapter_five.set_flag("primary_complete")
+			_story_primary_complete = true
+			_request_story_victory("chapter_five_eclipse_synchronized")
+
+func _begin_c5_eclipse_sync() -> void:
+	if _chapter_five == null or _chapter_five.stage_number != 4 or not _chapter_five.flag("preparation_complete") or not _chapter_five.flag("route_prepared") or _chapter_five.phase != "obelisk_preparation": return
+	var obelisk_a_index: int = -1
+	for prop_index in _adventure_props.size():
+		if str(_adventure_props[prop_index].get("kind", "")) == "eclipse_obelisk" and int(_adventure_props[prop_index].get("obelisk", -1)) == 0:
+			obelisk_a_index = prop_index
+			break
+	if obelisk_a_index < 0 or (_adventure_props[obelisk_a_index].pos as Vector2).distance_to(_player_pos) > 210.0:
+		_story_log("Synchronization start rejected: return to Obelisk A")
+		return
+	_chapter_five.set_flag("sync_attempt_started")
+	_chapter_five.set_timer("sync", 14.0 if _chapter_five.flag("route_prepared") else 18.0)
+	_c5_enter_phase("sync_attempt")
+	_story_log("Synchronization attempt started")
+
+func _spawn_c5_anchors() -> void:
+	var anchor_types: Array[String] = ["dominion", "ruin", "reflection"]
+	for anchor_index in 3:
+		_spawn_custom_prop("ritual_anchor", _story_stage_origin + Vector2.from_angle(-PI * 0.5 + float(anchor_index) * TAU / 3.0) * 620.0, {"anchor":anchor_index, "anchor_type":anchor_types[anchor_index], "hp":330.0, "max_hp":330.0, "progress":0.0})
+
+func _update_c5_abyss_king(delta: float) -> void:
+	var boss_index: int = _find_story_enemy("abyss_king")
+	if _chapter_five.phase == "ritual_anchors":
+		if _chapter_five.tick_timer("ritual", delta) <= 0.0:
+			_fail_custom_story_stage("The Abyss ritual consumed the throne room.")
+			return
+		var corrupted_add_count: int = 0
+		for enemy in _enemies:
+			if bool((enemy as Dictionary).get("corrupted", false)):
+				corrupted_add_count += 1
+		for prop_index in range(_adventure_props.size() - 1, -1, -1):
+			var anchor: Dictionary = _adventure_props[prop_index]
+			if str(anchor.get("kind", "")) != "ritual_anchor": continue
+			var anchor_type: String = str(anchor.get("anchor_type", ""))
+			if not bool(anchor.get("selected", false)) and (anchor.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) < 260.0:
+				anchor["selected"] = true
+				_story_log("Ritual anchor selected: %s" % anchor_type)
+			var distance: float = (anchor.pos as Vector2).distance_to(_player_pos)
+			var vulnerable: bool = (anchor_type == "dominion" and distance < 210.0) or (anchor_type == "ruin" and corrupted_add_count <= 8) or (anchor_type == "reflection" and fmod(_elapsed, 7.0) < 3.0)
+			if vulnerable and distance < 230.0:
+				anchor["hp"] = float(anchor.get("hp", 1.0)) - (32.0 + float(_level) * 3.0) * delta
+			if float(anchor.get("hp", 1.0)) <= 0.0:
+				var destroyed_type: String = anchor_type
+				_adventure_props.remove_at(prop_index)
+				var destroyed: int = _chapter_five.record_anchor_destroyed(destroyed_type)
+				_chapter_five.adjust_meter("abyss_pressure", -12.0)
+				_story_log("Anchor destroyed: %s · %d/3" % [destroyed_type, destroyed])
+				continue
+			_adventure_props[prop_index] = anchor
+		if _chapter_five.count("anchors_destroyed") >= 3:
+			_chapter_five.set_flag("anchor_transitions_complete")
+			_c5_enter_phase("abyss_crown")
+			_spawn_custom_prop("abyss_crown", _story_stage_origin + Vector2(0.0, -260.0), {"hp":520.0, "max_hp":520.0, "sections":4})
+			_spawn_custom_prop("crown_seal", _story_stage_origin + Vector2(-330.0, 180.0), {"seal":0})
+			_spawn_custom_prop("crown_seal", _story_stage_origin + Vector2(330.0, 180.0), {"seal":1})
+			_chapter_five.set_flag("crown_spawned")
+			_chapter_five.set_timer("crown_cycle", 3.0)
+	elif _chapter_five.phase == "abyss_crown":
+		if _chapter_five.tick_timer("crown_cycle", delta) <= 0.0:
+			var crown_cycle: int = _chapter_five.add_count("crown_cycles")
+			var seals_active: bool = _chapter_five.flag("seal_a_active") and _chapter_five.flag("seal_b_active")
+			if seals_active:
+				_chapter_five.set_timer("crown_vulnerable", 7.0)
+				_chapter_five.set_flag("seal_a_active", false)
+				_chapter_five.set_flag("seal_b_active", false)
+				_story_log("Crown vulnerability opened: twin seals")
+			elif crown_cycle % 2 == 0 and _find_story_enemy("c5_crown_channeler") < 0:
+				_spawn_story_objective_enemy("normal_tank", "c5_crown_channeler", 2.0, _story_stage_origin + Vector2(0.0, 430.0))
+				_story_log("Crown vulnerability objective: interrupt ritual channeler")
+			_chapter_five.set_timer("crown_cycle", 5.0)
+		for prop in _adventure_props:
+			if str(prop.get("kind", "")) == "crown_seal" and (prop.pos as Vector2).distance_to(_player_pos) < 145.0:
+				var seal_name: String = "a" if int(prop.get("seal", 0)) == 0 else "b"
+				_chapter_five.set_flag("seal_%s_active" % seal_name)
+		var vulnerable_time: float = _chapter_five.tick_timer("crown_vulnerable", delta)
+		var crown_index: int = _find_adventure_prop("abyss_crown")
+		if crown_index >= 0 and vulnerable_time > 0.0 and (_adventure_props[crown_index].pos as Vector2).distance_to(_player_pos) < 210.0:
+			var crown: Dictionary = _adventure_props[crown_index]
+			var previous_sections: int = int(crown.get("sections", 4))
+			crown["hp"] = float(crown.get("hp", 1.0)) - (38.0 + float(_level) * 3.5) * delta
+			var sections: int = ceili(float(crown["hp"]) / 130.0)
+			crown["sections"] = maxi(0, sections)
+			if sections < previous_sections:
+				_chapter_five.set_count("crown_sections_broken", mini(4, _chapter_five.count("crown_sections_broken") + previous_sections - maxi(0, sections)))
+				_story_log("Crown section broken: %d/4" % _chapter_five.count("crown_sections_broken"))
+			if float(crown["hp"]) <= 0.0:
+				_adventure_props.remove_at(crown_index)
+				_chapter_five.set_flag("crown_destroyed")
+				_chapter_five.set_flag("crown_transition_complete")
+				_chapter_five.set_flag("final_phase_entered")
+				_c5_enter_phase("final_boss_a")
+				if boss_index >= 0:
+					_enemies[boss_index]["shield_active"] = false
+					_enemies[boss_index]["hp"] = _enemies[boss_index].get("objective_max_hp", _enemies[boss_index].hp)
+				_story_log("Boss phase transition: Final Phase A")
+			else: _adventure_props[crown_index] = crown
+	elif _chapter_five.phase.begins_with("final_boss") and boss_index >= 0:
+		var boss: Dictionary = _enemies[boss_index]
+		var hp_ratio: float = float(boss.get("hp", 1.0)) / maxf(float(boss.get("objective_max_hp", 1.0)), 1.0)
+		if hp_ratio <= 0.65 and _chapter_five.phase == "final_boss_a":
+			_c5_enter_phase("final_boss_b")
+			_spawn_custom_prop("healing_fountain", _story_stage_origin + Vector2(0.0, 260.0), {})
+			_story_log("Boss phase transition: Final Phase B · warmth callback")
+		elif hp_ratio <= 0.35 and _chapter_five.phase == "final_boss_b":
+			_c5_enter_phase("final_boss_c")
+			_story_log("Boss phase transition: Final Phase C · mirror attacks")
+		elif hp_ratio <= 0.22 and _chapter_five.phase == "final_boss_c":
+			_c5_enter_phase("desperation")
+			_chapter_five.set_flag("desperation_entered")
+			_story_log("Boss phase transition: Desperation")
+
+func _count_adventure_props(kind: String) -> int:
+	var count: int = 0
+	for prop in _adventure_props:
+		if str(prop.get("kind", "")) == kind: count += 1
+	return count
+
+func _c5_captured_spirit_count() -> int:
+	var captured: int = 0
+	for prop in _adventure_props:
+		if str(prop.get("kind", "")) == "released_soul" and bool(prop.get("captured", false)):
+			captured += 1
+	return captured
+
+func _setup_chapter_two_stage(objective: String) -> void:
+	_chapter_two = ChapterTwoStageControllerClass.new()
+	_chapter_two.reset(int(story_stage.get("chapter_stage", 1)))
+	_c2_spawn_timer = 0.0
+	_c2_interaction = 0.0
+	_c2_cold_threshold = 0
+	_c2_bonus_levels_pending = 0
+	_story_custom_phase = 1
+	_story_custom_progress = {}
+	_story_custom_timer = 0.0
+	_story_custom_carried = ""
+	_adventure_progress = 0
+	_adventure_target = int(_story_custom_data.get("count", 1))
+	match objective:
+		"frozen_braziers":
+			_adventure_target = 4
+			_chapter_two.set_count("braziers_generated", 0)
+			_chapter_two.set_count("braziers_lit", 0)
+			_chapter_two.enter("opening_cold")
+			_spawn_c2_flamekeeper()
+		"ice_captives":
+			_adventure_target = 5
+			_chapter_two.set_count("prisons_generated", 0)
+			_chapter_two.set_count("prisons_destroyed", 0)
+			_chapter_two.set_count("captives_released", 0)
+			_chapter_two.set_count("captives_extracted", 0)
+			_chapter_two.enter("rescue_1")
+			_spawn_custom_prop("brazier", _story_stage_origin, {"active":true, "heat":100.0, "camp":true})
+			_spawn_c2_prison(0)
+		"thaw_runes":
+			_adventure_target = 4
+			_story_custom_sequence = [0, 1, 2, 3]
+			_story_custom_sequence.shuffle()
+			_story_custom_timer = 5.0
+			_chapter_two.set_flag("sequence_generated")
+			_chapter_two.set_flag("rune_sequence_started", false)
+			_chapter_two.set_count("runes_correct", 0)
+			_chapter_two.enter("sequence_reveal")
+			var rune_slots: Array[int] = [0, 2, 4, 6]
+			rune_slots.shuffle()
+			for rune_index in 4:
+				var rune_pos: Vector2 = _story_objective_zone_position(rune_slots[rune_index], 760.0)
+				_spawn_custom_prop("thaw_rune", rune_pos, {"rune":rune_index, "feedback":"", "fixed_pos":rune_pos})
+		"frost_mimic":
+			_adventure_target = 6
+			var real_chest: int = randi_range(0, _adventure_target - 1)
+			_chapter_two.set_count("real_chest", real_chest)
+			_chapter_two.set_count("clues_found", 0)
+			_chapter_two.set_count("suspects_remaining", _adventure_target)
+			_chapter_two.enter("treasury_investigation")
+			for chest_index in _adventure_target:
+				var chest_pos: Vector2 = _story_objective_zone_position(chest_index, 650.0)
+				_spawn_custom_prop("mimic_chest", chest_pos, {"chest":chest_index, "real":chest_index == real_chest, "inspected":false, "excluded":false})
+				_spawn_custom_prop("frost_clue", chest_pos + Vector2(0.0, 92.0), {"chest":chest_index})
+		"frost_colossus":
+			_adventure_target = 3
+			_chapter_two.set_count("crystals_broken", 0)
+			_chapter_two.set_count("armour_transitions", 0)
+			_chapter_two.set_timer("attack_cycle", 4.0)
+			_chapter_two.enter("armoured_colossus")
+			for crystal_index in 3:
+				var crystal_pos: Vector2 = _story_stage_origin + Vector2.from_angle(-PI * 0.5 + TAU * float(crystal_index) / 3.0) * 430.0
+				_spawn_custom_prop("armour_crystal", crystal_pos, {"crystal":crystal_index, "hp":260.0, "max_hp":260.0, "exposed":false, "broken":false})
+			_spawn_story_objective_enemy("shield_boss", "frost_colossus", 1.5, _story_stage_origin + Vector2(0.0, -180.0))
+			_chapter_two.set_flag("boss_spawned")
+	_story_log_phase("setup", _chapter_two.phase)
+	_story_log("Objective activation: Chapter 2 stage %d" % _chapter_two.stage_number)
+
+func _c2_enter_phase(next_phase: String) -> void:
+	var previous: String = _chapter_two.enter(next_phase)
+	_story_custom_phase += 1
+	_story_log_phase(previous, next_phase)
+
+func _update_chapter_two_stage(delta: float) -> void:
+	_update_c2_cold_exposure(delta)
+	match _chapter_two.stage_number:
+		1: _update_c2_rekindle(delta)
+		2: _update_c2_captives(delta)
+		3: _update_c2_runes(delta)
+		4: _update_c2_mimic(delta)
+		5: _update_c2_colossus(delta)
+
+func _update_c2_cold_exposure(delta: float) -> void:
+	if _chapter_two.stage_number == 4:
+		_chapter_two.cold_exposure = maxf(0.0, _chapter_two.cold_exposure - delta * 5.0)
+		return
+	var in_warmth: bool = false
+	for prop in _adventure_props:
+		if str(prop.get("kind", "")) == "brazier" and bool(prop.get("active", false)) and not bool(prop.get("suppressed", false)) and float(prop.get("heat", 0.0)) > 0.0:
+			if (prop.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) <= 245.0:
+				in_warmth = true
+				break
+	var cold_rate: float = 2.4 if _chapter_two.stage_number in [1, 2, 3] else 1.6
+	if _chapter_two.stage_number == 2 and _chapter_two.phase == "blizzard_extraction":
+		cold_rate = 4.0
+	_chapter_two.cold_exposure = clampf(_chapter_two.cold_exposure + (-8.0 if in_warmth else cold_rate) * delta, 0.0, 100.0)
+	var threshold: int = 100 if _chapter_two.cold_exposure >= 100.0 else (75 if _chapter_two.cold_exposure >= 75.0 else (50 if _chapter_two.cold_exposure >= 50.0 else 0))
+	if threshold > _c2_cold_threshold:
+		_c2_cold_threshold = threshold
+		_story_log("Cold Exposure threshold: %d%%" % threshold)
+	elif threshold == 0:
+		_c2_cold_threshold = 0
+
+func _spawn_c2_flamekeeper() -> void:
+	if _find_story_enemy("c2_flamekeeper") >= 0 or _story_custom_carried == "flame_charge":
+		return
+	_spawn_story_objective_enemy("normal_tank", "c2_flamekeeper", 1.0, _custom_objective_position(650.0))
+	_story_log("Objective activation: Flamekeeper")
+
+func _spawn_c2_brazier(index: int) -> void:
+	if index >= 4:
+		return
+	var position: Vector2 = _story_objective_zone_position(index, 620.0 + float(index) * 115.0)
+	_spawn_custom_prop("brazier", position, {"order":index, "active":false, "heat":0.0, "suppressed":false})
+	_chapter_two.set_count("braziers_generated", maxi(_chapter_two.count("braziers_generated"), index + 1))
+	_story_log("Objective activation: Brazier %d" % (index + 1))
+
+func _update_c2_rekindle(delta: float) -> void:
+	_resolve_c2_suppressor_arrival()
+	_c2_spawn_timer = maxf(0.0, _c2_spawn_timer - delta)
+	if _c2_spawn_timer <= 0.0:
+		_c2_spawn_timer = 7.0
+		_spawn_c2_flamekeeper()
+	var active_count: int = 0
+	var lit_count: int = 0
+	var reactivated_order: int = -1
+	for prop_index in _adventure_props.size():
+		var brazier: Dictionary = _adventure_props[prop_index]
+		if str(brazier.get("kind", "")) != "brazier":
+			continue
+		if bool(brazier.get("active", false)):
+			brazier["heat"] = maxf(0.0, float(brazier.get("heat", 0.0)) - delta * (0.28 if _chapter_two.count("braziers_lit") < 2 else 0.42))
+			if float(brazier["heat"]) <= 0.0:
+				brazier["active"] = false
+				_story_log("Brazier heat change: Brazier %d went cold" % (int(brazier.get("order", 0)) + 1))
+		if bool(brazier.get("active", false)):
+			lit_count += 1
+			if not bool(brazier.get("suppressed", false)):
+				active_count += 1
+		if (brazier.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) < 165.0 and _story_custom_carried == "flame_charge":
+			brazier["active"] = true
+			brazier["heat"] = 100.0
+			brazier["suppressed"] = false
+			_story_custom_carried = ""
+			var order: int = int(brazier.get("order", 0))
+			reactivated_order = order
+			_chapter_two.set_count("braziers_lit", maxi(_chapter_two.count("braziers_lit"), order + 1))
+			_story_log("Brazier heat change: Brazier %d rekindled" % (order + 1))
+			if _chapter_two.count("braziers_generated") < 4:
+				_spawn_c2_brazier(_chapter_two.count("braziers_generated"))
+		_adventure_props[prop_index] = brazier
+	if reactivated_order >= 0:
+		for prop_index in range(_adventure_props.size() - 1, -1, -1):
+			if str(_adventure_props[prop_index].get("kind", "")) == "c2_brazier_suppression" and int(_adventure_props[prop_index].get("order", -2)) == reactivated_order:
+				_adventure_props.remove_at(prop_index)
+		_story_custom_progress.erase("suppressed_brazier")
+	_chapter_two.set_count("active_braziers", active_count)
+	if _chapter_two.count("braziers_generated") == 0 and _story_custom_carried == "flame_charge":
+		_spawn_c2_brazier(0)
+	if _chapter_two.count("braziers_lit") >= 4 and active_count >= 4:
+		if _chapter_two.phase != "warmth_stabilization":
+			_c2_enter_phase("warmth_stabilization")
+			_chapter_two.set_timer("stabilization", 22.0)
+			_chapter_two.set_timer("suppression", 6.0)
+			_story_log("Timer started: warmth stabilization 22s")
+		else:
+			if _chapter_two.tick_timer("suppression", delta) <= 0.0 and _find_story_enemy("c2_brazier_suppressor") < 0:
+				var candidates: Array[int] = []
+				for candidate_index in _adventure_props.size():
+					if str(_adventure_props[candidate_index].get("kind", "")) == "brazier" and bool(_adventure_props[candidate_index].get("active", false)):
+						candidates.append(candidate_index)
+				if not candidates.is_empty():
+					var suppress_index: int = candidates.pick_random()
+					var suppressed_order: int = int(_adventure_props[suppress_index].get("order", 0))
+					var suppression_pos: Vector2 = _adventure_props[suppress_index].get("pos", Vector2.ZERO) as Vector2
+					_spawn_story_objective_enemy("normal_tank", "c2_brazier_suppressor", 1.35, _story_stage_origin)
+					var suppressor_index: int = _find_story_enemy("c2_brazier_suppressor")
+					if suppressor_index >= 0:
+						_enemies[suppressor_index]["objective_target_pos"] = suppression_pos
+						_enemies[suppressor_index]["objective_target_order"] = suppressed_order
+					_story_log("Suppression growth approaching Brazier %d" % (suppressed_order + 1))
+				_chapter_two.set_timer("suppression", 7.0)
+			if _chapter_two.tick_timer("stabilization", delta) <= 0.0:
+				_chapter_two.set_flag("warmth_stabilized")
+				_chapter_two.set_flag("finale_complete")
+				_chapter_two.set_flag("primary_complete")
+				_story_primary_complete = true
+				_request_story_victory("chapter_two_warmth_chain_stable")
+	elif _chapter_two.phase == "warmth_stabilization":
+		_c2_enter_phase("network_recovery")
+		_chapter_two.set_timer("stabilization", 22.0)
+
+func _resolve_c2_suppressor_arrival() -> void:
+	var enemy_index: int = _find_story_enemy("c2_brazier_suppressor")
+	if enemy_index < 0:
+		return
+	var target_order: int = int(_enemies[enemy_index].get("objective_target_order", -1))
+	var target_pos: Vector2 = _enemies[enemy_index].get("objective_target_pos", Vector2.ZERO) as Vector2
+	if (_enemies[enemy_index].get("pos", Vector2.ZERO) as Vector2).distance_to(target_pos) > 92.0:
+		return
+	for prop_index in _adventure_props.size():
+		if str(_adventure_props[prop_index].get("kind", "")) != "brazier" or int(_adventure_props[prop_index].get("order", -2)) != target_order:
+			continue
+		_adventure_props[prop_index]["active"] = false
+		_adventure_props[prop_index]["suppressed"] = true
+		_adventure_props[prop_index]["heat"] = 0.0
+		break
+	_story_custom_progress["suppressed_brazier"] = target_order
+	_spawn_custom_prop("c2_brazier_suppression", target_pos + Vector2(72.0, -24.0), {"order":target_order})
+	_enemies.remove_at(enemy_index)
+	_chapter_two.set_timer("stabilization", 22.0)
+	_story_log("Brazier suppressed on arrival: %d · stabilization reset" % (target_order + 1))
+
+func _spawn_c2_prison(index: int) -> void:
+	var position: Vector2 = _story_objective_zone_position(index + 1, 720.0)
+	var hp: float = 180.0 + float(index) * 35.0
+	_spawn_custom_prop("ice_prison", position, {"prison":index, "hp":hp, "max_hp":hp, "regen":index == 1, "jailer":index >= 2})
+	if index == 1:
+		for crystal in 2:
+			_spawn_custom_prop("armour_crystal", position + Vector2(-210.0 if crystal == 0 else 210.0, -120.0), {"prison_crystal":index, "hp":100.0, "max_hp":100.0})
+	if index >= 2:
+		_spawn_story_objective_enemy("normal_tank", "c2_jailer_%d" % index, 1.15 + float(index) * 0.12, position + Vector2(220.0, 0.0))
+	_chapter_two.set_count("prisons_generated", index + 1)
+	_story_log("Objective activation: Prison %d" % (index + 1))
+
+func _update_c2_captives(delta: float) -> void:
+	_update_c2_prisons(delta)
+	var camp_position: Vector2 = _story_stage_origin
+	var all_released: bool = _chapter_two.count("captives_released") >= 5
+	var refrozen_count: int = 0
+	for prop_index in range(_adventure_props.size() - 1, -1, -1):
+		var captive: Dictionary = _adventure_props[prop_index]
+		if str(captive.get("kind", "")) != "released_soul":
+			continue
+		var captive_pos: Vector2 = captive.get("pos", Vector2.ZERO) as Vector2
+		if bool(captive.get("refrozen", false)):
+			refrozen_count += 1
+			if captive_pos.distance_to(_player_pos) < 145.0:
+				captive["thaw"] = minf(3.0, float(captive.get("thaw", 0.0)) + delta)
+				if float(captive["thaw"]) >= 3.0:
+					captive["refrozen"] = false
+					captive["refreeze"] = 0.0
+					_story_log("Captive recovered from refreeze")
+		else:
+			captive_pos = captive_pos.move_toward(camp_position, (88.0 if all_released else 72.0) * delta)
+			captive["pos"] = captive_pos
+			var nearby_jailer: bool = false
+			for enemy in _enemies:
+				if str(enemy.get("story_tag", "")).begins_with("c2_jailer") and (enemy.get("pos", Vector2.ZERO) as Vector2).distance_to(captive_pos) < 250.0:
+					nearby_jailer = true
+					break
+			captive["refreeze"] = clampf(float(captive.get("refreeze", 0.0)) + (18.0 if nearby_jailer else -12.0) * delta, 0.0, 100.0)
+			if float(captive["refreeze"]) >= 100.0:
+				captive["refrozen"] = true
+				_story_log("Captive refrozen")
+			if captive_pos.distance_to(camp_position) < 95.0 and not bool(captive.get("safe", false)):
+				captive["safe"] = true
+				_chapter_two.add_count("captives_extracted")
+				_story_log("Captive extracted: %d/5" % _chapter_two.count("captives_extracted"))
+		_adventure_props[prop_index] = captive
+	_chapter_two.set_count("captives_refrozen", refrozen_count)
+	if _chapter_two.count("captives_released") >= 5 and _chapter_two.phase != "blizzard_extraction":
+		_c2_enter_phase("blizzard_extraction")
+		_spawn_story_objective_enemy("normal_tank", "c2_jailer_elite", 2.2, _custom_objective_position(620.0))
+	if _chapter_two.phase == "blizzard_extraction" and _chapter_two.count("captives_extracted") >= 5 and _find_story_enemy("c2_jailer_elite") < 0:
+		_chapter_two.set_flag("jailer_elite_resolved")
+		_chapter_two.set_flag("finale_complete")
+		_chapter_two.set_flag("primary_complete")
+		_story_primary_complete = true
+		_request_story_victory("chapter_two_captives_extracted")
+
+func _update_c2_prisons(delta: float) -> void:
+	for prop_index in range(_adventure_props.size() - 1, -1, -1):
+		var prop: Dictionary = _adventure_props[prop_index]
+		var kind: String = str(prop.get("kind", ""))
+		if kind == "armour_crystal" and prop.has("prison_crystal"):
+			if (prop.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) < 175.0:
+				prop["hp"] = float(prop.get("hp", 1.0)) - (32.0 + float(_level) * 3.0) * delta
+				if float(prop["hp"]) <= 0.0:
+					_adventure_props.remove_at(prop_index)
+					continue
+			_adventure_props[prop_index] = prop
+		elif kind == "ice_prison":
+			var prison_number: int = int(prop.get("prison", 0))
+			var crystals_remain: bool = false
+			for other in _adventure_props:
+				if str(other.get("kind", "")) == "armour_crystal" and int(other.get("prison_crystal", -1)) == prison_number:
+					crystals_remain = true
+					break
+			if bool(prop.get("regen", false)) and crystals_remain:
+				prop["hp"] = minf(float(prop.get("max_hp", 1.0)), float(prop.get("hp", 1.0)) + 18.0 * delta)
+			elif (prop.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) < 185.0:
+				prop["hp"] = float(prop.get("hp", 1.0)) - (30.0 + float(_level) * 3.0) * delta
+			if float(prop["hp"]) <= 0.0:
+				var release_pos: Vector2 = prop.get("pos", Vector2.ZERO) as Vector2
+				_adventure_props.remove_at(prop_index)
+				_chapter_two.add_count("prisons_destroyed")
+				_chapter_two.add_count("captives_released")
+				_spawn_custom_prop("released_soul", release_pos, {"captive":prison_number, "refreeze":0.0, "refrozen":false, "safe":false})
+				_story_log("Captive released: %d/5" % _chapter_two.count("captives_released"))
+				if _chapter_two.count("prisons_generated") < 5:
+					_spawn_c2_prison(_chapter_two.count("prisons_generated"))
+				continue
+			_adventure_props[prop_index] = prop
+
+func _update_c2_runes(delta: float) -> void:
+	if _chapter_two.phase == "sequence_reveal":
+		_story_custom_timer = maxf(0.0, _story_custom_timer - delta)
+		if _story_custom_timer <= 0.0:
+			_chapter_two.set_flag("sequence_reveal_complete")
+			_c2_enter_phase("rune_search")
+		return
+	for prop_index in _adventure_props.size():
+		var rune: Dictionary = _adventure_props[prop_index]
+		if str(rune.get("kind", "")) != "thaw_rune":
+			continue
+		rune["pos"] = rune.get("fixed_pos", rune.get("pos", Vector2.ZERO)) as Vector2
+		if bool(rune.get("completed", false)):
+			_adventure_props[prop_index] = rune
+			continue
+		var inside: bool = (rune.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) < 105.0
+		if inside and not bool(rune.get("inside", false)):
+			var entered: int = _chapter_two.count("runes_correct")
+			if entered < 4 and int(rune.get("rune", -1)) == _story_custom_sequence[entered]:
+				rune["completed"] = true
+				rune["feedback"] = "correct"
+				if entered == 0:
+					_chapter_two.set_flag("rune_sequence_started")
+				entered = _chapter_two.add_count("runes_correct")
+				_story_log("Rune correct: %d/4" % entered)
+				if entered == 3:
+					_c2_enter_phase("spreading_freeze")
+					_chapter_two.set_timer("freeze_finale", 35.0)
+				elif entered >= 4:
+					_chapter_two.set_flag("final_rune_activated")
+					_chapter_two.set_flag("spreading_freeze_resolved")
+					_chapter_two.set_flag("finale_complete")
+					_chapter_two.set_flag("primary_complete")
+					_story_primary_complete = true
+					rune["inside"] = true
+					_adventure_props[prop_index] = rune
+					_request_story_victory("chapter_two_thaw_sequence_complete")
+					return
+			else:
+				rune["feedback"] = "wrong"
+				var reduced: int = maxi(0, entered - 1)
+				if entered > 0:
+					var reopened_rune: int = _story_custom_sequence[entered - 1]
+					for reopen_index in _adventure_props.size():
+						if str(_adventure_props[reopen_index].get("kind", "")) == "thaw_rune" and int(_adventure_props[reopen_index].get("rune", -1)) == reopened_rune:
+							_adventure_props[reopen_index]["completed"] = false
+							_adventure_props[reopen_index]["feedback"] = ""
+							break
+				_chapter_two.set_count("runes_correct", reduced)
+				_chapter_two.cold_exposure = minf(100.0, _chapter_two.cold_exposure + 18.0)
+				_story_log("Rune incorrect: sequence progress reduced to %d/4" % reduced)
+			rune["inside"] = true
+		elif not inside:
+			rune["inside"] = false
+		_adventure_props[prop_index] = rune
+	if _chapter_two.phase == "spreading_freeze":
+		_chapter_two.tick_timer("freeze_finale", delta)
+
+func _update_c2_mimic(_delta: float) -> void:
+	for prop_index in range(_adventure_props.size() - 1, -1, -1):
+		var chest: Dictionary = _adventure_props[prop_index]
+		if str(chest.get("kind", "")) != "mimic_chest" or bool(chest.get("locked", false)):
+			continue
+		var inside: bool = (chest.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) < 110.0
+		if inside and not bool(chest.get("inside", false)):
+			var chest_id: int = int(chest.get("chest", -1))
+			var reveal_pos: Vector2 = chest.get("pos", Vector2.ZERO) as Vector2
+			if bool(chest.get("real", false)):
+				for other_index in range(_adventure_props.size() - 1, -1, -1):
+					if str(_adventure_props[other_index].get("kind", "")) in ["mimic_chest", "frost_clue"]:
+						_adventure_props.remove_at(other_index)
+				_chapter_two.set_flag("real_mimic_opened")
+				_chapter_two.set_flag("mimic_spawned")
+				_c2_enter_phase("frost_mimic_battle")
+				_spawn_story_objective_enemy("teleporter_boss", "frost_mimic", 1.35, reveal_pos)
+				_story_log("Correct Chest opened: Frost Mimic revealed")
+				return
+			_adventure_props.remove_at(prop_index)
+			for clue_index in range(_adventure_props.size() - 1, -1, -1):
+				if str(_adventure_props[clue_index].get("kind", "")) == "frost_clue" and int(_adventure_props[clue_index].get("chest", -2)) == chest_id:
+					_adventure_props.remove_at(clue_index)
+			var wrong_chests: int = _chapter_two.add_count("wrong_chests")
+			_chapter_two.set_count("suspects_remaining", maxi(1, _chapter_two.count("suspects_remaining") - 1))
+			_c1_spawn_pressure(5 + wrong_chests * 2, "c2_mimic_ambush", reveal_pos, 1.0 + float(wrong_chests) * 0.12)
+			_story_log("Wrong Chest opened: ambush %d triggered" % wrong_chests)
+			return
+		elif not inside:
+			chest["inside"] = false
+		_adventure_props[prop_index] = chest
+
+func _update_c2_colossus(delta: float) -> void:
+	if _c2_bonus_levels_pending > 0:
+		_c2_bonus_levels_pending -= 1
+		_gain_xp(maxi(1, _xp_next - _xp))
+		_story_log("Armour Crystal experience reward: level gained · %d bonus levels pending" % _c2_bonus_levels_pending)
+		return
+	if _chapter_two.phase == "final_vulnerable":
+		return
+	if _chapter_two.tick_timer("attack_cycle", delta) <= 0.0:
+		var next_crystal: int = _chapter_two.count("crystals_broken")
+		_chapter_two.set_timer("attack_cycle", 6.0)
+		_chapter_two.set_timer("exposure_window", 5.0)
+		for prop_index in _adventure_props.size():
+			if str(_adventure_props[prop_index].get("kind", "")) == "armour_crystal":
+				_adventure_props[prop_index]["exposed"] = int(_adventure_props[prop_index].get("crystal", -1)) == next_crystal
+		_trigger_c2_colossus_exposure(next_crystal)
+		_story_log("Crystal exposed: %s" % ["Frost Beam", "Ground Freeze", "Armour Regeneration"][next_crystal])
+	if _chapter_two.tick_timer("exposure_window", delta) <= 0.0:
+		for prop_index in _adventure_props.size():
+			if str(_adventure_props[prop_index].get("kind", "")) == "armour_crystal":
+				_adventure_props[prop_index]["exposed"] = false
+	for prop_index in range(_adventure_props.size() - 1, -1, -1):
+		var crystal: Dictionary = _adventure_props[prop_index]
+		if str(crystal.get("kind", "")) != "armour_crystal" or not bool(crystal.get("exposed", false)):
+			continue
+		if (crystal.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) < 185.0:
+			crystal["hp"] = float(crystal.get("hp", 1.0)) - (30.0 + float(_level) * 3.0) * delta
+			if float(crystal["hp"]) <= 0.0:
+				var broken: int = _chapter_two.add_count("crystals_broken")
+				_chapter_two.add_count("armour_transitions")
+				_c2_bonus_levels_pending += 2
+				_adventure_progress = broken
+				_adventure_props.remove_at(prop_index)
+				_story_log("Crystal destroyed: %d/3 · boss phase transition · 2 bonus levels awarded" % broken)
+				if broken < 3:
+					_c1_spawn_pressure(2, "c2_colossus_summon", _story_stage_origin, 0.95)
+				if broken >= 3:
+					_chapter_two.set_flag("all_armour_transitions_complete")
+					_chapter_two.set_flag("final_vulnerable_phase")
+					_story_custom_phase = 10
+					_c2_enter_phase("final_vulnerable")
+				return
+		_adventure_props[prop_index] = crystal
+
+func _trigger_c2_colossus_exposure(crystal_index: int) -> void:
+	var boss_index: int = _find_story_enemy("frost_colossus")
+	if boss_index < 0:
+		return
+	var boss: Dictionary = _enemies[boss_index]
+	var boss_pos: Vector2 = boss.get("pos", _story_stage_origin) as Vector2
+	match crystal_index:
+		0:
+			var beam_direction: Vector2 = boss_pos.direction_to(_player_pos)
+			if beam_direction.is_zero_approx(): beam_direction = Vector2.DOWN
+			for spread in [-0.18, -0.09, 0.0, 0.09, 0.18]:
+				_boss_projs.append({"kind":"straight", "pos":boss_pos, "vel":beam_direction.rotated(float(spread)) * 360.0, "dmg":float(boss.get("dmg", 10.0)) * 0.55, "life":4.0})
+			_story_log("Boss phase transition: Frost Beam fired · beam crystal exposed")
+		1:
+			for strike_index in 5:
+				var strike_pos: Vector2 = _player_pos + Vector2.from_angle(TAU * float(strike_index) / 5.0) * 105.0
+				_mortar_strikes.append({"pos":strike_pos, "life":1.15, "max_life":1.15, "dmg":float(boss.get("dmg", 10.0)) * 0.60, "r":48.0, "launch":boss_pos})
+			_story_log("Boss phase transition: Ground Freeze slam · ground crystal exposed")
+		2:
+			var boss_max_hp: float = float(boss.get("objective_max_hp", boss.get("hp", 1.0)))
+			boss["hp"] = minf(boss_max_hp, float(boss.get("hp", 1.0)) + boss_max_hp * 0.08)
+			_enemies[boss_index] = boss
+			_story_log("Boss phase transition: Armour regeneration channel · regeneration crystal exposed")
+
+func _update_frozen_braziers(delta: float) -> void:
+	var index := _find_adventure_prop("brazier")
+	if index < 0: return
+	var prop := _adventure_props[index]
+	if (prop.pos as Vector2).distance_to(_player_pos) < 175.0:
+		_story_custom_interaction += delta
+	else:
+		_story_custom_interaction = 0.0
+	if _story_custom_interaction >= float(_story_custom_data.get("interact", 3.0)):
+		_adventure_props.remove_at(index)
+		_story_custom_interaction = 0.0
+		_complete_staged_objective_instance()
+
+func _update_thaw_runes(delta: float) -> void:
+	_story_custom_timer = maxf(0.0, _story_custom_timer - delta)
+	_update_ordered_props("thaw_rune", "rune", false)
+
+func _update_custom_breakables(delta: float, kind: String, radius: float) -> void:
+	for i in range(_adventure_props.size() - 1, -1, -1):
+		var prop := _adventure_props[i]
+		if str(prop.get("kind", "")) != kind: continue
+		if (prop.pos as Vector2).distance_to(_player_pos) < radius:
+			prop["hp"] = float(prop.get("hp", 1.0)) - (30.0 + float(_level) * 3.0) * delta
+			_adventure_props[i] = prop
+			if float(prop.hp) <= 0.0:
+				_adventure_props.remove_at(i)
+				if kind in ["ice_prison", "ember_ore", "armour_crystal"]:
+					_complete_staged_objective_instance()
+				elif kind != "soul_chain":
+					_adventure_progress += 1
+
+func _update_ordered_props(kind: String, value_key: String, penalize: bool) -> void:
+	for i in _adventure_props.size():
+		var prop := _adventure_props[i]
+		if str(prop.get("kind", "")) != kind: continue
+		var inside := (prop.pos as Vector2).distance_to(_player_pos) < 105.0
+		if inside and not bool(prop.get("inside", false)):
+			var entered := int(_story_custom_progress.get("entered", 0))
+			var value := int(prop.get(value_key, -1))
+			if entered < _story_custom_sequence.size() and value == _story_custom_sequence[entered]:
+				entered += 1
+				_story_custom_progress["entered"] = entered
+				_story_log("Objective progress: %s %d/%d" % [_story_custom_id, entered, _story_custom_sequence.size()])
+				if entered >= _story_custom_sequence.size():
+					_complete_custom_story_stage()
+					return
+			else:
+				_story_custom_progress["entered"] = maxi(0, entered - 1) if penalize else 0
+				_spawn_story_penalty_elite()
+		prop["inside"] = inside
+		_adventure_props[i] = prop
+
+func _update_frost_mimic(delta: float) -> void:
+	_story_custom_timer = maxf(0.0, _story_custom_timer - delta)
+	if _find_adventure_prop("mimic_chest") < 0 and _find_story_enemy("frost_mimic") < 0 and _story_gate_remaining <= 0 and _adventure_progress < _adventure_target and _story_custom_timer <= 0.0:
+		_spawn_next_mimic_chest()
+	for i in range(_adventure_props.size() - 1, -1, -1):
+		var chest := _adventure_props[i]
+		if str(chest.get("kind", "")) != "mimic_chest": continue
+		if (chest.pos as Vector2).distance_to(_player_pos) < 105.0:
+			_adventure_props.remove_at(i)
+			if bool(chest.get("real", false)):
+				_adventure_progress = _adventure_target
+				_spawn_story_objective_enemy("teleporter_boss", "frost_mimic", 1.2, chest.pos as Vector2)
+			else:
+				_adventure_progress += 1
+				_story_log("Objective progress: frost_mimic %d/%d" % [_adventure_progress, _adventure_target])
+				_story_custom_timer = 2.0
+				_spawn_story_gate_ambush(4 + _adventure_progress * 2)
+				if _adventure_progress in [2, 4]: _damage_player(_player_max_hp * 0.05, 0.25)
+			return
+
+func _spawn_next_mimic_chest() -> void:
+	var encounter_index: int = _adventure_progress
+	var is_real: bool = encounter_index >= _adventure_target - 1
+	_spawn_custom_prop("mimic_chest", _story_objective_zone_position(encounter_index, 700.0), {"real":is_real, "encounter":encounter_index})
+
+func _setup_chapter_three_stage(objective: String) -> void:
+	_chapter_three = ChapterThreeStageControllerClass.new()
+	_chapter_three.reset(int(story_stage.get("chapter_stage", 1)))
+	_c3_spawn_timer = 0.0
+	_c3_action_timer = 0.0
+	match objective:
+		"cleanse_mire":
+			_chapter_three.set_count("pools_generated", 3)
+			_chapter_three.set_count("pools_purified", 0)
+			_chapter_three.set_count("nodes_resolved", 0)
+			_chapter_three.set_count("energy", 0)
+			_chapter_three.set_count("energy_max", 6)
+			for pool_index in 3:
+				_spawn_custom_prop("corrupted_pool", _story_objective_zone_position(pool_index, 560.0), {"pool":pool_index, "active":pool_index == 0, "progress":0.0, "stability":100.0})
+			for energy_index in 3:
+				_spawn_custom_prop("c3_cleansing_energy", _player_pos + Vector2.from_angle(float(energy_index) * TAU / 3.0 - PI * 0.5) * 185.0, {"value":2})
+			_c3_enter_phase("direct_purification")
+		"plaguebeast":
+			_chapter_three.set_count("tracking_phases_complete", 0)
+			_chapter_three.set_count("correct_routes", 0)
+			_chapter_three.set_count("wrong_routes", 0)
+			_chapter_three.set_count("tracking_trails", 5)
+			_chapter_three.set_flag("escape_pending", true)
+			_spawn_story_objective_enemy("normal_tank", "c3_plague_sighting", 2.4, _story_objective_zone_position(0, 520.0))
+			_c3_enter_phase("first_sighting")
+		"venom_harvest":
+			_chapter_three.set_count("selection_region", -1)
+			for ingredient_index in 3:
+				var ingredient: String = str(["spider", "toad", "wasp"][ingredient_index])
+				_chapter_three.set_count(ingredient, 0)
+				_chapter_three.set_flag("%s_complete" % ingredient, false)
+			_spawn_c3_region_choices()
+			_c3_enter_phase("region_select")
+		"fragile_cure":
+			_chapter_three.set_meter("vial_integrity", 100.0)
+			_chapter_three.set_count("route_checkpoints", 0)
+			_chapter_three.set_count("route_checkpoints_required", 2)
+			_chapter_three.set_count("selection_route", -1)
+			_chapter_three.set_count("repair_charges", 1)
+			_spawn_custom_prop("c3_vial", _player_pos + Vector2(0.0, -230.0), {})
+			_c3_enter_phase("vial_collection")
+		"grand_antidote":
+			var recipe_options: Array[int] = [0, 1, 2, 3]
+			recipe_options.shuffle()
+			recipe_options.resize(3)
+			_chapter_three.recipe = recipe_options
+			_chapter_three.set_count("ingredients_acquired", 0)
+			_chapter_three.set_count("ingredients_submitted", 0)
+			_chapter_three.set_meter("heat", 50.0)
+			_chapter_three.set_meter("purity", 82.0)
+			_chapter_three.set_meter("brew_progress", 0.0)
+			_spawn_custom_prop("cauldron", _story_stage_origin + Vector2(0.0, -120.0), {})
+			for ingredient_index in 4:
+				_spawn_custom_prop("c3_brew_ingredient", _story_objective_zone_position(ingredient_index, 460.0), {"ingredient":ingredient_index})
+			_story_log("Recipe generated: %s" % _sequence_text(_chapter_three.recipe))
+			_c3_enter_phase("ingredient_collection")
+	_story_log("Chapter 3 stage initialized: %s" % objective)
+
+func _c3_enter_phase(next_phase: String) -> void:
+	if _chapter_three == null: return
+	var previous: String = _chapter_three.enter(next_phase)
+	_story_log_phase(previous, next_phase)
+
+func _update_chapter_three_stage(delta: float) -> void:
+	match _chapter_three.stage_number:
+		1: _update_c3_cleanse_mire(delta)
+		2: _update_c3_plaguebeast(delta)
+		3: _update_c3_venom_harvest(delta)
+		4: _update_c3_fragile_cure(delta)
+		5: _update_c3_grand_antidote(delta)
+
+func _c3_spawn_pressure(count: int, tag: String = "c3_pressure", strength: float = 1.0) -> void:
+	for enemy_index in count:
+		var kind: String = "normal_fast" if enemy_index % 3 == 0 else ("normal_tank" if enemy_index % 5 == 0 else "normal")
+		_spawn_story_objective_enemy(kind, tag, strength, _player_pos + Vector2.from_angle(float(enemy_index) * TAU / float(maxi(1, count))) * randf_range(380.0, 540.0))
+
+func _update_c3_cleanse_mire(delta: float) -> void:
+	for energy_index in range(_adventure_props.size() - 1, -1, -1):
+		var energy_prop: Dictionary = _adventure_props[energy_index]
+		if str(energy_prop.get("kind", "")) != "c3_cleansing_energy": continue
+		if _chapter_three.count("energy") >= _chapter_three.count("energy_max"):
+			_adventure_props.remove_at(energy_index)
+			continue
+		if (energy_prop.pos as Vector2).distance_to(_player_pos) < 105.0 and _chapter_three.count("energy") < _chapter_three.count("energy_max"):
+			var gained: int = mini(int(energy_prop.get("value", 2)), _chapter_three.count("energy_max") - _chapter_three.count("energy"))
+			_chapter_three.add_count("energy", gained)
+			_adventure_props.remove_at(energy_index)
+			_story_log("Cleansing energy collected: %d/%d" % [_chapter_three.count("energy"), _chapter_three.count("energy_max")])
+	_c3_spawn_timer -= delta
+	if _c3_spawn_timer <= 0.0 and _chapter_three.count("energy") < _chapter_three.count("energy_max") and _find_story_enemy("c3_energy_carrier") < 0:
+		var carrier_pos: Vector2 = _player_pos + Vector2.from_angle(randf_range(0.0, TAU)) * 330.0
+		_spawn_story_objective_enemy("normal_fast", "c3_energy_carrier", 1.1 + float(_chapter_three.count("pools_purified")) * 0.18, carrier_pos)
+		_c3_spawn_timer = 3.0
+	if _chapter_three.phase == "reclamation_surge":
+		var remaining: float = _chapter_three.tick_timer("reclamation", delta)
+		var all_stable: bool = true
+		for i in _adventure_props.size():
+			var pool: Dictionary = _adventure_props[i]
+			if str(pool.get("kind", "")) != "corrupted_pool": continue
+			var stability: float = float(pool.get("stability", 100.0))
+			if remaining > 0.0:
+				stability -= delta * 1.6
+			if (pool.pos as Vector2).distance_to(_player_pos) < 180.0:
+				stability += delta * (18.0 if remaining <= 0.0 else 11.0)
+			pool["stability"] = clampf(stability, 0.0, 100.0)
+			_adventure_props[i] = pool
+			all_stable = all_stable and stability >= 35.0
+		_chapter_three.set_flag("pool_reclaiming", not all_stable)
+		_c3_spawn_timer -= delta
+		if _c3_spawn_timer <= 0.0:
+			_c3_spawn_pressure(3, "c3_reclaimer", 1.25)
+			_c3_spawn_timer = 4.0
+		if remaining <= 0.0 and all_stable:
+			_chapter_three.set_flag("reclamation_complete")
+			_chapter_three.set_flag("all_pools_stable")
+			_chapter_three.set_flag("pool_reclaiming", false)
+			_chapter_three.set_flag("primary_complete")
+			_story_primary_complete = true
+			_story_log("Objective completion: reclamation surge")
+			_request_story_victory("chapter_three_mire_stable")
+		return
+	var active_pool: int = _chapter_three.count("pools_purified")
+	for i in range(_adventure_props.size() - 1, -1, -1):
+		var pool: Dictionary = _adventure_props[i]
+		if str(pool.get("kind", "")) != "corrupted_pool" or int(pool.get("pool", -1)) != active_pool: continue
+		var near: bool = (pool.pos as Vector2).distance_to(_player_pos) < 175.0
+		if active_pool == 0 and near and _chapter_three.count("energy") > 0:
+			_c3_action_timer += delta
+			if _c3_action_timer >= 1.0:
+				_c3_action_timer = 0.0
+				_chapter_three.add_count("energy", -1)
+				pool["progress"] = float(pool.get("progress", 0.0)) + 1.0
+		elif active_pool == 1:
+			var moving_center: Vector2 = (pool.pos as Vector2) + Vector2.from_angle(_elapsed * 0.7) * 105.0
+			pool["zone_pos"] = moving_center
+			if moving_center.distance_to(_player_pos) < 125.0 and _chapter_three.count("energy") > 0:
+				pool["progress"] = float(pool.get("progress", 0.0)) + delta
+				_c3_action_timer += delta
+				if _c3_action_timer >= 2.0:
+					_c3_action_timer = 0.0
+					_chapter_three.add_count("energy", -1)
+		elif active_pool == 2:
+			if _find_adventure_prop("c3_corruption_node") < 0 and _chapter_three.count("nodes_resolved") < 3:
+				var node_index: int = _chapter_three.count("nodes_resolved")
+				_spawn_custom_prop("c3_corruption_node", (pool.pos as Vector2) + Vector2.from_angle(float(node_index) * TAU / 3.0) * 190.0, {"node":node_index})
+			var node: int = _find_adventure_prop("c3_corruption_node")
+			if node >= 0 and (_adventure_props[node].pos as Vector2).distance_to(_player_pos) < 120.0 and _chapter_three.count("energy") > 0:
+				_c3_action_timer += delta
+				if _c3_action_timer >= 1.4:
+					_c3_action_timer = 0.0
+					_chapter_three.add_count("energy", -1)
+					_chapter_three.add_count("nodes_resolved")
+					_adventure_props.remove_at(node)
+					pool["progress"] = float(_chapter_three.count("nodes_resolved"))
+		else: _c3_action_timer = 0.0
+		var target: float = 3.0 if active_pool != 1 else 8.0
+		if float(pool.get("progress", 0.0)) >= target:
+			pool["active"] = false
+			pool["purified"] = true
+			_chapter_three.add_count("pools_purified")
+			_story_log("Pool purified: %d/3" % _chapter_three.count("pools_purified"))
+			if _chapter_three.count("pools_purified") >= 3:
+				_chapter_three.set_timer("reclamation", 42.0)
+				_c3_spawn_timer = 1.0
+				_c3_enter_phase("reclamation_surge")
+			else:
+				_c3_enter_phase("moving_purification" if active_pool == 0 else "multi_point_purification")
+		_adventure_props[i] = pool
+		return
+
+func _spawn_c3_tracking_choices() -> void:
+	_adventure_props.clear()
+	var trail_count: int = maxi(1, _chapter_three.count("tracking_trails"))
+	var correct_route: int = randi_range(0, trail_count - 1)
+	for route in trail_count:
+		var angle: float = -PI * 0.85 + PI * 1.7 * (float(route) / float(maxi(1, trail_count - 1)))
+		var trail_pos: Vector2 = _player_pos + Vector2.from_angle(angle) * 390.0
+		_spawn_custom_prop("c3_tracking_clue", trail_pos, {"route":route, "correct":correct_route == route})
+	_chapter_three.set_flag("transition_pending", false)
+
+func _update_c3_plaguebeast(delta: float) -> void:
+	if _chapter_three.phase == "first_sighting":
+		var beast_index: int = _find_story_enemy("c3_plague_sighting")
+		_c3_action_timer += delta
+		if beast_index >= 0:
+			var beast: Dictionary = _enemies[beast_index]
+			var hp_ratio: float = float(beast.hp) / maxf(float(beast.get("objective_max_hp", beast.hp)), 1.0)
+			if hp_ratio <= 0.72 or _c3_action_timer >= 18.0:
+				_enemies.remove_at(beast_index)
+				_chapter_three.set_flag("escape_pending", false)
+				_chapter_three.set_count("tracking_phases_complete", 0)
+				_story_log("Beast escaped: first sighting")
+				_spawn_c3_tracking_choices()
+				_c3_enter_phase("tracking")
+		return
+	if _chapter_three.phase == "tracking":
+		for i in range(_adventure_props.size() - 1, -1, -1):
+			var clue: Dictionary = _adventure_props[i]
+			if str(clue.get("kind", "")) != "c3_tracking_clue" or (clue.pos as Vector2).distance_to(_player_pos) >= 110.0: continue
+			var correct: bool = bool(clue.get("correct", false))
+			_chapter_three.add_count("correct_routes" if correct else "wrong_routes")
+			_adventure_props.clear()
+			if not correct:
+				_chapter_three.set_count("tracking_trails", maxi(1, _chapter_three.count("tracking_trails") - 1))
+				_story_log("Wrong trail selected: ambush triggered")
+				_c3_spawn_pressure(7, "c3_pursuit", 1.2 + float(_chapter_three.count("wrong_routes")) * 0.12)
+				_c3_enter_phase("tracking_ambush")
+				return
+			_chapter_three.add_count("tracking_phases_complete")
+			_chapter_three.set_count("tracking_trails", 5)
+			_story_log("Correct trail selected · clue %d/3" % _chapter_three.count("tracking_phases_complete"))
+			_story_log("Trap placed: %s" % str(["Snare Trap", "Antidote Trap", "Noise Trap"][_chapter_three.count("tracking_phases_complete") - 1]))
+			if _chapter_three.count("tracking_phases_complete") >= 3:
+				_chapter_three.set_flag("final_arena_reached")
+				_chapter_three.set_flag("final_phase_started")
+				_chapter_three.set_flag("boss_spawned")
+				_spawn_story_objective_enemy("normal_tank", "c3_plaguebeast_final", 3.8 + float(_chapter_three.count("wrong_routes")) * 0.35 - float(_chapter_three.count("correct_routes")) * 0.18, _story_objective_zone_position(7, 560.0))
+				_c3_enter_phase("final_hunt")
+			else:
+				_spawn_c3_tracking_choices()
+			return
+	if _chapter_three.phase == "tracking_ambush":
+		if _find_story_enemy("c3_pursuit") < 0:
+			_spawn_c3_tracking_choices()
+			_c3_enter_phase("tracking")
+			_story_log("Ambush cleared: %d trails remain" % _chapter_three.count("tracking_trails"))
+		return
+
+func _spawn_c3_region_choices() -> void:
+	_adventure_props.clear()
+	for region in 3:
+		var key: String = str(["spider", "toad", "wasp"][region])
+		if not _chapter_three.flag("%s_complete" % key):
+			_spawn_custom_prop("c3_region", _story_objective_zone_position(region, 440.0), {"region":region})
+
+func _spawn_c3_region_target(region: int) -> void:
+	var kind: String = str(["c3_web_nest", "c3_bile_vessel", "c3_wasp_hive"][region])
+	_spawn_custom_prop(kind, _story_objective_zone_position(region + _chapter_three.count("regions_complete"), 470.0), {"region":region, "progress":0.0})
+
+func _c3_region_lure_duration(region: int) -> float:
+	return float([5.0, 6.0, 5.0][clampi(region, 0, 2)])
+
+func _spawn_c3_venom_pack(region: int, center: Vector2) -> void:
+	var enemy_kind: String = str(["normal_fast", "normal_tank", "normal_fast"][region])
+	var marked_tag: String = str(["c3_marked_spider", "c3_marked_toad", "c3_marked_wasp"][region])
+	var pack_tag: String = str(["c3_spider_pack", "c3_toad_pack", "c3_wasp_pack"][region])
+	var pack_size: int = int([6, 4, 7][region])
+	var strength: float = 1.3 + float(_chapter_three.count("regions_complete")) * 0.25
+	var spawn_direction: Vector2 = _player_pos.direction_to(center)
+	if spawn_direction.is_zero_approx():
+		spawn_direction = Vector2.from_angle(randf_range(0.0, TAU))
+	var pack_center: Vector2 = center + spawn_direction * 480.0
+	_spawn_story_objective_enemy(enemy_kind, marked_tag, strength, pack_center)
+	for pack_index in range(pack_size - 1):
+		var angle: float = float(pack_index) * TAU / float(maxi(1, pack_size - 1))
+		var pack_pos: Vector2 = pack_center + Vector2.from_angle(angle) * randf_range(130.0, 220.0)
+		var player_to_spawn: Vector2 = pack_pos - _player_pos
+		if player_to_spawn.length() < 460.0:
+			var safe_direction: Vector2 = player_to_spawn.normalized() if not player_to_spawn.is_zero_approx() else spawn_direction
+			pack_pos = _player_pos + safe_direction * 460.0
+		_spawn_story_objective_enemy(enemy_kind, pack_tag, strength * 0.82, pack_pos)
+	_story_log("Venom pack lured: %s x%d" % [str(["Spider", "Toad", "Wasp"][region]), pack_size])
+
+func _update_c3_venom_harvest(delta: float) -> void:
+	if _chapter_three.flag("ingredients_contaminated"):
+		var station: int = _find_adventure_prop("c3_cleanse_station")
+		if station >= 0 and (_adventure_props[station].pos as Vector2).distance_to(_player_pos) < 130.0:
+			_c3_action_timer += delta
+			if _c3_action_timer >= 2.0:
+				_chapter_three.set_flag("ingredients_contaminated", false)
+				_adventure_props.remove_at(station)
+				_c3_action_timer = 0.0
+				_story_log("Ingredient contamination cleansed")
+				_spawn_c3_region_choices()
+		return
+	if _chapter_three.phase == "region_select":
+		var region_nearby: bool = false
+		for prop in _adventure_props:
+			if str(prop.get("kind", "")) == "c3_region" and (prop.pos as Vector2).distance_to(_player_pos) < 115.0:
+				var region: int = int(prop.get("region", 0))
+				var region_key: String = "c3_region_%d" % region
+				if _story_custom_touch_lock != region_key:
+					_story_custom_touch_lock = region_key
+					_c3_action_timer = 0.0
+				_chapter_three.set_count("selection_region", region)
+				_c3_action_timer += delta
+				region_nearby = true
+				if _c3_action_timer < 2.0:
+					break
+				_chapter_three.set_count("active_region", region)
+				_adventure_props.clear()
+				_story_custom_touch_lock = ""
+				_c3_action_timer = 0.0
+				_spawn_c3_region_target(region)
+				_c3_enter_phase("region_hunt")
+				return
+		if not region_nearby:
+			_story_custom_touch_lock = ""
+			_c3_action_timer = 0.0
+			_chapter_three.set_count("selection_region", -1)
+	elif _chapter_three.phase == "region_hunt":
+		var region: int = _chapter_three.count("active_region")
+		var target_kind: String = str(["c3_web_nest", "c3_bile_vessel", "c3_wasp_hive"][region])
+		var target: int = _find_adventure_prop(target_kind)
+		if target >= 0 and (_adventure_props[target].pos as Vector2).distance_to(_player_pos) < 145.0:
+			_c3_action_timer += delta
+			_adventure_props[target]["progress"] = _c3_action_timer
+			if _c3_action_timer >= _c3_region_lure_duration(region):
+				var lure_position: Vector2 = _adventure_props[target].pos as Vector2
+				_c3_action_timer = 0.0
+				_adventure_props.remove_at(target)
+				_spawn_c3_venom_pack(region, lure_position)
+		else:
+			_c3_action_timer = 0.0
+			if target >= 0:
+				_adventure_props[target]["progress"] = 0.0
+	elif _chapter_three.phase == "ingredient_extraction":
+		var extraction: int = _find_adventure_prop("c3_extraction")
+		if extraction >= 0 and (_adventure_props[extraction].pos as Vector2).distance_to(_player_pos) < 145.0:
+			_chapter_three.set_flag("ingredient_case_extracted")
+			_chapter_three.set_flag("primary_complete")
+			_story_primary_complete = true
+			_story_log("Objective completion: ingredient case extracted")
+			_request_story_victory("chapter_three_venom_extracted")
+		_c3_spawn_timer -= delta
+		if _c3_spawn_timer <= 0.0:
+			_c3_spawn_pressure(2, "c3_contaminator", 1.25)
+			_c3_spawn_timer = 4.0
+
+func _update_c3_fragile_cure(delta: float) -> void:
+	if _chapter_three.phase == "vial_collection":
+		var vial: int = _find_adventure_prop("c3_vial")
+		if vial >= 0 and (_adventure_props[vial].pos as Vector2).distance_to(_player_pos) < 105.0:
+			_adventure_props.remove_at(vial)
+			_story_custom_carried = "antidote_vial"
+			_chapter_three.set_flag("vial_collected")
+			_spawn_custom_prop("c3_route", _story_stage_origin + Vector2(-390.0, -260.0), {"route":0})
+			_spawn_custom_prop("c3_route", _story_stage_origin + Vector2(390.0, -260.0), {"route":1})
+			_story_log("Vial picked up: integrity 100%")
+			_c3_enter_phase("route_select")
+	elif _chapter_three.phase == "route_select":
+		var route_nearby: bool = false
+		for prop in _adventure_props:
+			if str(prop.get("kind", "")) == "c3_route" and (prop.pos as Vector2).distance_to(_player_pos) < 115.0:
+				var route: int = int(prop.get("route", 0))
+				var route_key: String = "c3_route_%d" % route
+				if _story_custom_touch_lock != route_key:
+					_story_custom_touch_lock = route_key
+					_c3_action_timer = 0.0
+				_chapter_three.set_count("selection_route", route)
+				_c3_action_timer += delta
+				route_nearby = true
+				if _c3_action_timer < 2.5:
+					break
+				_chapter_three.set_count("route", route)
+				_chapter_three.set_count("route_checkpoints_required", 3 if route == 0 else 4)
+				_adventure_props.clear()
+				_story_custom_touch_lock = ""
+				_c3_action_timer = 0.0
+				_spawn_c3_cure_checkpoint(0)
+				_story_log("Route selected: %s" % ("Short hazardous route" if route == 0 else "Long combat route"))
+				_c3_enter_phase("vial_delivery")
+				return
+		if not route_nearby:
+			_story_custom_touch_lock = ""
+			_c3_action_timer = 0.0
+			_chapter_three.set_count("selection_route", -1)
+	elif _chapter_three.phase == "vial_delivery":
+		var checkpoint: int = _find_adventure_prop("c3_cure_checkpoint")
+		if checkpoint >= 0 and _story_custom_carried == "antidote_vial" and (_adventure_props[checkpoint].pos as Vector2).distance_to(_player_pos) < 125.0:
+			_c3_action_timer += delta
+			_adventure_props[checkpoint]["progress"] = _c3_action_timer
+			var checkpoint_duration: float = 5.0 if _chapter_three.count("route") == 0 else 4.0
+			if _c3_action_timer >= checkpoint_duration:
+				_c3_action_timer = 0.0
+				_adventure_props.remove_at(checkpoint)
+				var reached: int = _chapter_three.add_count("route_checkpoints")
+				if _chapter_three.count("route") == 1: _chapter_three.adjust_meter("vial_integrity", 8.0)
+				_story_log("Checkpoint reached: %d/%d" % [reached, _chapter_three.count("route_checkpoints_required")])
+				_c3_spawn_pressure(6 if _chapter_three.count("route") == 0 else 4, "c3_route_guard", 1.3 + float(reached) * 0.12)
+				_c3_enter_phase("route_ambush")
+		else:
+			_c3_action_timer = 0.0
+			if checkpoint >= 0:
+				_adventure_props[checkpoint]["progress"] = 0.0
+	elif _chapter_three.phase == "route_ambush":
+		if _find_story_enemy("c3_route_guard") < 0:
+			var reached: int = _chapter_three.count("route_checkpoints")
+			if reached < _chapter_three.count("route_checkpoints_required"):
+				_spawn_c3_cure_checkpoint(reached)
+				_c3_enter_phase("vial_delivery")
+			else:
+				_spawn_custom_prop("infected_altar", _story_objective_zone_position(7, 620.0), {"progress":0.0})
+				_c3_enter_phase("infected_altar")
+	elif _chapter_three.phase == "infected_altar":
+		var altar: int = _find_adventure_prop("infected_altar")
+		if altar >= 0 and (_adventure_props[altar].pos as Vector2).distance_to(_player_pos) < 145.0:
+			_c3_action_timer += delta
+			_adventure_props[altar]["progress"] = _c3_action_timer
+			if _c3_action_timer >= 4.0:
+				_c3_action_timer = 0.0
+				_chapter_three.set_flag("vial_at_altar")
+				_story_custom_carried = ""
+				_chapter_three.set_timer("transfer", 42.0)
+				_c3_spawn_timer = 1.0
+				_story_log("Vial placed: antidote transfer started")
+				_c3_enter_phase("antidote_transfer")
+		else:
+			_c3_action_timer = 0.0
+			if altar >= 0:
+				_adventure_props[altar]["progress"] = 0.0
+	elif _chapter_three.phase == "antidote_transfer":
+		var altar: int = _find_adventure_prop("infected_altar")
+		if altar < 0: return
+		var near: bool = (_adventure_props[altar].pos as Vector2).distance_to(_player_pos) < 210.0
+		if near: _chapter_three.tick_timer("transfer", delta)
+		_c3_spawn_timer -= delta
+		if _c3_spawn_timer <= 0.0:
+			_c3_spawn_pressure(3, "c3_vial_hunter", 1.3)
+			_c3_spawn_timer = 3.0
+		if _chapter_three.timer("transfer") <= 0.0:
+			_chapter_three.set_flag("transfer_complete")
+			_chapter_three.set_flag("altar_cured")
+			_chapter_three.set_flag("primary_complete")
+			_story_primary_complete = true
+			_request_story_victory("chapter_three_altar_cured")
+
+func _spawn_c3_cure_checkpoint(checkpoint: int) -> void:
+	var route_offset: int = 0 if _chapter_three.count("route") == 0 else 4
+	_spawn_custom_prop("c3_cure_checkpoint", _story_objective_zone_position(route_offset + checkpoint, 470.0 + float(checkpoint) * 80.0), {"checkpoint":checkpoint, "progress":0.0})
+
+func _update_c3_grand_antidote(delta: float) -> void:
+	if _story_custom_timer > 0.0:
+		_story_custom_timer = maxf(0.0, _story_custom_timer - delta)
+	if _chapter_three.phase == "ingredient_collection":
+		for i in range(_adventure_props.size() - 1, -1, -1):
+			var prop: Dictionary = _adventure_props[i]
+			if str(prop.get("kind", "")) == "c3_brew_ingredient" and _story_custom_carried.is_empty() and (prop.pos as Vector2).distance_to(_player_pos) < 100.0:
+				_story_custom_carried = str(prop.get("ingredient", 0))
+				_chapter_three.add_count("ingredients_acquired")
+				_adventure_props.remove_at(i)
+				_story_log("Ingredient obtained: %s" % _ingredient_name(_story_custom_carried))
+				return
+		var cauldron: int = _find_adventure_prop("cauldron")
+		if cauldron >= 0 and not _story_custom_carried.is_empty() and (_adventure_props[cauldron].pos as Vector2).distance_to(_player_pos) < 125.0 and _story_custom_touch_lock != "c3_cauldron":
+			var submitted: int = _chapter_three.count("ingredients_submitted")
+			if submitted < _chapter_three.recipe.size() and int(_story_custom_carried) == _chapter_three.recipe[submitted]:
+				_chapter_three.add_count("ingredients_submitted")
+				var next_step: int = _chapter_three.count("ingredients_submitted")
+				_story_custom_progress["brew_feedback"] = "CORRECT · Next: %s" % (_ingredient_name(str(_chapter_three.recipe[next_step])) if next_step < _chapter_three.recipe.size() else "Begin brewing")
+				_story_custom_timer = 2.5
+				_story_log("Ingredient submitted: correct · %d/3" % _chapter_three.count("ingredients_submitted"))
+			else:
+				_chapter_three.adjust_meter("heat", 18.0)
+				_chapter_three.adjust_meter("purity", -12.0)
+				_spawn_custom_prop("c3_brew_ingredient", _custom_objective_position(320.0), {"ingredient":int(_story_custom_carried)})
+				var required_name: String = _ingredient_name(str(_chapter_three.recipe[submitted])) if submitted < _chapter_three.recipe.size() else "none"
+				_story_custom_progress["brew_feedback"] = "WRONG INGREDIENT · Bring %s" % required_name
+				_story_custom_timer = 3.5
+				_story_log("Ingredient submitted: wrong · heat raised, purity reduced")
+			_story_custom_carried = ""
+			_story_custom_touch_lock = "c3_cauldron"
+			if _chapter_three.count("ingredients_submitted") >= 3:
+				_c3_enter_phase("active_brewing")
+		else:
+			if cauldron < 0 or (_adventure_props[cauldron].pos as Vector2).distance_to(_player_pos) >= 150.0: _story_custom_touch_lock = ""
+	elif _chapter_three.phase == "active_brewing":
+		var cauldron: int = _find_adventure_prop("cauldron")
+		var near: bool = cauldron >= 0 and (_adventure_props[cauldron].pos as Vector2).distance_to(_player_pos) < 155.0
+		_chapter_three.adjust_meter("heat", delta * (1.6 if not near else -2.4))
+		if near: _chapter_three.adjust_meter("purity", delta * 0.55)
+		var heat: float = _chapter_three.meter("heat")
+		if heat >= 35.0 and heat <= 82.0 and _chapter_three.meter("purity") >= 35.0:
+			_chapter_three.adjust_meter("brew_progress", delta * 2.7)
+		_c3_spawn_timer -= delta
+		if _c3_spawn_timer <= 0.0:
+			_c3_spawn_pressure(2, "c3_brew_pressure", 1.35)
+			_c3_spawn_timer = 4.5
+		if _chapter_three.meter("brew_progress") >= 100.0:
+			_chapter_three.set_flag("brew_complete")
+			_chapter_three.set_flag("boss_spawned")
+			_story_log("Brew completed: purity %d%%" % roundi(_chapter_three.meter("purity")))
+			_spawn_story_objective_enemy("blight_vine_tyrant", "c3_blight_tyrant", 4.4 - _chapter_three.meter("purity") * 0.012, _story_objective_zone_position(7, 540.0))
+			_c3_enter_phase("blight_tyrant")
+
+func _setup_chapter_four_stage(objective: String) -> void:
+	_chapter_four = ChapterFourStageControllerClass.new()
+	_chapter_four.reset(int(story_stage.get("chapter_stage", 1)))
+	_c4_spawn_timer = 1.0
+	_c4_action_timer = 0.0
+	_story_custom_touch_lock = ""
+	_story_custom_carried = ""
+	match objective:
+		"ore_rush":
+			_chapter_four.set_meter("heat", 28.0)
+			_chapter_four.set_count("ore_required", 12)
+			_chapter_four.set_count("ore_generated", 0)
+			_chapter_four.set_count("ore_mined", 0)
+			_chapter_four.set_count("ore_delivered", 0)
+			_chapter_four.set_count("ore_carried", 0)
+			_chapter_four.set_count("ore_stolen", 0)
+			_chapter_four.set_timer("ore_thief", 18.0)
+			for deposit_index in 6:
+				var deposit_type: int = deposit_index % 3
+				var ore_yield: int = int([1, 3, 2][deposit_type])
+				_chapter_four.add_count("ore_generated", ore_yield)
+				_spawn_custom_prop("c4_ore_deposit", _story_objective_zone_position(deposit_index, 520.0 + float(deposit_type) * 90.0), {"deposit_type":deposit_type, "yield":ore_yield, "progress":0.0})
+			_spawn_custom_prop("c4_mining_cart", _story_stage_origin + Vector2(0.0, -180.0), {"loaded":0, "progress":0.0, "blocked":false})
+			_spawn_custom_prop("c4_cooling_vent", _story_stage_origin + Vector2(-420.0, 250.0), {"charges":3, "cooldown":0.0, "progress":0.0})
+			_spawn_custom_prop("c4_cooling_vent", _story_stage_origin + Vector2(420.0, 250.0), {"charges":3, "cooldown":0.0, "progress":0.0})
+			_c4_enter_phase("mining_logistics")
+		"molten_circuit":
+			_chapter_four.set_meter("heat", 42.0)
+			_chapter_four.set_flag("puzzle_initialized")
+			_chapter_four.set_count("valve_mask", 0)
+			_chapter_four.set_count("mechanisms_powered", 0)
+			_chapter_four.set_count("route_nodes", 0)
+			for valve_index in 3:
+				_spawn_custom_prop("lava_valve", _story_objective_zone_position(valve_index, 620.0), {"valve":valve_index, "toggle_mask":int([1, 2, 4][valve_index]), "inside":false})
+				_spawn_custom_prop("c4_forge_mechanism", _story_objective_zone_position(valve_index + 3, 480.0), {"mechanism":valve_index, "powered":false, "jammed":false})
+			_c4_enter_phase("lava_routing")
+		"golem_taming":
+			_chapter_four.set_meter("heat", 38.0)
+			_chapter_four.set_count("golems_captured", 0)
+			_chapter_four.set_flag("capture_pending")
+			_spawn_c4_golem(0)
+			_c4_enter_phase("charge_stun")
+		"lost_relic":
+			_chapter_four.set_meter("heat", 35.0)
+			_chapter_four.set_count("components_collected", 0)
+			_spawn_c4_chamber(0)
+			_c4_enter_phase("flame_chamber")
+		"meltdown":
+			_chapter_four.set_meter("heat", 76.0)
+			_chapter_four.set_count("regulators_disabled", 0)
+			_chapter_four.sequence.assign([0, 1, 2, 3])
+			_chapter_four.sequence.shuffle()
+			_chapter_four.set_timer("critical_grace", 10.0)
+			for regulator_index in 4:
+				_spawn_custom_prop("regulator", _story_objective_zone_position(regulator_index, 690.0), {"regulator":regulator_index, "disabled":false, "progress":0.0})
+			_c4_enter_phase("initial_meltdown")
+	_story_log("Chapter 4 stage initialized: %s" % objective)
+
+func _c4_enter_phase(next_phase: String) -> void:
+	if _chapter_four == null: return
+	var previous: String = _chapter_four.enter(next_phase)
+	_story_log_phase(previous, next_phase)
+
+func _update_chapter_four_stage(delta: float) -> void:
+	if _chapter_four == null: return
+	_update_c4_heat_failure(delta)
+	if _game_over: return
+	match _chapter_four.stage_number:
+		1: _update_c4_ore_rush(delta)
+		2: _update_c4_molten_circuit(delta)
+		3: _update_c4_golem_taming(delta)
+		4: _update_c4_lost_relic(delta)
+		5: _update_c4_meltdown(delta)
+
+func _update_c4_heat_failure(delta: float) -> void:
+	var heat: float = _chapter_four.meter("heat")
+	if heat >= 70.0 and not _chapter_four.flag("heat_warning_logged"):
+		_chapter_four.set_flag("heat_warning_logged")
+		_story_log("Heat threshold: WARNING %d%%" % roundi(heat))
+	if heat >= 90.0 and not _chapter_four.flag("heat_critical_logged"):
+		_chapter_four.set_flag("heat_critical_logged")
+		_story_log("Heat threshold: CRITICAL %d%%" % roundi(heat))
+	if heat >= 100.0:
+		_chapter_four.set_flag("heat_failure_active")
+		var grace: float = _chapter_four.tick_timer("critical_grace", delta)
+		if grace <= 0.0:
+			_story_custom_failure = "Forge heat remained critical for too long."
+			_fail_custom_story_stage()
+	else:
+		_chapter_four.set_flag("heat_failure_active", false)
+		_chapter_four.set_timer("critical_grace", 10.0)
+
+func _update_c4_ore_rush(delta: float) -> void:
+	_chapter_four.adjust_meter("heat", -delta * 0.12)
+	_update_c4_ore_thieves(delta)
+	for i in range(_adventure_props.size() - 1, -1, -1):
+		var prop: Dictionary = _adventure_props[i]
+		var kind: String = str(prop.get("kind", ""))
+		var near: bool = (prop.pos as Vector2).distance_to(_player_pos) < 135.0
+		if kind == "c4_ore_deposit":
+			var deposit_type: int = int(prop.get("deposit_type", 0))
+			prop["heat_locked"] = deposit_type == 1 and _chapter_four.meter("heat") >= 85.0
+			if near and _chapter_four.count("ore_carried") < 3 and not bool(prop.get("heat_locked", false)):
+				var duration: float = float([3.0, 5.0, 4.0][deposit_type])
+				prop["progress"] = float(prop.get("progress", 0.0)) + delta
+				_chapter_four.adjust_meter("heat", delta * float([1.2, 2.8, 2.0][deposit_type]))
+				if float(prop["progress"]) >= duration:
+					var ore_yield: int = int(prop.get("yield", 1))
+					var capacity: int = 3 - _chapter_four.count("ore_carried")
+					var carried: int = mini(capacity, ore_yield)
+					_chapter_four.add_count("ore_carried", carried)
+					_chapter_four.add_count("ore_mined", ore_yield)
+					for dropped_index in range(ore_yield - carried):
+						_spawn_custom_prop("c4_ore_bag", prop.pos as Vector2 + Vector2.from_angle(float(dropped_index) * 2.4) * 75.0, {"value":1, "stolen":false})
+					if deposit_type == 2:
+						_spawn_custom_prop("c4_lava_vent", prop.pos as Vector2, {"life":14.0})
+						_story_log("Unstable deposit collapsed: temporary lava vent opened")
+					_story_log("Ore mined: type=%d yield=%d heat=%d" % [deposit_type, ore_yield, roundi(_chapter_four.meter("heat"))])
+					_adventure_props.remove_at(i)
+					continue
+			else:
+				prop["progress"] = 0.0
+			_adventure_props[i] = prop
+		elif kind == "c4_ore_bag" and near and _chapter_four.count("ore_carried") < 3:
+			_chapter_four.add_count("ore_carried")
+			_adventure_props.remove_at(i)
+		elif kind == "c4_cooling_vent":
+			prop["cooldown"] = maxf(0.0, float(prop.get("cooldown", 0.0)) - delta)
+			if near and int(prop.get("charges", 0)) > 0 and float(prop.get("cooldown", 0.0)) <= 0.0:
+				prop["progress"] = float(prop.get("progress", 0.0)) + delta
+				if float(prop["progress"]) >= 2.0:
+					prop["progress"] = 0.0
+					prop["charges"] = int(prop.get("charges", 0)) - 1
+					prop["cooldown"] = 18.0
+					_chapter_four.adjust_meter("heat", -28.0)
+					_story_log("Cooling vent activated: heat=%d" % roundi(_chapter_four.meter("heat")))
+			elif not near: prop["progress"] = 0.0
+			_adventure_props[i] = prop
+		elif kind == "c4_lava_vent":
+			prop["life"] = float(prop.get("life", 0.0)) - delta
+			if near: _chapter_four.adjust_meter("heat", delta * 1.8)
+			if float(prop["life"]) <= 0.0: _adventure_props.remove_at(i)
+			else: _adventure_props[i] = prop
+	var cart_index: int = _find_adventure_prop("c4_mining_cart")
+	if cart_index < 0: return
+	var cart: Dictionary = _adventure_props[cart_index]
+	if _chapter_four.phase == "mining_logistics":
+		if (cart.pos as Vector2).distance_to(_player_pos) < 150.0 and _chapter_four.count("ore_carried") > 0:
+			var delivered: int = mini(_chapter_four.count("ore_carried"), _chapter_four.count("ore_required") - _chapter_four.count("ore_delivered"))
+			_chapter_four.add_count("ore_delivered", delivered)
+			_chapter_four.add_count("ore_carried", -delivered)
+			cart["loaded"] = _chapter_four.count("ore_delivered")
+			_adventure_props[cart_index] = cart
+			_story_log("Ore delivered: %d/%d" % [_chapter_four.count("ore_delivered"), _chapter_four.count("ore_required")])
+		if _chapter_four.count("ore_delivered") >= _chapter_four.count("ore_required"):
+			_chapter_four.set_flag("cart_loaded")
+			_chapter_four.set_flag("extraction_started")
+			_spawn_custom_prop("c4_extraction", _story_objective_zone_position(7, 1050.0), {})
+			_c4_enter_phase("cart_extraction")
+	elif _chapter_four.phase == "cart_extraction":
+		var extraction_index: int = _find_adventure_prop("c4_extraction")
+		if extraction_index < 0: return
+		var destination: Vector2 = _adventure_props[extraction_index].pos as Vector2
+		var cart_blocked: bool = _find_story_enemy("c4_cart_blocker") >= 0
+		if (cart.pos as Vector2).distance_to(_player_pos) < 280.0 and not cart_blocked:
+			cart["pos"] = (cart.pos as Vector2).move_toward(destination, delta * 105.0)
+			cart["progress"] = 1.0 - (cart.pos as Vector2).distance_to(destination) / maxf(_story_stage_origin.distance_to(destination), 1.0)
+			_adventure_props[cart_index] = cart
+		var cart_progress: float = float(cart.get("progress", 0.0))
+		for blockage_number in 2:
+			var blockage_key: String = "cart_blockage_%d" % (blockage_number + 1)
+			if cart_progress >= float(blockage_number + 1) * 0.32 and not _chapter_four.flag(blockage_key):
+				_chapter_four.set_flag(blockage_key)
+				_spawn_story_objective_enemy("normal_tank", "c4_cart_blocker", 2.1 + float(blockage_number) * 0.35, cart.pos as Vector2 + Vector2(190.0, 0.0))
+				_story_log("Cart movement blocked: clear the forge obstruction")
+		if (cart.pos as Vector2).distance_to(destination) < 45.0:
+			_chapter_four.set_flag("cart_reached_extraction")
+			_chapter_four.set_flag("no_ore_stolen")
+			_chapter_four.set_flag("cargo_transition_clear")
+			_chapter_four.set_flag("primary_complete")
+			_story_primary_complete = true
+			_request_story_victory("chapter_four_ore_extracted")
+
+func _update_c4_ore_thieves(delta: float) -> void:
+	if _chapter_four.phase != "mining_logistics": return
+	if _chapter_four.tick_timer("ore_thief", delta) <= 0.0:
+		if _find_adventure_prop("c4_ore_bag") >= 0 and _find_story_enemy("c4_ore_thief") < 0:
+			_spawn_story_objective_enemy("normal_fast", "c4_ore_thief", 1.35, _custom_objective_position(460.0))
+			_story_log("Ore thief entered: unattended ore at risk")
+		_chapter_four.set_timer("ore_thief", 18.0)
+	var thief_index: int = _find_story_enemy("c4_ore_thief")
+	if thief_index < 0: return
+	var thief: Dictionary = _enemies[thief_index]
+	if int(thief.get("stolen_ore", 0)) <= 0:
+		var bag_index: int = _find_adventure_prop("c4_ore_bag")
+		if bag_index >= 0:
+			var bag_pos: Vector2 = _adventure_props[bag_index].pos as Vector2
+			thief["pos"] = (thief.pos as Vector2).move_toward(bag_pos, delta * 150.0)
+			if (thief.pos as Vector2).distance_to(bag_pos) < 55.0:
+				_adventure_props.remove_at(bag_index)
+				thief["stolen_ore"] = 1
+				_chapter_four.add_count("ore_stolen")
+				_story_log("Ore stolen: recover it from the marked thief")
+	else:
+		var thief_exit: Vector2 = _story_stage_origin + Vector2(1050.0, 0.0)
+		thief["pos"] = (thief.pos as Vector2).move_toward(thief_exit, delta * 125.0)
+	_enemies[thief_index] = thief
+
+func _update_c4_molten_circuit(delta: float) -> void:
+	if _chapter_four.phase == "lava_routing":
+		for i in _adventure_props.size():
+			var prop: Dictionary = _adventure_props[i]
+			if str(prop.get("kind", "")) != "lava_valve": continue
+			var inside: bool = (prop.pos as Vector2).distance_to(_player_pos) < 110.0
+			if inside and not bool(prop.get("inside", false)):
+				var mask: int = _chapter_four.count("valve_mask") ^ int(prop.get("toggle_mask", 0))
+				_chapter_four.set_count("valve_mask", mask)
+				_chapter_four.set_count("mechanisms_powered", _bit_count(mask))
+				_chapter_four.adjust_meter("heat", 5.0 if mask != 7 else -12.0)
+				_story_log("Valve activated: %d · powered=%d/3" % [int(prop.get("valve", 0)) + 1, _bit_count(mask)])
+				for mechanism_index in _adventure_props.size():
+					if str(_adventure_props[mechanism_index].get("kind", "")) == "c4_forge_mechanism":
+						var mechanism: int = int(_adventure_props[mechanism_index].get("mechanism", 0))
+						_adventure_props[mechanism_index]["powered"] = (mask & (1 << mechanism)) != 0
+				if mask == 7:
+					for route_index in 3:
+						_spawn_custom_prop("c4_route_node", _story_objective_zone_position(route_index + 4, 540.0), {"route":route_index})
+					_c4_enter_phase("powered_traversal")
+			prop["inside"] = inside
+			_adventure_props[i] = prop
+	elif _chapter_four.phase == "powered_traversal":
+		var next_route: int = _chapter_four.count("route_nodes")
+		for i in range(_adventure_props.size() - 1, -1, -1):
+			var prop: Dictionary = _adventure_props[i]
+			if str(prop.get("kind", "")) == "c4_route_node" and int(prop.get("route", -1)) == next_route and (prop.pos as Vector2).distance_to(_player_pos) < 125.0:
+				_adventure_props.remove_at(i)
+				_chapter_four.add_count("route_nodes")
+				if _chapter_four.count("route_nodes") >= 3:
+					_chapter_four.set_flag("route_traversal_complete")
+					_chapter_four.set_timer("stabilization", 35.0)
+					_c4_spawn_timer = 3.0
+					_c4_enter_phase("forge_stabilization")
+				return
+	elif _chapter_four.phase == "forge_stabilization":
+		var jammer_active: bool = _find_story_enemy("c4_forge_jammer") >= 0
+		_chapter_four.set_flag("mandatory_jam_active", jammer_active)
+		for mechanism_index in _adventure_props.size():
+			if str(_adventure_props[mechanism_index].get("kind", "")) == "c4_forge_mechanism":
+				_adventure_props[mechanism_index]["jammed"] = jammer_active
+		if not jammer_active: _chapter_four.tick_timer("stabilization", delta)
+		_c4_spawn_timer -= delta
+		if _c4_spawn_timer <= 0.0 and not jammer_active:
+			_spawn_story_objective_enemy("normal_fast", "c4_forge_jammer", 1.45, _custom_objective_position(420.0))
+			_c4_spawn_timer = 9.0
+		if _chapter_four.timer("stabilization") <= 0.0 and not jammer_active:
+			_chapter_four.set_flag("puzzle_initialized")
+			_chapter_four.set_flag("mechanisms_powered")
+			_chapter_four.set_flag("stabilization_complete")
+			_chapter_four.set_flag("no_mandatory_jam")
+			_chapter_four.set_flag("primary_complete")
+			_story_primary_complete = true
+			_request_story_victory("chapter_four_circuit_stable")
+
+func _spawn_c4_golem(index: int) -> void:
+	_adventure_props.clear()
+	var position: Vector2 = _story_objective_zone_position(index, 560.0)
+	_spawn_story_objective_enemy("normal_tank", "c4_golem_%d" % (index + 1), 3.0 + float(index) * 0.45, position)
+	if index == 0: _spawn_custom_prop("c4_charge_wall", position + Vector2(420.0, 0.0), {})
+	elif index == 1: _spawn_custom_prop("c4_cooling_vent", position + Vector2(-360.0, 100.0), {"charges":99, "progress":0.0})
+	elif index == 2:
+		for drone_index in 3: _spawn_story_objective_enemy("normal_fast", "c4_repair_drone", 1.2, position + Vector2.from_angle(float(drone_index) * TAU / 3.0) * 220.0)
+	else:
+		_spawn_custom_prop("c4_tether", position + Vector2(-300.0, 0.0), {"tether":0, "active":false, "progress":0.0})
+		_spawn_custom_prop("c4_tether", position + Vector2(300.0, 0.0), {"tether":1, "active":false, "progress":0.0})
+
+func _update_c4_golem_taming(delta: float) -> void:
+	var golem_number: int = _chapter_four.count("golems_captured") + 1
+	var golem_index: int = _find_story_enemy("c4_golem_%d" % golem_number)
+	if golem_index < 0: return
+	var golem: Dictionary = _enemies[golem_index]
+	var hp_ratio: float = float(golem.hp) / maxf(float(golem.get("objective_max_hp", golem.hp)), 1.0)
+	var ready: bool = false
+	if golem_number == 1:
+		var wall: int = _find_adventure_prop("c4_charge_wall")
+		ready = hp_ratio <= 0.35 and wall >= 0 and (golem.pos as Vector2).distance_to(_adventure_props[wall].pos as Vector2) < 330.0
+	elif golem_number == 2:
+		var vent: int = _find_adventure_prop("c4_cooling_vent")
+		if vent >= 0:
+			var cooling_vent: Dictionary = _adventure_props[vent]
+			var golem_in_cooling: bool = (golem.pos as Vector2).distance_to(cooling_vent.pos as Vector2) < 380.0
+			var player_at_vent: bool = (cooling_vent.pos as Vector2).distance_to(_player_pos) < 240.0
+			if hp_ratio <= 0.35 and golem_in_cooling and player_at_vent and not bool(cooling_vent.get("cooled", false)):
+				cooling_vent["progress"] = float(cooling_vent.get("progress", 0.0)) + delta
+				if float(cooling_vent["progress"]) >= 2.0:
+					cooling_vent["cooled"] = true
+					_story_log("Golem mechanic state: cooling core exposed")
+			elif not player_at_vent:
+				cooling_vent["progress"] = 0.0
+			_adventure_props[vent] = cooling_vent
+			ready = bool(cooling_vent.get("cooled", false))
+	elif golem_number == 3:
+		var repair_drone_count: int = 0
+		for enemy in _enemies:
+			if str(enemy.get("story_tag", "")) == "c4_repair_drone": repair_drone_count += 1
+		if repair_drone_count > 0:
+			golem["hp"] = minf(float(golem.get("objective_max_hp", golem.hp)), float(golem.hp) + float(golem.get("objective_max_hp", golem.hp)) * 0.012 * float(repair_drone_count) * delta)
+			_enemies[golem_index] = golem
+		ready = hp_ratio <= 0.35 and _find_story_enemy("c4_repair_drone") < 0
+	else:
+		for tether_index in _adventure_props.size():
+			var tether: Dictionary = _adventure_props[tether_index]
+			if str(tether.get("kind", "")) != "c4_tether" or bool(tether.get("active", false)): continue
+			if (tether.pos as Vector2).distance_to(_player_pos) < 120.0:
+				tether["progress"] = float(tether.get("progress", 0.0)) + delta
+				var tether_duration: float = 1.2 if _chapter_four.count("golems_captured") >= 3 else 2.0
+				if float(tether["progress"]) >= tether_duration:
+					tether["active"] = true
+					_story_log("Captured Golem assistance: tether stabilized")
+			else: tether["progress"] = 0.0
+			_adventure_props[tether_index] = tether
+		ready = hp_ratio <= 0.35 and _count_c4_active_tethers() >= 2
+	if hp_ratio <= 0.20:
+		golem["hp"] = float(golem.get("objective_max_hp", 100.0)) * 0.20
+		_enemies[golem_index] = golem
+	_chapter_four.set_flag("capture_ready", ready)
+	var capture_range: float = 230.0 if golem_number in [1, 2] else 145.0
+	var capture_channel_active: bool = ready and (golem.pos as Vector2).distance_to(_player_pos) < capture_range
+	_chapter_four.set_flag("capture_channel_active", capture_channel_active)
+	if capture_channel_active:
+		_c4_action_timer += delta
+		if _c4_action_timer >= 2.5:
+			_c4_action_timer = 0.0
+			_enemies.remove_at(golem_index)
+			var captured: int = _chapter_four.add_count("golems_captured")
+			_chapter_four.set_flag("golem_%d_captured" % captured)
+			_story_log("Golem captured: %d/4" % captured)
+			if captured >= 4:
+				_chapter_four.set_flag("assistance_resolved")
+				_chapter_four.set_flag("capture_pending", false)
+				_chapter_four.set_flag("capture_channel_active", false)
+				_chapter_four.set_flag("capture_ready", false)
+				_chapter_four.set_flag("primary_complete")
+				_story_primary_complete = true
+				_request_story_victory("chapter_four_golems_captured")
+			else:
+				_spawn_c4_golem(captured)
+				_c4_enter_phase(str(["charge_stun", "cooling_capture", "drone_separation", "tether_capture"][captured]))
+	else: _c4_action_timer = 0.0
+
+func _count_c4_active_tethers() -> int:
+	var count: int = 0
+	for prop in _adventure_props:
+		if str(prop.get("kind", "")) == "c4_tether" and bool(prop.get("active", false)): count += 1
+	return count
+
+func _spawn_c4_chamber(index: int) -> void:
+	_adventure_props.clear()
+	_spawn_custom_prop("relic_chamber", _story_objective_zone_position(index, 680.0), {"component":index, "opened":false})
+
+func _update_c4_lost_relic(delta: float) -> void:
+	var components: int = _chapter_four.count("components_collected")
+	if components < 3:
+		var chamber: int = _find_adventure_prop("relic_chamber")
+		if chamber >= 0 and not bool(_adventure_props[chamber].get("opened", false)) and (_adventure_props[chamber].pos as Vector2).distance_to(_player_pos) < 140.0:
+			_adventure_props[chamber]["opened"] = true
+			_spawn_story_objective_enemy("normal_tank" if components != 1 else "normal_fast", "c4_chamber_guardian_%d" % (components + 1), 2.8 + float(components) * 0.55, _adventure_props[chamber].pos as Vector2)
+			_c4_spawn_timer = 2.0
+			_c4_enter_phase(str(["flame_guardian", "collapse_guardian", "reflection_guardian"][components]))
+		_c4_spawn_timer -= delta
+		if _c4_spawn_timer <= 0.0 and _find_story_enemy("c4_chamber_guardian_%d" % (components + 1)) >= 0:
+			_c3_spawn_pressure(2, "c4_chamber_hazard", 1.1 + float(components) * 0.12)
+			_c4_spawn_timer = 7.0
+	elif not _chapter_four.flag("relic_choice_committed"):
+		if _find_adventure_prop("relic_forge") < 0: _spawn_custom_prop("relic_forge", _story_stage_origin + Vector2(0.0, -220.0), {})
+		var forge: int = _find_adventure_prop("relic_forge")
+		if forge >= 0 and (_adventure_props[forge].pos as Vector2).distance_to(_player_pos) < 145.0:
+			_show_c4_relic_choice()
+
+func _show_c4_relic_choice() -> void:
+	if _adventure_choice_layer != null: return
+	_paused = true
+	var layer := CanvasLayer.new(); layer.layer = 130; add_child(layer); _adventure_choice_layer = layer
+	var view: Vector2 = get_viewport_rect().size
+	var shade := ColorRect.new(); shade.color = Color(0.02, 0.02, 0.03, 0.90); shade.size = view; layer.add_child(shade)
+	var box := VBoxContainer.new(); box.position = Vector2(70.0, view.y * 0.24); box.size = Vector2(view.x - 140.0, 520.0); box.add_theme_constant_override("separation", 18); layer.add_child(box)
+	var title := Label.new(); title.text = "FORGE THE LOST RELIC"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 40); box.add_child(title)
+	for choice: Dictionary in [{"id":"power", "text":"POWER RELIC · Higher attack"}, {"id":"guard", "text":"GUARD RELIC · Defensive shield"}, {"id":"swift", "text":"SWIFT RELIC · Movement and cooldown"}]:
+		var button := _pause_btn(str(choice.text), Color(0.42, 0.20, 0.08), Color.WHITE); button.custom_minimum_size = Vector2(0.0, 92.0); box.add_child(button)
+		button.pressed.connect(_select_c4_relic.bind(str(choice.id)))
+
+func _select_c4_relic(choice: String) -> void:
+	_close_adventure_choice()
+	_chapter_four.set_flag("relic_assembled")
+	_chapter_four.set_flag("relic_choice_committed")
+	_story_custom_progress["relic_choice"] = choice
+	if choice == "power": _ring_bonuses["skill_dmg"] = float(_ring_bonuses.get("skill_dmg", 0.0)) + 0.25
+	elif choice == "guard": _player_max_hp *= 1.20; _player_hp = minf(_player_max_hp, _player_hp + _player_max_hp * 0.20)
+	else: _player_speed *= 1.15
+	_adventure_props.clear()
+	_spawn_story_objective_enemy("normal_tank", "c4_relic_guardian", 4.0, _story_objective_zone_position(7, 560.0))
+	_chapter_four.set_flag("relic_guardian_spawned")
+	_chapter_four.set_flag("boss_spawned")
+	_c4_enter_phase("relic_guardian")
+
+func _update_c4_meltdown(delta: float) -> void:
+	var shutdown: int = _chapter_four.count("regulators_disabled")
+	if _chapter_four.flag("shutdown_complete"):
+		_chapter_four.adjust_meter("heat", -delta * 1.15)
+	else:
+		_chapter_four.adjust_meter("heat", delta * (0.24 + float(4 - shutdown) * 0.06))
+	for i in _adventure_props.size():
+		var regulator: Dictionary = _adventure_props[i]
+		if str(regulator.get("kind", "")) != "regulator" or bool(regulator.get("disabled", false)): continue
+		var near: bool = (regulator.pos as Vector2).distance_to(_player_pos) < 120.0
+		if near:
+			regulator["progress"] = float(regulator.get("progress", 0.0)) + delta
+			if float(regulator["progress"]) >= 2.0:
+				regulator["progress"] = 0.0
+				var regulator_id: int = int(regulator.get("regulator", 0))
+				var expected: int = _chapter_four.sequence[shutdown]
+				if regulator_id == expected:
+					regulator["disabled"] = true
+					shutdown = _chapter_four.add_count("regulators_disabled")
+					_chapter_four.set_count("boss_regulator_phases_completed", shutdown)
+					_chapter_four.adjust_meter("heat", -18.0)
+					_story_log("Regulator activated: correct %d/4" % shutdown)
+					_story_log("Boss ability disabled: %s" % str(["Lava Eruption", "Armour Regeneration", "Projectile Forge", "Arena Heat Pulse"][regulator_id]))
+					_chapter_four.set_flag("boss_system_%d_disabled" % regulator_id)
+					if shutdown == 2 and not _chapter_four.flag("boss_spawned"):
+						_spawn_story_objective_enemy("thunderforge_behemoth", "c4_thunderforge_behemoth", 4.8, _story_stage_origin + Vector2(0.0, -520.0))
+						_chapter_four.set_flag("boss_spawned")
+						var spawned_boss_index: int = _find_story_enemy("c4_thunderforge_behemoth")
+						if spawned_boss_index >= 0:
+							_enemies[spawned_boss_index]["forge_systems_active"] = 2
+							for disabled_system in 4:
+								_enemies[spawned_boss_index]["system_%d_disabled" % disabled_system] = _chapter_four.flag("boss_system_%d_disabled" % disabled_system)
+						if _chapter_four.meter("heat") >= 55.0:
+							var remaining_regulator: int = _chapter_four.sequence[2]
+							_chapter_four.sequence[2] = _chapter_four.sequence[3]
+							_chapter_four.sequence[3] = remaining_regulator
+							_story_log("Shutdown order changed: new environmental clue active")
+						_c4_enter_phase("overlapping_shutdown")
+					var active_boss_index: int = _find_story_enemy("c4_thunderforge_behemoth")
+					if active_boss_index >= 0:
+						_enemies[active_boss_index]["forge_systems_active"] = maxi(0, 4 - shutdown)
+						_enemies[active_boss_index]["system_%d_disabled" % regulator_id] = true
+						_enemies[active_boss_index]["dmg"] = float(_enemies[active_boss_index].get("dmg", 1.0)) * 0.88
+					if shutdown >= 4:
+						_chapter_four.set_flag("shutdown_complete")
+						_chapter_four.set_flag("shutdown_committed")
+						_chapter_four.set_flag("final_phase_entered")
+						_chapter_four.adjust_meter("heat", -30.0)
+						_c4_enter_phase("behemoth_final")
+				else:
+					_chapter_four.adjust_meter("heat", 14.0)
+					_chapter_four.set_flag("regulator_transition_pending", true)
+					_story_log("Regulator activated: wrong · heat increased")
+					call_deferred("_clear_c4_regulator_transition")
+		else: regulator["progress"] = 0.0
+		_adventure_props[i] = regulator
+	var behemoth_index: int = _find_story_enemy("c4_thunderforge_behemoth")
+	if behemoth_index >= 0:
+		var behemoth: Dictionary = _enemies[behemoth_index]
+		for active_regulator in _adventure_props:
+			if str(active_regulator.get("kind", "")) != "regulator" or bool(active_regulator.get("disabled", false)): continue
+			var away_from_regulator: Vector2 = (active_regulator.pos as Vector2).direction_to(behemoth.pos as Vector2)
+			if away_from_regulator.is_zero_approx(): away_from_regulator = Vector2.RIGHT
+			if (behemoth.pos as Vector2).distance_to(active_regulator.pos as Vector2) < 190.0:
+				behemoth["pos"] = active_regulator.pos as Vector2 + away_from_regulator * 190.0
+		_enemies[behemoth_index] = behemoth
+
+func _clear_c4_regulator_transition() -> void:
+	if _chapter_four != null: _chapter_four.set_flag("regulator_transition_pending", false)
+
+func _update_cleanse_mire(delta: float) -> void:
+	var needed := int(_story_custom_progress.get("energy_needed", 3))
+	for i in range(_adventure_props.size() - 1, -1, -1):
+		var pool := _adventure_props[i]
+		if str(pool.get("kind", "")) != "corrupted_pool": continue
+		if int(_story_custom_progress.get("energy", 0)) >= needed and (pool.pos as Vector2).distance_to(_player_pos) < 175.0:
+			_story_custom_interaction += delta
+			if _story_custom_interaction >= 2.5:
+				_story_custom_progress["energy"] = int(_story_custom_progress.get("energy", 0)) - needed
+				_story_custom_interaction = 0.0
+				_adventure_props.remove_at(i)
+				_complete_staged_objective_instance()
+			return
+	_story_custom_interaction = 0.0
+
+func _update_plaguebeast() -> void:
+	var index := _find_story_enemy("plaguebeast")
+	var tracker := _find_adventure_prop("tracker")
+	if index < 0: return
+	if tracker >= 0: _adventure_props[tracker]["pos"] = _enemies[index].pos
+	var enemy := _enemies[index]
+	if bool(enemy.get("shield_active", false)):
+		if _story_gate_remaining <= 0:
+			enemy["shield_active"] = false
+			_enemies[index] = enemy
+		else:
+			return
+	var hp_ratio := float(enemy.hp) / maxf(float(enemy.get("objective_max_hp", enemy.hp)), 1.0)
+	var escapes := int(_story_custom_progress.get("escapes", 0))
+	var threshold := 0.68 if escapes == 0 else 0.35
+	if escapes < 2 and hp_ratio <= threshold:
+		enemy["pos"] = _custom_objective_position(760.0 + float(escapes) * 160.0)
+		enemy["shield_active"] = true
+		_enemies[index] = enemy
+		_story_custom_progress["escapes"] = escapes + 1
+		_spawn_story_gate_ambush(8 + escapes * 4)
+
+func _update_venom_harvest() -> void:
+	var phase: int = int(_story_custom_progress.get("phase", 0))
+	var phase_key: String = str(["spider", "toad", "wasp"][clampi(phase, 0, 2)])
+	if int(_story_custom_progress.get(phase_key, 0)) >= 3 and phase < 2:
+		_story_custom_progress["phase"] = phase + 1
+		_spawn_story_gate_ambush(6 + phase * 3)
+	if int(_story_custom_progress.get("spider", 0)) >= 3 and int(_story_custom_progress.get("toad", 0)) >= 3 and int(_story_custom_progress.get("wasp", 0)) >= 3:
+		_complete_custom_story_stage()
+
+func _update_fragile_cure(delta: float) -> void:
+	var checkpoints: int = int(_story_custom_progress.get("checkpoints", 0))
+	if checkpoints < 3 and _find_adventure_prop("cure_checkpoint") < 0 and _story_gate_remaining <= 0:
+		_spawn_cure_checkpoint(checkpoints)
+	elif checkpoints >= 3 and _find_adventure_prop("infected_altar") < 0 and _story_gate_remaining <= 0:
+		_spawn_custom_prop("infected_altar", _story_objective_zone_position(3, 900.0), {})
+	for i in range(_adventure_props.size() - 1, -1, -1):
+		var prop := _adventure_props[i]
+		var kind := str(prop.get("kind", ""))
+		if kind == "cure_checkpoint" and int(prop.get("checkpoint", -1)) == int(_story_custom_progress.get("checkpoints", 0)) and (prop.pos as Vector2).distance_to(_player_pos) < 125.0:
+			_story_custom_progress["checkpoints"] = int(_story_custom_progress.get("checkpoints", 0)) + 1
+			_adventure_props.remove_at(i)
+			_spawn_story_gate_ambush(6 + int(_story_custom_progress.get("checkpoints", 0)) * 2)
+			return
+		if kind == "infected_altar" and int(_story_custom_progress.get("checkpoints", 0)) >= 3 and _story_gate_remaining <= 0 and (prop.pos as Vector2).distance_to(_player_pos) < 145.0:
+			_complete_custom_story_stage(); return
+		if kind == "healing_fountain" and (prop.pos as Vector2).distance_to(_player_pos) < 130.0:
+			_story_custom_progress["vial"] = minf(100.0, float(_story_custom_progress.get("vial", 100.0)) + 18.0 * delta)
+
+func _spawn_cure_checkpoint(checkpoint: int) -> void:
+	_spawn_custom_prop("cure_checkpoint", _story_objective_zone_position(checkpoint, 680.0), {"checkpoint":checkpoint})
+
+func _update_grand_antidote() -> void:
+	if _find_adventure_prop("ingredient") < 0 and _story_custom_carried.is_empty() and _story_gate_remaining <= 0 and int(_story_custom_progress.get("submitted", 0)) < _story_custom_sequence.size():
+		_spawn_current_antidote_ingredient()
+	for i in range(_adventure_props.size() - 1, -1, -1):
+		var prop := _adventure_props[i]
+		if str(prop.get("kind", "")) == "ingredient" and (prop.pos as Vector2).distance_to(_player_pos) < 90.0 and _story_custom_carried.is_empty():
+			_story_custom_carried = str(prop.get("ingredient", -1))
+			_adventure_props.remove_at(i)
+			return
+	var cauldron := _find_adventure_prop("cauldron")
+	if cauldron < 0 or _story_custom_carried.is_empty(): return
+	var near := (_adventure_props[cauldron].pos as Vector2).distance_to(_player_pos) < 120.0
+	if near and _story_custom_touch_lock != "cauldron":
+		var submitted := int(_story_custom_progress.get("submitted", 0))
+		if int(_story_custom_carried) == _story_custom_sequence[submitted]:
+			submitted += 1
+			_story_custom_progress["submitted"] = submitted
+			if submitted >= _story_custom_sequence.size(): _complete_custom_story_stage()
+			else:
+				_spawn_story_gate_ambush(5 + submitted * 3)
+		else:
+			_story_custom_progress["submitted"] = 0
+			_spawn_story_penalty_elite()
+			_respawn_antidote_ingredients()
+		_story_custom_carried = ""
+		_story_custom_touch_lock = "cauldron"
+	elif not near:
+		_story_custom_touch_lock = ""
+
+func _respawn_antidote_ingredients() -> void:
+	for i in range(_adventure_props.size() - 1, -1, -1):
+		if str(_adventure_props[i].get("kind", "")) == "ingredient": _adventure_props.remove_at(i)
+	_spawn_current_antidote_ingredient()
+
+func _spawn_current_antidote_ingredient() -> void:
+	var submitted: int = int(_story_custom_progress.get("submitted", 0))
+	if submitted < 0 or submitted >= _story_custom_sequence.size(): return
+	_spawn_custom_prop("ingredient", _story_objective_zone_position(submitted, 720.0), {"ingredient":_story_custom_sequence[submitted]})
+
+func _update_silent_descent(delta: float) -> void:
+	var hidden: bool = false
+	var detected: bool = false
+	_story_custom_progress["inside_active_safe_point"] = false
+	for prop_index in _adventure_props.size():
+		var prop: Dictionary = _adventure_props[prop_index]
+		var kind: String = str(prop.get("kind", ""))
+		var pos: Vector2 = prop.pos
+		if kind == "hiding_zone" and pos.distance_to(_player_pos) < 150.0:
+			hidden = true
+			var current_safe_point: int = int(_story_custom_progress.get("safe_points", 0))
+			if not bool(prop.get("visited", false)) and int(prop.get("section", -1)) == current_safe_point:
+				_story_custom_progress["inside_active_safe_point"] = true
+				var activation_progress: float = minf(10.0, float(prop.get("activation_progress", 0.0)) + delta)
+				prop["activation_progress"] = activation_progress
+				_story_custom_progress["safe_point_hold"] = activation_progress
+				if activation_progress >= 10.0:
+					prop["visited"] = true
+					_story_custom_progress["safe_points"] = current_safe_point + 1
+					_story_custom_progress["safe_point_hold"] = 0.0
+					_story_log("Stealth safe point activated: %d/3" % int(_story_custom_progress["safe_points"]))
+				_adventure_props[prop_index] = prop
+		elif kind == "sentry":
+			var patrol_target: Vector2 = prop.get("patrol_target", pos) as Vector2
+			var patrol_start: Vector2 = prop.get("patrol_start", pos) as Vector2
+			var patrol_end: Vector2 = prop.get("patrol_end", pos) as Vector2
+			if pos.distance_to(patrol_target) <= 6.0:
+				patrol_target = patrol_start if patrol_target.distance_to(patrol_end) <= 6.0 else patrol_end
+				prop["patrol_target"] = patrol_target
+			var movement_direction: Vector2 = pos.direction_to(patrol_target)
+			if not movement_direction.is_zero_approx():
+				prop["facing"] = movement_direction
+				pos = pos.move_toward(patrol_target, float(prop.get("patrol_speed", 82.0)) * delta)
+				prop["pos"] = pos
+			_adventure_props[prop_index] = prop
+			var facing: Vector2 = prop.get("facing", Vector2.RIGHT) as Vector2
+			if pos.distance_to(_player_pos) < 380.0 and absf(facing.angle_to(pos.direction_to(_player_pos))) < 0.58:
+				detected = true
+		elif kind == "citadel_gate" and pos.distance_to(_player_pos) < 145.0:
+			if int(_story_custom_progress.get("safe_points", 0)) >= 3:
+				_story_custom_progress["gate_reached"] = true
+				_complete_custom_story_stage(); return
+	var detection_time: float = float(_story_custom_progress.get("detection_time", 0.0))
+	var ambush_cooldown: float = maxf(0.0, float(_story_custom_progress.get("scan_ambush_cooldown", 0.0)) - delta)
+	if detected and not hidden and ambush_cooldown <= 0.0:
+		_spawn_silent_descent_ambush(6)
+		ambush_cooldown = 8.0
+		_story_log("Patrol sighting: stealth ambush spawned")
+	if detected and not hidden:
+		detection_time = minf(2.0, detection_time + delta)
+	else:
+		detection_time = maxf(0.0, detection_time - delta * 2.0)
+	_story_custom_progress["detection_time"] = detection_time
+	_story_custom_progress["scan_ambush_cooldown"] = ambush_cooldown
+	_story_custom_progress["hidden"] = hidden
+	_story_custom_progress["detected"] = detected
+	# Briefly crossing a sight cone only raises suspicion. Alert begins after one
+	# continuous second of exposure and is never raised merely by nearby enemies.
+	var rate: float = -24.0 if hidden else (8.0 if detection_time >= 1.0 else -10.0)
+	_story_custom_alert = clampf(_story_custom_alert + rate * delta, 0.0, 100.0)
+	if _story_custom_alert >= 100.0:
+		var lockdowns: int = int(_story_custom_progress.get("lockdowns", 0))
+		if lockdowns == 0:
+			_story_custom_progress["lockdowns"] = 1
+			_story_custom_progress["detection_time"] = 0.0
+			_story_custom_alert = 45.0
+			_spawn_story_gate_ambush(6)
+		else:
+			_fail_custom_story_stage()
+
+func _spawn_silent_descent_ambush(count: int) -> void:
+	for enemy_index in count:
+		var kind: String = "normal_tank" if enemy_index % 4 == 3 else ("normal_fast" if enemy_index % 2 == 0 else "normal")
+		var spawn_direction: Vector2 = Vector2.RIGHT.rotated(float(enemy_index) * TAU / float(maxi(count, 1)))
+		var spawn_position: Vector2 = _player_pos + spawn_direction * randf_range(380.0, 520.0)
+		_spawn_story_objective_enemy(kind, "silent_descent_ambush", 1.12, spawn_position)
+
+func _update_soul_liberation(delta: float) -> void:
+	_update_custom_breakables(delta, "soul_chain", 165.0)
+	if _find_adventure_prop("soul_chain") < 0 and _find_adventure_prop("released_soul") < 0 and _adventure_progress < _adventure_target:
+		_spawn_custom_prop("released_soul", _custom_objective_position(280.0), {})
+	var soul := _find_adventure_prop("released_soul")
+	var portal := _find_adventure_prop("abyss_portal")
+	if soul < 0 or portal < 0: return
+	var soul_pos: Vector2 = _adventure_props[soul].pos
+	var portal_pos: Vector2 = _adventure_props[portal].pos
+	soul_pos = soul_pos.move_toward(portal_pos, 105.0 * delta)
+	_adventure_props[soul]["pos"] = soul_pos
+	if soul_pos.distance_to(_player_pos) < 70.0:
+		_adventure_props.remove_at(soul)
+		_adventure_progress += 1
+		if _adventure_progress >= _adventure_target: _complete_custom_story_stage()
+		else: _spawn_soul_chain()
+	elif soul_pos.distance_to(portal_pos) < 65.0:
+		_adventure_props.remove_at(soul)
+		_spawn_soul_chain()
+
+func _update_mirror_labyrinth() -> void:
+	for i in _adventure_props.size():
+		var prop := _adventure_props[i]
+		var inside := (prop.pos as Vector2).distance_to(_player_pos) < 100.0
+		if inside and not bool(prop.get("inside", false)):
+			if int(prop.get("portal", -1)) == int(_story_custom_progress.get("correct", -2)):
+				_adventure_progress += 1
+				_story_custom_progress["room"] = _adventure_progress
+				if _adventure_progress >= _adventure_target: _complete_custom_story_stage()
+				else: _spawn_mirror_room()
+			else:
+				_adventure_progress = maxi(0, _adventure_progress - 1)
+				_spawn_story_penalty_elite()
+				_spawn_mirror_room()
+			return
+		prop["inside"] = inside
+		_adventure_props[i] = prop
+
+func _update_twin_eclipse(delta: float) -> void:
+	if _story_gate_remaining > 0: return
+	var first := int(_story_custom_progress.get("first", -1))
+	if first >= 0:
+		_story_custom_progress["window"] = float(_story_custom_progress.get("window", 10.0)) - delta
+		if float(_story_custom_progress.get("window", 0.0)) <= 0.0:
+			_story_custom_progress = {"first":-1, "window":0.0}
+	for i in _adventure_props.size():
+		var prop := _adventure_props[i]
+		var inside := (prop.pos as Vector2).distance_to(_player_pos) < 115.0
+		if inside and not bool(prop.get("inside", false)):
+			var obelisk := int(prop.get("obelisk", i))
+			first = int(_story_custom_progress.get("first", -1))
+			if first < 0:
+				_story_custom_progress = {"first":obelisk, "window":10.0}
+			elif first != obelisk:
+				_complete_custom_story_stage()
+				return
+		prop["inside"] = inside
+		_adventure_props[i] = prop
+
+func _update_abyss_king(delta: float) -> void:
+	if _story_custom_phase == 1:
+		_story_custom_timer -= delta
+		if _story_custom_timer <= 0.0:
+			_story_log("Timer expired: abyss_king_ritual")
+			_fail_custom_story_stage()
+			return
+		_update_custom_breakables(delta, "ritual_anchor", 180.0)
+		if _adventure_progress < 3 and _find_adventure_prop("ritual_anchor") < 0:
+			if int(_story_custom_progress.get("anchor_ambush_for", -1)) != _adventure_progress:
+				_story_custom_progress["anchor_ambush_for"] = _adventure_progress
+				_spawn_story_gate_ambush(6 + _adventure_progress * 3)
+			elif _story_gate_remaining <= 0:
+				_spawn_next_ritual_anchor()
+		if _adventure_progress >= 3:
+			_story_log_phase("ritual_anchors", "abyss_crown")
+			_story_custom_phase = 2
+			_adventure_progress = 0
+			_adventure_props.clear()
+			_spawn_custom_prop("abyss_crown", _player_pos + Vector2(0, -360), {"hp":320.0, "max_hp":320.0})
+	elif _story_custom_phase == 2:
+		var reflection_active: bool = not _is_abyss_crown_vulnerable()
+		if not reflection_active:
+			_update_custom_breakables(delta, "abyss_crown", 180.0)
+		else:
+			var crown := _find_adventure_prop("abyss_crown")
+			_story_custom_interaction = maxf(0.0, _story_custom_interaction - delta)
+			if crown >= 0 and (_adventure_props[crown].pos as Vector2).distance_to(_player_pos) < 180.0 and _story_custom_interaction <= 0.0:
+				_story_custom_interaction = 0.8
+				_damage_player(_player_max_hp * 0.06, 0.35)
+		if _find_adventure_prop("abyss_crown") < 0:
+			_story_log_phase("abyss_crown", "abyss_king")
+			_story_custom_phase = 3
+			_adventure_progress = 0
+			_spawn_story_objective_enemy("abyss_king_boss", "abyss_king", 1.8, _player_pos + Vector2(0, -430))
+
+func _is_abyss_crown_vulnerable() -> bool:
+	return _story_custom_id == "abyss_king" and _story_custom_phase == 2 and fmod(_elapsed, 4.0) < 1.6
+
+func _is_inside_vulnerable_crown_window() -> bool:
+	if not _is_abyss_crown_vulnerable():
+		return false
+	var crown_index: int = _find_adventure_prop("abyss_crown")
+	if crown_index < 0:
+		return false
+	var crown_position: Vector2 = _adventure_props[crown_index].get("pos", Vector2.ZERO) as Vector2
+	return crown_position.distance_to(_player_pos) < 200.0
+
+func _spawn_next_ritual_anchor() -> void:
+	if _adventure_progress >= 3 or _find_adventure_prop("ritual_anchor") >= 0: return
+	var anchor_hp: float = 220.0 + float(_adventure_progress) * 75.0
+	_spawn_custom_prop("ritual_anchor", _story_objective_zone_position(_adventure_progress, 620.0), {"hp":anchor_hp, "max_hp":anchor_hp})
+
+func _find_story_enemy(tag: String) -> int:
+	for i in _enemies.size():
+		if str(_enemies[i].get("story_tag", "")) == tag: return i
+	return -1
+
+func _spawn_story_penalty_elite() -> void:
+	_spawn_story_objective_enemy("normal_tank", "objective_penalty", 2.0, _custom_objective_position(260.0))
+
+func _handle_custom_story_enemy_death(enemy: Dictionary) -> bool:
+	var tag := str(enemy.get("story_tag", ""))
+	if tag == "objective_gate":
+		_story_gate_remaining = maxi(0, _story_gate_remaining - 1)
+		return false
+	if _adventure_state == "story_chapter_one" and _chapter_one != null:
+		match tag:
+			"spore_carrier":
+				_adventure_props.append({"kind":"c1_energy_spore", "pos":enemy.pos as Vector2, "hp":1.0, "max_hp":1.0, "energy":2.0})
+				_story_log("Objective activation: energy spore dropped")
+			"supply_foreman":
+				_chapter_one.set_flag("foreman_resolved")
+				_chapter_one.set_flag("supplies_secured")
+				_chapter_one.set_flag("feeding_sacs_resolved")
+				_chapter_one.set_flag("primary_complete")
+				_story_primary_complete = true
+				call_deferred("_request_story_victory", "chapter_one_supplies_secured")
+			"fleeing_key_carrier", "protected_key_carrier", "watchpath_captain":
+				_adventure_props.append({"kind":"key", "pos":enemy.pos as Vector2, "hp":1.0, "max_hp":1.0})
+				_chapter_one.set_flag("key_enemy_held", false)
+				_story_log("Objective completion: key carrier defeated")
+			"crestkeeper":
+				_chapter_one.set_flag("boss_defeated")
+				_chapter_one.set_flag("finale_complete")
+				_chapter_one.set_flag("primary_complete")
+				_story_primary_complete = true
+				_story_required_boss_defeated = true
+				_story_log("Boss death: Crestkeeper")
+		return false
+	if _adventure_state != "story_custom": return false
+	if _chapter_five != null and int(story_stage.get("chapter", 0)) == 5:
+		match tag:
+			"c5_soul_binder":
+				_story_log("Spirit capture resolved: Soul Binder defeated")
+				return false
+			"c5_portal_keeper":
+				_chapter_five.set_flag("boss_defeated")
+				_chapter_five.set_flag("portal_keeper_resolved")
+				_story_required_boss_defeated = true
+				_story_log("Boss death: Portal Keeper Elite")
+				return false
+			"c5_mirror_guardian":
+				_chapter_five.set_flag("boss_defeated")
+				_chapter_five.set_flag("guardian_defeated")
+				_story_required_boss_defeated = true
+				_story_log("Boss death: Mirror Guardian")
+				call_deferred("_finish_c5_mirror_guardian")
+				return false
+			"c5_eclipse_elite":
+				_chapter_five.set_flag("boss_defeated")
+				_chapter_five.set_flag("eclipse_elite_resolved")
+				_story_required_boss_defeated = true
+				_story_log("Boss death: Eclipse Elite")
+				return false
+			"c5_crown_channeler":
+				_chapter_five.set_timer("crown_vulnerable", 7.0)
+				_story_log("Crown vulnerability opened: ritual channeler interrupted")
+				return false
+			"abyss_king":
+				if not _chapter_five.flag("final_phase_entered"):
+					return true
+				_chapter_five.set_flag("boss_defeated")
+				_chapter_five.set_flag("primary_complete")
+				_chapter_five.set_flag("boss_transition_pending", false)
+				_story_required_boss_defeated = true
+				_story_primary_complete = true
+				_story_log("Boss death: actual Abyss King")
+				call_deferred("_request_story_victory", "chapter_five_abyss_king_defeated")
+				return false
+	if _chapter_four != null and int(story_stage.get("chapter", 0)) == 4:
+		if tag == "c4_ore_thief":
+			var recovered_ore: int = int(enemy.get("stolen_ore", 0))
+			if recovered_ore > 0:
+				_spawn_custom_prop("c4_ore_bag", enemy.pos as Vector2, {"value":recovered_ore, "stolen":false})
+				_chapter_four.add_count("ore_stolen", -recovered_ore)
+				_story_log("Ore recovered from thief: %d" % recovered_ore)
+			return false
+		if tag == "c4_cart_blocker":
+			_story_log("Cart obstruction cleared: extraction resumed")
+			return false
+		if tag.begins_with("c4_golem_"):
+			# Rogue golems are captured, never killed. A lethal hit leaves them weakened.
+			var golem_index: int = _find_story_enemy(tag)
+			if golem_index >= 0:
+				var golem: Dictionary = _enemies[golem_index]
+				golem["hp"] = maxf(1.0, float(golem.get("objective_max_hp", 100.0)) * 0.20)
+				_enemies[golem_index] = golem
+			_story_log("Golem weakened: capture mechanic required")
+			return true
+		if tag.begins_with("c4_chamber_guardian_"):
+			var component_number: int = _chapter_four.add_count("components_collected")
+			_chapter_four.set_flag("chamber_%d_complete" % component_number)
+			var component_name: String = str(["Ember Core", "Forge Frame", "Relic Heart"][component_number - 1])
+			if component_number == 1:
+				_player_max_hp *= 1.12
+				_player_hp = minf(_player_max_hp, _player_hp + _player_max_hp * 0.20)
+			elif component_number == 2:
+				_player_speed *= 1.10
+			_story_log("Relic component collected: %s · %d/3" % [component_name, component_number])
+			if component_number < 3:
+				_spawn_c4_chamber(component_number)
+				_c4_enter_phase(str(["flame_chamber", "collapse_chamber", "reflection_chamber"][component_number]))
+			else:
+				_adventure_props.clear()
+				_spawn_custom_prop("relic_forge", _story_stage_origin + Vector2(0.0, -220.0), {})
+				_c4_enter_phase("relic_assembly")
+			return false
+		if tag == "c4_relic_guardian":
+			_chapter_four.set_flag("boss_defeated")
+			_chapter_four.set_flag("primary_complete")
+			_story_required_boss_defeated = true
+			_story_primary_complete = true
+			_story_log("Boss death: Lost Relic Guardian")
+			call_deferred("_request_story_victory", "chapter_four_relic_guardian_defeated")
+			return false
+		if tag == "c4_thunderforge_behemoth":
+			if not _chapter_four.flag("shutdown_complete"):
+				var behemoth_index: int = _find_story_enemy(tag)
+				if behemoth_index >= 0:
+					var behemoth: Dictionary = _enemies[behemoth_index]
+					behemoth["hp"] = maxf(1.0, float(behemoth.get("objective_max_hp", 100.0)) * 0.25)
+					_enemies[behemoth_index] = behemoth
+				_story_log("Boss defeat blocked: finish the shutdown sequence")
+				return true
+			_chapter_four.set_flag("boss_defeated")
+			_chapter_four.set_flag("primary_complete")
+			_story_required_boss_defeated = true
+			_story_primary_complete = true
+			_story_log("Boss death: Thunderforge Behemoth")
+			call_deferred("_request_story_victory", "chapter_four_meltdown_stopped")
+			return false
+	if _chapter_three != null and int(story_stage.get("chapter", 0)) == 3:
+		match tag:
+			"c3_energy_carrier":
+				_spawn_custom_prop("c3_cleansing_energy", enemy.pos as Vector2, {"value":2})
+				_story_log("Cleansing energy dropped by marked carrier")
+				return false
+			"c3_plague_sighting":
+				# The first sighting always escapes; it cannot be killed early.
+				_chapter_three.set_flag("escape_pending", false)
+				_spawn_c3_tracking_choices()
+				_c3_enter_phase("tracking")
+				_story_log("Beast escaped: forced sighting threshold")
+				var sighting_index: int = _find_story_enemy(tag)
+				if sighting_index >= 0: _enemies.remove_at(sighting_index)
+				return true
+			"c3_plaguebeast_final":
+				_chapter_three.set_flag("boss_defeated")
+				_chapter_three.set_flag("escape_pending", false)
+				_chapter_three.set_flag("primary_complete")
+				_story_required_boss_defeated = true
+				_story_primary_complete = true
+				_story_log("Boss death: Plaguebeast")
+				var plaguebeast_index: int = _find_story_enemy(tag)
+				if plaguebeast_index >= 0: _enemies.remove_at(plaguebeast_index)
+				call_deferred("_request_story_victory", "chapter_three_plaguebeast_defeated")
+				return true
+			"c3_marked_spider", "c3_marked_toad", "c3_marked_wasp":
+				var ingredient: String = str({"c3_marked_spider":"spider", "c3_marked_toad":"toad", "c3_marked_wasp":"wasp"}[tag])
+				var count: int = _chapter_three.add_count(ingredient)
+				_story_log("Ingredient obtained: %s %d/3" % [ingredient.capitalize(), count])
+				if count >= 3:
+					_chapter_three.set_flag("%s_complete" % ingredient)
+					_chapter_three.add_count("regions_complete")
+					if _chapter_three.count("regions_complete") >= 3:
+						_chapter_three.set_flag("ingredient_case_assembled")
+						_story_custom_carried = "ingredient_case"
+						_adventure_props.clear()
+						_spawn_custom_prop("c3_extraction", _story_objective_zone_position(7, 620.0), {})
+						_c3_spawn_timer = 1.0
+						_c3_enter_phase("ingredient_extraction")
+					else:
+						_chapter_three.set_flag("ingredients_contaminated")
+						_adventure_props.clear()
+						_spawn_custom_prop("c3_cleanse_station", _player_pos + Vector2(0.0, -210.0), {})
+						_c3_enter_phase("region_select")
+				else:
+					_spawn_c3_region_target(_chapter_three.count("active_region"))
+				return false
+			"c3_blight_tyrant":
+				_chapter_three.set_flag("boss_defeated")
+				_chapter_three.set_flag("primary_complete")
+				_story_required_boss_defeated = true
+				_story_primary_complete = true
+				_story_log("Boss death: Blight Vine Tyrant")
+				var tyrant_index: int = _find_story_enemy(tag)
+				if tyrant_index >= 0: _enemies.remove_at(tyrant_index)
+				call_deferred("_request_story_victory", "chapter_three_blight_tyrant_defeated")
+				return true
+	if _chapter_two != null and int(story_stage.get("chapter", 0)) == 2:
+		match tag:
+			"c2_flamekeeper":
+				_story_custom_carried = "flame_charge"
+				_story_log("Objective completion: Flamekeeper dropped flame charge")
+				return false
+			"c2_brazier_suppressor":
+				_story_log("Suppression growth intercepted before reaching a brazier")
+				return false
+			"c2_jailer_elite":
+				_chapter_two.set_flag("jailer_elite_resolved")
+				_story_log("Objective completion: Jailer Elite resolved")
+				return false
+			"frost_mimic":
+				_chapter_two.set_flag("mimic_defeated")
+				_chapter_two.set_flag("boss_defeated")
+				_chapter_two.set_flag("finale_complete")
+				_chapter_two.set_flag("primary_complete")
+				_story_required_boss_defeated = true
+				_story_primary_complete = true
+				_story_log("Boss death: actual Frost Mimic")
+				call_deferred("_request_story_victory", "chapter_two_frost_mimic_defeated")
+				return true
+			"frost_colossus":
+				if _chapter_two.count("crystals_broken") >= 3 and _chapter_two.flag("all_armour_transitions_complete"):
+					_chapter_two.set_flag("boss_defeated")
+					_chapter_two.set_flag("finale_complete")
+					_chapter_two.set_flag("primary_complete")
+					_story_required_boss_defeated = true
+					_story_primary_complete = true
+					_story_log("Boss death: Frostbound Colossus")
+					call_deferred("_request_story_victory", "chapter_two_colossus_defeated")
+					return true
+	if tag == "story_final":
+		if _is_boss_kind(str(enemy.get("kind", ""))):
+			_story_required_boss_defeated = true
+			_story_log("Boss defeated: %s" % str(enemy.get("kind", "")))
+		_story_final_remaining = maxi(0, _story_final_remaining - 1)
+		if _story_final_remaining <= 0:
+			_story_final_completed = true
+			_story_log("Objective completed: final_assault · required_completed=all")
+			_complete_custom_story_stage()
+			return true
+		return false
+	if _story_custom_id == "cleanse_mire":
+		_story_custom_progress["energy"] = mini(9, int(_story_custom_progress.get("energy", 0)) + 1)
+	elif _story_custom_id == "venom_harvest":
+		var enemy_kind := str(enemy.get("kind", "normal"))
+		var ingredient := "spider" if enemy_kind == "normal_fast" else ("toad" if enemy_kind == "normal_tank" else "wasp")
+		_story_custom_progress[ingredient] = mini(3, int(_story_custom_progress.get(ingredient, 0)) + 1)
+	match tag:
+		"frost_mimic", "plaguebeast", "abyss_king":
+			_story_required_boss_defeated = true
+			_story_log("Boss defeated: %s" % tag)
+			_complete_custom_story_stage()
+			return true
+		"frost_colossus":
+			if _story_custom_phase >= 1:
+				_story_required_boss_defeated = true
+				_story_log("Boss defeated: frost_colossus")
+				_complete_custom_story_stage()
+				return true
+	return false
+
+func _complete_custom_story_stage() -> void:
+	_story_primary_complete = true
+	if _story_telemetry != null:
+		_story_telemetry.log_once("primary_complete", "Objective completed: %s" % _story_custom_id)
+	_request_story_victory("%s_complete" % _story_custom_id)
+
+func _request_story_victory(reason: String) -> bool:
+	if story_stage.is_empty():
+		return false
+	if _story_telemetry != null:
+		_story_telemetry.victory_requested(reason)
+	_story_last_victory_request = reason
+	var state := _story_completion_state()
+	var result: Dictionary = StoryCompletionValidatorClass.validate(story_stage, state)
+	if not bool(result.get("accepted", false)):
+		var rejection_reason: String = str(result.get("reason", "requirements_incomplete"))
+		if _story_telemetry != null:
+			_story_telemetry.victory_rejected(rejection_reason, _story_completion_snapshot(state))
+		_story_last_victory_result = "BLOCKED — %s" % rejection_reason
+		_refresh_story_debug_overlay(true)
+		if bool(result.get("start_finale", false)) and not _story_final_triggered:
+			_begin_custom_story_final_encounter()
+		return false
+	_story_victory_validated = true
+	_story_victory_started = true
+	if _story_telemetry != null:
+		_story_telemetry.victory_accepted(str(result.get("reason", "all_required_conditions_complete")))
+	_story_last_victory_result = "ACCEPTED — %s" % str(result.get("reason", "all_required_conditions_complete"))
+	_refresh_story_debug_overlay(true)
+	_adventure_state = "story_complete"
+	_adventure_props.clear()
+	_enemies.clear()
+	_reset_staged_objective_state()
+	call_deferred("_show_story_victory")
+	return true
+
+func _story_completion_state() -> Dictionary:
+	var objective: String = str(story_stage.get("objective", ""))
+	var finale_required: bool = _story_custom_data.has("final_boss") or int(_story_custom_data.get("final_enemy_count", 0)) > 0
+	if int(story_stage.get("chapter", 0)) in [2, 3, 4]:
+		finale_required = false
+	var required_total: int = _staged_objective_required if _staged_objective_enabled else _adventure_target
+	var required_generated: int = _staged_objective_generated if _staged_objective_enabled else _adventure_target
+	var required_completed: int = _staged_objective_completed if _staged_objective_enabled else _adventure_progress
+	var required_active: int = _staged_objective_active
+	if int(story_stage.get("chapter", 1)) == 1:
+		match objective:
+			"nests":
+				required_total = 3
+				required_generated = _story_nests_generated
+				required_completed = _story_nests_destroyed
+				required_active = 1 if _find_adventure_prop("nest") >= 0 else 0
+			"keys":
+				required_total = _adventure_target
+				required_generated = _story_keys_generated
+				required_completed = _adventure_progress
+				required_active = 1 if _find_adventure_prop("key") >= 0 else 0
+	var target_alive := _story_required_target_survived
+	if objective == "escort" and not _adventure_props.is_empty():
+		target_alive = str(_adventure_props[0].get("kind", "")) == "scout" and float(_adventure_props[0].get("hp", 0.0)) > 0.0
+	elif objective == "defend" and not _adventure_props.is_empty():
+		target_alive = str(_adventure_props[0].get("kind", "")) == "shrine" and float(_adventure_props[0].get("hp", 0.0)) > 0.0
+	var state: Dictionary = {
+		"victory_committed": _story_victory_started,
+		"primary_complete": _story_primary_complete,
+		"objective_started": _adventure_state not in ["story_escort_wait", "story_defend_wait"],
+		"staged_required": _staged_objective_enabled,
+		"required_total": required_total,
+		"required_generated": required_generated,
+		"required_completed": required_completed,
+		"required_active": required_active,
+		"pending_spawn": _staged_objective_enabled and _staged_objective_generated < _staged_objective_required,
+		"required_gate_remaining": _story_gate_remaining,
+		"timer_expired": _adventure_timer <= 0.0,
+		"route_complete": _story_route_index >= _story_route_waypoints.size() and not _story_route_waypoints.is_empty(),
+		"target_alive": target_alive,
+		"finale_required": finale_required,
+		"finale_triggered": _story_final_triggered,
+		"finale_complete": _story_final_completed,
+		"boss_required": (int(story_stage.get("chapter", 1)) == 1 and int(story_stage.get("chapter_stage", 1)) == 5) or objective in ["frost_mimic", "plaguebeast", "frost_colossus", "abyss_king"] or not str(_story_custom_data.get("final_boss", "")).is_empty(),
+		"boss_defeated": _story_required_boss_defeated,
+		"stage_phase": _story_custom_phase,
+		"failure_active": not _story_custom_failure.is_empty(),
+	}
+	if _chapter_one != null and int(story_stage.get("chapter", 0)) == 1:
+		state.merge(_chapter_one.completion_state(), true)
+		state["primary_complete"] = _story_primary_complete and _chapter_one.flag("primary_complete")
+		state["target_alive"] = _chapter_one.flag("target_alive") and target_alive
+		state["barrage_phases_completed"] = _adventure_progress if objective == "hazards" else 0
+		state["feeding_sacs_resolved"] = int(_story_custom_progress.get("feeding_sacs", 0)) >= 3
+		state["foreman_resolved"] = _chapter_one.flag("foreman_resolved")
+		state["supplies_secured"] = _chapter_one.flag("supplies_secured")
+	if _chapter_two != null and int(story_stage.get("chapter", 0)) == 2:
+		state.merge(_chapter_two.completion_state(), true)
+		state["primary_complete"] = _story_primary_complete and _chapter_two.flag("primary_complete")
+		state["boss_defeated"] = _story_required_boss_defeated or _chapter_two.flag("boss_defeated")
+		state["pending_transition"] = _chapter_two.flag("transition_pending")
+	if _chapter_three != null and int(story_stage.get("chapter", 0)) == 3:
+		state.merge(_chapter_three.completion_state(), true)
+		state["primary_complete"] = _story_primary_complete and _chapter_three.flag("primary_complete")
+		state["boss_defeated"] = _story_required_boss_defeated or _chapter_three.flag("boss_defeated")
+	if _chapter_four != null and int(story_stage.get("chapter", 0)) == 4:
+		state.merge(_chapter_four.completion_state(), true)
+		state["primary_complete"] = _story_primary_complete and _chapter_four.flag("primary_complete")
+		state["boss_defeated"] = _story_required_boss_defeated or _chapter_four.flag("boss_defeated")
+	if _chapter_five != null and int(story_stage.get("chapter", 0)) == 5:
+		state.merge(_chapter_five.completion_state(), true)
+		state["primary_complete"] = _story_primary_complete and _chapter_five.flag("primary_complete")
+		state["active_soul_chains"] = _count_adventure_props("soul_chain")
+		state["active_spirits"] = _count_adventure_props("released_soul")
+		state["spirits_captured"] = _c5_captured_spirit_count()
+		state["elite_disruption_active"] = _find_adventure_prop("eclipse_disruption") >= 0
+		state["boss_defeated"] = _story_required_boss_defeated or _chapter_five.flag("boss_defeated")
+		state["spirits_captured"] = _c5_captured_spirit_count()
+	return state
+
+func _story_completion_snapshot(state: Dictionary) -> String:
+	var fields: Array[String] = ["primary_complete=%s" % str(state.get("primary_complete", false))]
+	if bool(state.get("staged_required", false)) or int(state.get("required_total", 0)) > 0:
+		fields.append("required_generated=%d/%d" % [int(state.get("required_generated", 0)), int(state.get("required_total", 0))])
+		fields.append("required_completed=%d/%d" % [int(state.get("required_completed", 0)), int(state.get("required_total", 0))])
+		fields.append("required_active=%d" % int(state.get("required_active", 0)))
+	if bool(state.get("staged_required", false)):
+		fields.append("pending_spawn=%s" % str(state.get("pending_spawn", false)))
+	if int(state.get("required_gate_remaining", 0)) > 0:
+		fields.append("required_gate_remaining=%d" % int(state.get("required_gate_remaining", 0)))
+	if bool(state.get("finale_required", false)):
+		fields.append("finale_triggered=%s" % str(state.get("finale_triggered", false)))
+		fields.append("finale_complete=%s" % str(state.get("finale_complete", false)))
+	if bool(state.get("boss_required", false)):
+		fields.append("boss_defeated=%s" % str(state.get("boss_defeated", false)))
+	return " ".join(fields)
+
+func _story_log(message: String) -> void:
+	if _story_telemetry != null:
+		_story_telemetry.log_event(message)
+
+func _story_log_phase(previous: String, current: String) -> void:
+	if _story_telemetry != null:
+		_story_telemetry.phase_changed(previous, current)
+
+func _begin_custom_story_final_encounter() -> void:
+	if _story_final_triggered:
+		return
+	_story_final_triggered = true
+	_story_final_completed = false
+	_story_log_phase("primary_objective", "final_assault")
+	_story_gate_remaining = 0
+	_adventure_props.clear()
+	_enemies.clear()
+	_boss_projs.clear()
+	var final_boss: String = str(_story_custom_data.get("final_boss", ""))
+	if not final_boss.is_empty():
+		_story_final_remaining = 1
+		_spawn_story_objective_enemy(final_boss, "story_final", 1.4 + float(story_stage.get("chapter", 1)) * 0.16, _player_pos + Vector2(0.0, -520.0))
+		return
+	var final_count: int = maxi(1, int(_story_custom_data.get("final_enemy_count", 10)))
+	_story_final_remaining = final_count
+	for enemy_index in final_count:
+		var kind := "normal_tank" if enemy_index % 4 == 3 else ("normal_fast" if enemy_index % 3 == 2 else "normal")
+		_spawn_story_objective_enemy(kind, "story_final", 1.15 + float(story_stage.get("chapter", 1)) * 0.12, _player_pos + Vector2.RIGHT.rotated(float(enemy_index) * TAU / float(final_count)) * randf_range(420.0, 560.0))
+
+func _fail_custom_story_stage(reason: String = "") -> void:
+	if _game_over: return
+	_story_custom_failure = reason
+	if _story_custom_failure.is_empty():
+		match _story_custom_id:
+			"ore_rush": _story_custom_failure = "The forge overheated before twelve ore were mined."
+			"meltdown": _story_custom_failure = "The Emberforge core melted down."
+			"silent_descent": _story_custom_failure = "The citadel alert meter reached maximum."
+			"abyss_king": _story_custom_failure = "The Abyss King's corruption ritual completed."
+			_: _story_custom_failure = "The objective was not completed."
+	_reset_staged_objective_state()
+	_player_hp = 0.0
+	_on_death()
+
+func _setup_chapter_one_stage(objective: String) -> void:
+	_chapter_one = ChapterOneStageControllerClass.new()
+	_chapter_one.reset(int(story_stage.get("chapter_stage", 1)))
+	_story_custom_id = "chapter_one_%s" % objective
+	_story_custom_phase = 0
+	_story_custom_progress = {}
+	_story_custom_failure = ""
+	_story_final_triggered = false
+	_story_final_completed = false
+	_story_nests_destroyed = 0
+	_story_nests_generated = 0
+	_story_keys_generated = 0
+	_adventure_progress = 0
+	_adventure_target = 3
+	_adventure_state = "story_chapter_one"
+	_adventure_props.clear()
+	_enemies.clear()
+	_boss_projs.clear()
+	_c1_phase_timer = 0.0
+	_c1_interaction = 0.0
+	_c1_spawn_budget = 0.0
+	_c1_command = "follow"
+	_c1_route_choice = ""
+	_c1_threshold = 0
+	_c1_milestones = 0
+	if objective == "defend":
+		_adventure_props.append({"kind":"shrine", "pos":_player_pos + Vector2(380.0, 0.0), "hp":900.0, "max_hp":900.0, "energy":20.0})
+	elif objective == "hazards":
+		_chapter_one.set_flag("mission_started")
+		_c1_enter_phase("radial_barrage", 48.0)
+		_story_hazard_arena_center = _player_pos
+		_story_hazard_shot_timer = 0.8
+		_story_hazard_pattern = 0
+		_adventure_props.append({"kind":"hazard_emitter", "pos":_story_hazard_arena_center, "hp":1.0, "max_hp":1.0})
+		_lock_story_hazard_camera()
+	_story_log("Objective activation: Chapter 1 stage %d setup" % _chapter_one.stage_number)
+
+func _c1_enter_phase(next_phase: String, duration: float = 0.0) -> void:
+	var previous: String = _chapter_one.enter(next_phase)
+	_story_custom_phase += 1
+	_c1_phase_timer = duration
+	_chapter_one.set_flag("transition_pending", false)
+	_story_log_phase(previous, next_phase)
+	_story_log("Objective activation: %s" % next_phase)
+
+func _update_chapter_one_stage(delta: float) -> void:
+	match int(story_stage.get("chapter_stage", 1)):
+		1: _update_c1_broken_trail(delta)
+		2: _update_c1_mushroom_crossing(delta)
+		3: _update_c1_supply_thieves(delta)
+		4: _update_c1_watchpath(delta)
+		5: _update_c1_crestkeeper_gate(delta)
+
+func _c1_spawn_pressure(count: int, tag: String, center: Vector2, strength: float = 1.0) -> void:
+	for enemy_index in count:
+		var kind: String = "normal_tank" if enemy_index % 5 == 4 else ("normal_fast" if enemy_index % 2 == 0 else "normal")
+		var position: Vector2 = center + Vector2.RIGHT.rotated(TAU * float(enemy_index) / float(maxi(count, 1))) * randf_range(390.0, 540.0)
+		_spawn_story_objective_enemy(kind, tag, strength * _story_stage_strength(), position)
+
+func _update_c1_broken_trail(delta: float) -> void:
+	if not _chapter_one.flag("mission_started") or _adventure_props.is_empty():
+		return
+	var scout_index: int = _find_adventure_prop("scout")
+	if scout_index < 0:
+		_fail_custom_story_stage("The Scout was lost.")
+		return
+	var scout: Dictionary = _adventure_props[scout_index]
+	if float(scout.get("hp", 0.0)) <= 0.0:
+		_fail_custom_story_stage("The Scout was defeated.")
+		return
+	var phase: String = _chapter_one.phase
+	if phase in ["first_route", "short_route", "long_route", "final_pursuit"]:
+		if _story_route_index < _story_route_waypoints.size() and _c1_command != "wait":
+			var destination: Vector2 = _story_route_waypoints[_story_route_index]
+			var speed: float = 105.0 if _c1_command == "hurry" else (125.0 if phase == "final_pursuit" else 90.0)
+			if (scout.pos as Vector2).distance_to(_player_pos) > 720.0:
+				speed *= 0.35
+			scout.pos = (scout.pos as Vector2).move_toward(destination, speed * delta)
+			if (scout.pos as Vector2).distance_to(destination) < 36.0:
+				_story_route_index += 1
+				_story_log("Route progress: %d/%d" % [_story_route_index, _story_route_waypoints.size()])
+				if phase == "first_route" and _story_route_index >= 2:
+					_chapter_one.set_flag("transition_pending")
+					_c1_enter_phase("route_choice")
+					call_deferred("_show_c1_route_choice")
+				elif phase in ["short_route", "long_route"] and _story_route_index >= _story_route_waypoints.size():
+					_spawn_c1_barricade(scout.pos as Vector2)
+					_c1_enter_phase("barricade")
+				elif phase == "final_pursuit" and _story_route_index >= _story_route_waypoints.size():
+					_chapter_one.set_flag("route_complete")
+					_chapter_one.set_flag("extraction_reached")
+					_adventure_props.append({"kind":"c1_extraction", "pos":scout.pos as Vector2, "hp":1.0, "max_hp":1.0})
+					_c1_enter_phase("extraction", 18.0)
+		_c1_spawn_budget -= delta
+		if _c1_spawn_budget <= 0.0 and _enemies.size() < 44:
+			_c1_spawn_budget = 2.1 if phase != "final_pursuit" else 1.25
+			var travel_direction: Vector2 = Vector2.RIGHT
+			if _story_route_index < _story_route_waypoints.size():
+				travel_direction = (scout.pos as Vector2).direction_to(_story_route_waypoints[_story_route_index])
+			var ambush_center: Vector2 = (scout.pos as Vector2) + travel_direction * 900.0
+			var pursuit_count: int = 8 if phase == "final_pursuit" else (7 if phase == "short_route" else 5)
+			_c1_spawn_pressure(pursuit_count, "escort_pursuer", ambush_center, 0.82)
+	elif phase == "barricade":
+		_c1_spawn_budget -= delta
+		if _c1_spawn_budget <= 0.0 and _enemies.size() < 40:
+			_c1_spawn_budget = 1.7
+			_c1_spawn_pressure(6, "barricade_blocker", scout.pos as Vector2, 0.9)
+		var barricade_index: int = _find_adventure_prop("c1_barricade")
+		if barricade_index >= 0 and (_adventure_props[barricade_index].pos as Vector2).distance_to(_player_pos) < 175.0:
+			_c1_interaction += delta
+			_story_custom_progress["channel"] = clampf(_c1_interaction / 10.0, 0.0, 1.0)
+		else:
+			_c1_interaction = maxf(0.0, _c1_interaction - delta * 0.4)
+		if _c1_interaction >= 10.0:
+			if barricade_index >= 0: _adventure_props.remove_at(barricade_index)
+			_chapter_one.set_flag("interaction_complete")
+			_story_route_waypoints = [(scout.pos as Vector2) + Vector2(1800.0, -300.0), (scout.pos as Vector2) + Vector2(4200.0, 180.0)]
+			_story_route_index = 0
+			_c1_enter_phase("final_pursuit")
+	elif phase == "extraction":
+		_c1_phase_timer = maxf(0.0, _c1_phase_timer - delta)
+		_c1_spawn_budget -= delta
+		if _c1_spawn_budget <= 0.0 and _enemies.size() < 40:
+			_c1_spawn_budget = 1.6
+			_c1_spawn_pressure(6, "extraction_raider", scout.pos as Vector2, 0.95)
+		if _c1_phase_timer <= 0.0:
+			_chapter_one.set_flag("extraction_complete")
+			_chapter_one.set_flag("primary_complete")
+			_story_primary_complete = true
+			_request_story_victory("chapter_one_extraction_complete")
+	if scout_index < _adventure_props.size():
+		_adventure_props[scout_index] = scout
+
+func _spawn_c1_barricade(position: Vector2) -> void:
+	_adventure_props.append({"kind":"c1_barricade", "pos":position + Vector2(180.0, 0.0), "hp":1.0, "max_hp":1.0})
+	_c1_spawn_pressure(12, "barricade_blocker", position + Vector2(260.0, 0.0), 0.9)
+
+func _update_c1_mushroom_crossing(delta: float) -> void:
+	if not _chapter_one.flag("mission_started"):
+		return
+	var spore_radius: float = 190.0 if str(_story_custom_progress.get("blessing", "")) == "wider_spore_collection" else 105.0
+	for prop_index in range(_adventure_props.size() - 1, -1, -1):
+		var pickup: Dictionary = _adventure_props[prop_index]
+		if str(pickup.get("kind", "")) == "c1_energy_spore" and (pickup.pos as Vector2).distance_to(_player_pos) <= spore_radius:
+			var pickup_shrine_index: int = _find_adventure_prop("shrine")
+			if pickup_shrine_index >= 0:
+				var pickup_shrine: Dictionary = _adventure_props[pickup_shrine_index]
+				pickup_shrine.energy = minf(100.0, float(pickup_shrine.get("energy", 0.0)) + float(pickup.get("energy", 2.0)))
+				_adventure_props[pickup_shrine_index] = pickup_shrine
+				if float(pickup_shrine.energy) >= 100.0 and not _chapter_one.flag("timer_complete"):
+					_chapter_one.set_flag("timer_complete")
+					_story_log("Objective completion: Shrine fully powered")
+			_adventure_props.remove_at(prop_index)
+			_story_log("Objective progress: energy spore collected")
+	var shrine_index: int = _find_adventure_prop("shrine")
+	if shrine_index < 0 or float(_adventure_props[shrine_index].get("hp", 0.0)) <= 0.0:
+		_fail_custom_story_stage("The Mushroom Shrine was destroyed.")
+		return
+	var shrine: Dictionary = _adventure_props[shrine_index]
+	if _chapter_one.phase == "energy_defence":
+		shrine.energy = 100.0 if _chapter_one.flag("timer_complete") else maxf(0.0, float(shrine.get("energy", 20.0)) - delta * 0.05)
+		_c1_spawn_budget -= delta
+		if _c1_spawn_budget <= 0.0:
+			_c1_spawn_budget = 6.0
+			var pressure_tag: String = "shrine_attacker" if _chapter_one.flag("timer_complete") else "spore_carrier"
+			_c1_spawn_pressure(4 + _c1_milestones, pressure_tag, shrine.pos as Vector2, 0.75 + float(_c1_milestones) * 0.12)
+		var energy: float = float(shrine.get("energy", 0.0))
+		var milestone: int = floori(energy / 25.0)
+		if milestone > _c1_milestones:
+			_c1_milestones = milestone
+			_story_log("Timer progress milestone: shrine energy %d%%" % (milestone * 25))
+			if milestone in [2, 3]:
+				_story_custom_progress["blessing"] = "healing_pulse" if milestone == 2 else "wider_spore_collection"
+				_player_hp = minf(_player_max_hp, _player_hp + _player_max_hp * 0.16)
+		if _chapter_one.flag("timer_complete"):
+			_chapter_one.set_flag("growth_resolved")
+			_c1_enter_phase("cleansing_channel", 12.0)
+			_c1_spawn_budget = 0.0
+	elif _chapter_one.phase == "cleansing_channel":
+		_c1_phase_timer = maxf(0.0, _c1_phase_timer - delta)
+		_c1_spawn_budget -= delta
+		if _c1_spawn_budget <= 0.0 and _enemies.size() < 36:
+			_c1_spawn_budget = 1.3
+			_c1_spawn_pressure(5 + mini(_c1_milestones, 2), "cleansing_rusher", shrine.pos as Vector2, 1.05)
+		if _c1_phase_timer <= 0.0:
+			_chapter_one.set_flag("finale_complete")
+			_chapter_one.set_flag("primary_complete")
+			_story_primary_complete = true
+			_request_story_victory("chapter_one_shrine_cleansed")
+	if shrine_index < _adventure_props.size():
+		_adventure_props[shrine_index] = shrine
+
+func _update_c1_supply_thieves(delta: float) -> void:
+	for prop_index in range(_adventure_props.size() - 1, -1, -1):
+		var objective_prop: Dictionary = _adventure_props[prop_index]
+		if str(objective_prop.get("kind", "")) != "c1_feeding_sac":
+			continue
+		if (objective_prop.pos as Vector2).distance_to(_player_pos) < 155.0:
+			objective_prop.hp = float(objective_prop.hp) - (26.0 + _level * 2.5) * delta
+			_adventure_props[prop_index] = objective_prop
+			if float(objective_prop.hp) <= 0.0:
+				_adventure_props.remove_at(prop_index)
+				_story_custom_progress["feeding_sacs"] = int(_story_custom_progress.get("feeding_sacs", 0)) + 1
+				_story_log("Objective progress: Nest's shields %d/3" % int(_story_custom_progress["feeding_sacs"]))
+	var nest_index: int = _find_adventure_prop("nest")
+	if nest_index < 0:
+		return
+	var nest: Dictionary = _adventure_props[nest_index]
+	var nest_number: int = int(nest.get("nest_number", 1))
+	_c1_spawn_budget -= delta
+	if _c1_spawn_budget <= 0.0 and _enemies.size() < 22:
+		_c1_spawn_budget = 2.6 if nest_number == 1 else 4.2
+		_c1_spawn_pressure(2 + nest_number, "supply_thief" if nest_number == 1 else "nest_defender", nest.pos as Vector2, 0.75 + nest_number * 0.12)
+	if nest_number == 2:
+		var health_step: int = ceili(clampf(float(nest.hp) / float(nest.max_hp), 0.0, 1.0) * 3.0)
+		if health_step < int(nest.get("health_step", 3)):
+			nest.health_step = health_step
+			nest.pos = _story_objective_zone_position(health_step + 1, 560.0)
+			_story_log("Objective progress: Burrowing Nest relocated")
+	var can_damage: bool = nest_number < 3 or int(_story_custom_progress.get("feeding_sacs", 0)) >= 3
+	if can_damage and (nest.pos as Vector2).distance_to(_player_pos) < STORY_NEST_EFFECTIVE_RADIUS:
+		nest.hp = float(nest.hp) - (24.0 + _level * 2.5) * delta
+	_adventure_props[nest_index] = nest
+	if float(nest.hp) <= 0.0:
+		_adventure_props.remove_at(nest_index)
+		_story_nests_destroyed += 1
+		_story_log("Objective completion: Nest %d destroyed" % nest_number)
+		if nest_number < 3:
+			_chapter_one.set_flag("transition_pending")
+			_c1_phase_timer = 3.0
+			_spawn_c1_nest(nest_number + 1)
+		else:
+			_spawn_story_objective_enemy("normal_tank", "supply_foreman", 1.5 * _story_stage_strength(), nest.pos as Vector2)
+			_c1_enter_phase("foreman_finale")
+
+func _spawn_c1_nest(number: int) -> void:
+	_story_nests_generated = maxi(_story_nests_generated, number)
+	var position: Vector2 = _story_objective_zone_position(number, 620.0)
+	var hp: float = (520.0 + number * 160.0) * _story_stage_strength()
+	_adventure_props.append({"kind":"nest", "nest_number":number, "pos":position, "hp":hp, "max_hp":hp, "shield_t":0.0, "health_step":3})
+	if number == 3:
+		_story_custom_progress["feeding_sacs"] = 0
+		var shield_offsets: Array[Vector2] = [Vector2(-520.0, -280.0), Vector2(470.0, -440.0), Vector2(620.0, 350.0)]
+		for sac_index in 3:
+			_adventure_props.append({"kind":"c1_feeding_sac", "sac":sac_index, "pos":position + shield_offsets[sac_index], "hp":90.0, "max_hp":90.0})
+	_c1_enter_phase("nest_%d" % number)
+
+func _update_c1_watchpath(_delta: float) -> void:
+	_c1_spawn_budget -= _delta
+	if _chapter_one.flag("mission_started") and _chapter_one.phase != "gate_window" and _c1_spawn_budget <= 0.0 and _enemies.size() < 36:
+		_c1_spawn_budget = maxf(1.8, 2.8 - float(_adventure_progress) * 0.35)
+		var reinforcement_count: int = 4 + _adventure_progress
+		_c1_spawn_pressure(reinforcement_count, "watchpath_reinforcement", _player_pos, 0.82 + float(_adventure_progress) * 0.12)
+	var examining_track: bool = false
+	for prop_index in range(_adventure_props.size() - 1, -1, -1):
+		var prop: Dictionary = _adventure_props[prop_index]
+		var prop_kind: String = str(prop.get("kind", ""))
+		if prop_kind == "c1_track_marker":
+			if (prop.pos as Vector2).distance_to(_player_pos) < 150.0:
+				examining_track = true
+				_c1_interaction = minf(5.0, _c1_interaction + _delta)
+				_story_custom_progress["track_examine"] = _c1_interaction / 5.0
+				if _c1_interaction >= 5.0:
+					_adventure_props.remove_at(prop_index)
+					_c1_interaction = 0.0
+					_story_custom_progress["track_examine"] = 0.0
+					var tracks_found: int = int(_story_custom_progress.get("tracks_found", 0)) + 1
+					_story_custom_progress["tracks_found"] = tracks_found
+					_story_log("Route progress: carrier tracks %d/4 examined" % tracks_found)
+					if tracks_found >= 4:
+						_spawn_c1_key_carrier(int(_story_custom_progress.get("hunt_key", _adventure_progress + 1)))
+					else:
+						_spawn_c1_track_marker()
+			continue
+		if prop_kind == "key" and (prop.pos as Vector2).distance_to(_player_pos) < 78.0:
+			_adventure_props.remove_at(prop_index)
+			_adventure_progress += 1
+			_chapter_one.set_flag("key_enemy_held", false)
+			_story_log("Route progress: key %d/3 recovered" % _adventure_progress)
+			if _adventure_progress < 3:
+				_begin_c1_key_hunt(_adventure_progress + 1)
+			else:
+				_chapter_one.set_flag("gate_unlocked")
+				_c1_enter_phase("gate_window", 22.0)
+				_adventure_props.append({"kind":"c1_gate", "pos":_player_pos + Vector2(1500.0, 0.0), "hp":1.0, "max_hp":1.0})
+	if not examining_track and _find_adventure_prop("c1_track_marker") >= 0:
+		_c1_interaction = maxf(0.0, _c1_interaction - _delta * 1.5)
+		_story_custom_progress["track_examine"] = _c1_interaction / 5.0
+	if _chapter_one.phase == "gate_window":
+		_c1_phase_timer = maxf(0.0, _c1_phase_timer - _delta)
+		var gate_index: int = _find_adventure_prop("c1_gate")
+		if gate_index >= 0 and (_adventure_props[gate_index].pos as Vector2).distance_to(_player_pos) < 110.0:
+			_chapter_one.set_flag("gate_crossed")
+			_chapter_one.set_flag("primary_complete")
+			_story_primary_complete = true
+			_request_story_victory("chapter_one_watchpath_crossed")
+			return
+		elif _c1_phase_timer <= 0.0:
+			_c1_phase_timer = 14.0
+			_story_log("Gate window missed: reopening window")
+			if _story_telemetry != null:
+				_story_telemetry.recovery("watchpath_gate_reopened")
+
+func _begin_c1_key_hunt(number: int) -> void:
+	_story_custom_progress["hunt_key"] = number
+	_story_custom_progress["tracks_found"] = 0
+	_chapter_one.set_flag("key_enemy_held", false)
+	_c1_enter_phase("tracking_carrier_%d" % number)
+	_spawn_c1_track_marker()
+
+func _spawn_c1_track_marker() -> void:
+	var key_number: int = int(_story_custom_progress.get("hunt_key", 1))
+	var track_number: int = int(_story_custom_progress.get("tracks_found", 0))
+	var marker_position: Vector2 = _story_objective_zone_position(key_number * 5 + track_number, 1150.0)
+	_adventure_props.append({"kind":"c1_track_marker", "pos":marker_position, "hp":1.0, "max_hp":1.0})
+	_story_previous_objective_pos = marker_position
+	_c1_interaction = 0.0
+	_story_custom_progress["track_examine"] = 0.0
+
+func _spawn_c1_key_carrier(number: int) -> void:
+	_story_keys_generated = maxi(_story_keys_generated, number)
+	var tag: String = "fleeing_key_carrier" if number == 1 else ("protected_key_carrier" if number == 2 else "watchpath_captain")
+	_spawn_story_objective_enemy("normal_fast" if number == 1 else "normal_tank", tag, (1.0 + number * 0.18) * _story_stage_strength(), _player_pos + Vector2(1150.0, -180.0 + number * 120.0))
+	_chapter_one.set_flag("key_enemy_held")
+	_c1_enter_phase(tag)
+	if number == 2:
+		_c1_spawn_pressure(4, "carrier_guard", _player_pos + Vector2(600.0, 60.0), 0.9)
+
+func _update_c1_crestkeeper_gate(delta: float) -> void:
+	if _chapter_one.phase in ["radial_barrage", "aimed_barrage", "rotating_barrage"]:
+		_c1_phase_timer = maxf(0.0, _c1_phase_timer - delta)
+		_story_hazard_shot_timer -= delta
+		if _story_hazard_shot_timer <= 0.0:
+			_story_hazard_shot_timer = 0.95 if _chapter_one.phase == "radial_barrage" else (0.72 if _chapter_one.phase == "aimed_barrage" else 1.15)
+			_story_hazard_pattern += 1
+			_fire_c1_arena_pattern(_chapter_one.phase)
+		if _c1_phase_timer <= 0.0:
+			_adventure_progress += 1
+			_story_log("Timer progress milestone: barrage %d/3 complete" % _adventure_progress)
+			if _adventure_progress == 1:
+				_c1_enter_phase("aimed_barrage", 52.0)
+			elif _adventure_progress == 2:
+				_c1_enter_phase("rotating_barrage", 55.0)
+			else:
+				_chapter_one.set_flag("timer_complete")
+				_boss_projs.clear()
+				_c1_enter_phase("overheat_burst", 2.5)
+				_story_log("Objective activation: emitter ruptured with bomb and gas")
+	elif _chapter_one.phase == "overheat_burst":
+		_c1_phase_timer = maxf(0.0, _c1_phase_timer - delta)
+		if _c1_phase_timer <= 0.0:
+			_chapter_one.set_flag("boss_spawned")
+			_objective_boss_active = true
+			_c1_enter_phase("crestkeeper_boss")
+			_spawn_story_objective_enemy("blight_vine_tyrant", "crestkeeper", 1.55 * _story_stage_strength(), _story_hazard_arena_center + Vector2(0.0, -280.0))
+			_story_log("Boss spawned: Crestkeeper")
+
+func _fire_c1_arena_pattern(pattern: String) -> void:
+	var count: int = 8 if pattern == "rotating_barrage" else 10
+	var offset: float = _story_hazard_pattern * 0.18
+	for projectile_index in count:
+		var angle: float = offset + TAU * float(projectile_index) / float(count)
+		# Every fourth lane remains empty and readable.
+		if projectile_index % 4 == _story_hazard_pattern % 4:
+			continue
+		var perimeter_direction: Vector2 = Vector2.from_angle(angle)
+		var travel_direction: Vector2 = -perimeter_direction
+		if pattern == "rotating_barrage":
+			travel_direction = travel_direction.rotated(0.24 if _story_hazard_pattern % 2 == 0 else -0.24)
+		var projectile_speed: float = 230.0 if pattern == "rotating_barrage" else 280.0
+		var projectile_damage: float = 5.0 if pattern == "rotating_barrage" else 6.0
+		_boss_projs.append({"kind":"hazard_orb", "pos":_story_hazard_arena_center + perimeter_direction * 560.0, "vel":travel_direction * projectile_speed, "life":5.0, "dmg":projectile_damage, "phase_flicker":pattern == "rotating_barrage", "flicker_offset":float(projectile_index) * 0.11})
+	if pattern == "aimed_barrage":
+		var launch_direction: Vector2 = Vector2.from_angle(offset + PI)
+		var launch_position: Vector2 = _story_hazard_arena_center + launch_direction * 560.0
+		var aimed: Vector2 = launch_position.direction_to(_player_pos)
+		for spread in [-0.22, 0.0, 0.22]:
+			_boss_projs.append({"kind":"hazard_orb", "pos":launch_position, "vel":aimed.rotated(spread) * 330.0, "life":5.0, "dmg":7.0})
+
 func _update_story_escort(delta: float) -> void:
+	if _adventure_props.is_empty(): return
 	var scout := _adventure_props[0]
 	var scout_pos: Vector2 = scout.pos
-	_adventure_timer -= delta
-	scout.wander_t = float(scout.get("wander_t", 0.0)) - delta
-	if float(scout.wander_t) <= 0.0:
-		scout.wander_t = randf_range(1.8, 4.2)
-		scout.wander_dir = Vector2.RIGHT.rotated(randf_range(0.0, TAU))
-	var wander_dir: Vector2 = scout.wander_dir
-	if scout_pos.distance_to(_player_pos) > 620.0:
-		wander_dir = scout_pos.direction_to(_player_pos)
-	scout_pos += wander_dir.normalized() * 82.0 * delta
+	_adventure_timer = maxf(0.0, _adventure_timer - delta)
+	if _adventure_timer <= 0.0 and _story_telemetry != null:
+		_story_telemetry.log_once("escort_timer_expired", "Timer expired: story_escort")
+	if _story_gate_remaining <= 0 and _story_route_index < _story_route_waypoints.size():
+		var waypoint: Vector2 = _story_route_waypoints[_story_route_index]
+		var move_direction: Vector2 = scout_pos.direction_to(waypoint)
+		if scout_pos.distance_to(_player_pos) > 620.0:
+			move_direction = scout_pos.direction_to(_player_pos)
+		scout_pos += move_direction * 88.0 * delta
+		if scout_pos.distance_to(waypoint) < 35.0:
+			_story_route_index += 1
+			if _story_route_index < _story_route_waypoints.size():
+				_spawn_story_gate_ambush(5 + _story_route_index * 3)
 	scout.pos = scout_pos
 	_adventure_props[0] = scout
 	if float(scout.hp) <= 0.0:
 		_damage_player(_player_max_hp * 2.0, 0.1)
-	elif _adventure_timer <= 0.0:
+	elif _adventure_timer <= 0.0 and _story_route_index >= _story_route_waypoints.size() and _story_gate_remaining <= 0 and _enemies.is_empty():
 		_start_story_objective_boss()
+	elif _adventure_timer <= 0.0 and _story_route_index >= _story_route_waypoints.size() and _story_gate_remaining <= 0:
+		_stop_story_background_spawns()
+
+func _stop_story_background_spawns() -> void:
+	_adventure_spawn_timer = 999.0
+	_wave_spawn_q.clear()
+	_wave_spawn_t = 999.0
 
 func _begin_story_escort() -> void:
+	_story_log_phase("story_escort_wait", "story_escort")
 	_adventure_state = "story_escort"
 	_adventure_timer = 90.0
 	_adventure_spawn_timer = 0.4
 	_enemies.clear()
+	_story_stage_origin = _player_pos
+	_story_gate_remaining = 0
+	_story_route_index = 0
+	_story_route_waypoints = [
+		_story_stage_origin + Vector2(620.0, -240.0),
+		_story_stage_origin + Vector2(980.0, 380.0),
+		_story_stage_origin + Vector2(260.0, 760.0),
+		_story_stage_origin + Vector2(-520.0, 360.0),
+	]
 	var scout_hp := 320.0
 	_adventure_props = [{"kind":"scout", "pos":_player_pos + Vector2(-90, 20), "hp":scout_hp, "max_hp":scout_hp, "wander_dir":Vector2.RIGHT.rotated(randf_range(0.0, TAU)), "wander_t":2.0}]
+	_story_log("Objective spawned: scout · Timer started: 90.00s")
 
 func _begin_story_defense() -> void:
+	_story_log_phase("story_defend_wait", "story_defend")
 	_adventure_state = "story_defend"
 	_adventure_timer = 120.0
 	_adventure_spawn_timer = 0.6
 	_enemies.clear()
-	var shrine_hp := 650.0
+	var shrine_hp := 850.0
 	_adventure_props = [{"kind":"shrine", "pos":_player_pos + Vector2(240, 0), "hp":shrine_hp, "max_hp":shrine_hp}]
+	_story_log("Objective spawned: shrine · Timer started: 120.00s")
 
 func _update_defense_objective(delta: float, is_story: bool) -> void:
-	_adventure_timer -= delta
+	_adventure_timer = maxf(0.0, _adventure_timer - delta)
+	if is_story and _adventure_timer <= 0.0 and _story_telemetry != null:
+		_story_telemetry.log_once("defence_timer_expired", "Timer expired: story_defend")
 	var shrine := _adventure_props[0]
 	if float(shrine.hp) <= 0.0:
 		_damage_player(_player_max_hp * 2.0, 0.1)
-	elif _adventure_timer <= 0.0 and is_story:
+	elif _adventure_timer <= 0.0 and is_story and _enemies.is_empty():
 		_start_story_objective_boss()
+	elif _adventure_timer <= 0.0:
+		_stop_story_background_spawns()
 
 func _update_story_nests(delta: float) -> void:
 	var nest_index := _find_adventure_prop("nest")
@@ -4951,17 +8587,23 @@ func _update_story_nests(delta: float) -> void:
 	if float(nest.hp) <= 0.0:
 		_adventure_props.remove_at(nest_index)
 		_story_nests_destroyed += 1
+		if _story_telemetry != null:
+			_story_telemetry.objective_completed("enemy_nest", "required_completed=%d/3" % _story_nests_destroyed)
 		_adventure_spawn_timer = 0.8
-		if _story_nests_destroyed >= 3:
+		if _story_nests_generated >= 3 and _story_nests_destroyed >= 3 and _find_adventure_prop("nest") < 0:
 			_start_story_objective_boss()
 
 func _spawn_story_nest() -> void:
-	if _adventure_state != "story_nests" or _story_nests_destroyed >= 3 or _find_adventure_prop("nest") >= 0:
+	if _adventure_state != "story_nests" or _story_nests_generated >= 3 or _find_adventure_prop("nest") >= 0:
 		return
-	var nest_number := _story_nests_destroyed + 1
+	var nest_number := _story_nests_generated + 1
 	var nest_hp := (160.0 + float(nest_number - 1) * 110.0) * _story_stage_strength()
-	var spawn_direction := Vector2.RIGHT.rotated(randf_range(0.0, TAU))
-	_adventure_props.append({"kind":"nest", "pos":_player_pos + spawn_direction * 360.0, "hp":nest_hp, "max_hp":nest_hp, "shield_t":STORY_NEST_SHIELD_SECONDS})
+	var nest_pos: Vector2 = _story_objective_zone_position(_story_nests_generated, 720.0)
+	_adventure_props.append({"kind":"nest", "pos":nest_pos, "hp":nest_hp, "max_hp":nest_hp, "shield_t":STORY_NEST_SHIELD_SECONDS})
+	_story_previous_objective_pos = nest_pos
+	_story_nests_generated += 1
+	if _story_telemetry != null:
+		_story_telemetry.objective_spawned("enemy_nest", "required_generated=%d/3" % _story_nests_generated)
 	_adventure_spawn_timer = 0.0
 
 func _find_adventure_prop(kind: String) -> int:
@@ -4985,7 +8627,9 @@ func _update_story_keys(delta: float) -> void:
 		if String(_adventure_props[i].get("kind", "")) == "key" and (_adventure_props[i].pos as Vector2).distance_to(_player_pos) < 70.0:
 			_adventure_props.remove_at(i)
 			_adventure_progress += 1
-	if _adventure_progress >= _adventure_target:
+			if _story_telemetry != null:
+				_story_telemetry.objective_completed("key", "required_completed=%d/%d" % [_adventure_progress, _adventure_target])
+	if _story_keys_generated >= _adventure_target and _adventure_progress >= _adventure_target and _find_adventure_prop("key") < 0:
 		_start_story_objective_boss()
 
 func _story_key_drop_chance() -> float:
@@ -4998,10 +8642,13 @@ func _try_drop_story_key(pos: Vector2, is_boss: bool) -> void:
 	for prop in _adventure_props:
 		if String(prop.get("kind", "")) == "key":
 			keys_on_ground += 1
-	if _adventure_progress + keys_on_ground >= _adventure_target:
+	if keys_on_ground >= 1 or _story_keys_generated >= _adventure_target:
 		return
 	if randf() <= _story_key_drop_chance():
 		_adventure_props.append({"kind":"key", "pos":pos, "hp":1.0, "max_hp":1.0})
+		_story_keys_generated += 1
+		if _story_telemetry != null:
+			_story_telemetry.objective_spawned("key", "required_generated=%d/%d" % [_story_keys_generated, _adventure_target])
 		_story_key_drop_elapsed = 0.0
 
 func _update_story_hazards(delta: float) -> void:
@@ -5025,12 +8672,20 @@ func _update_story_hazards(delta: float) -> void:
 				var aimed_projectile_direction := aimed_direction.rotated(float(spread))
 				_boss_projs.append({"kind":"hazard_orb", "pos":_story_hazard_arena_center + aimed_projectile_direction * 92.0, "vel":aimed_projectile_direction * (projectile_speed + 45.0), "life":5.0, "dmg":projectile_damage})
 	if _adventure_timer <= 0.0:
-		_start_story_objective_boss()
+		if _story_telemetry != null:
+			_story_telemetry.log_once("hazard_timer_expired", "Timer expired: story_hazards")
+		_stop_story_background_spawns()
+		if _enemies.is_empty(): _start_story_objective_boss()
 
 func _start_story_objective_boss() -> void:
 	if _objective_boss_active:
 		return
 	_objective_boss_active = true
+	_story_primary_complete = true
+	var objective: String = str(story_stage.get("objective", ""))
+	if objective in ["escort", "defend"] and not _adventure_props.is_empty():
+		_story_required_target_survived = float(_adventure_props[0].get("hp", 0.0)) > 0.0
+	_story_log_phase(_adventure_state, "story_boss")
 	_adventure_state = "story_boss"
 	_adventure_props.clear()
 	_enemies.clear()
@@ -5040,6 +8695,7 @@ func _start_story_objective_boss() -> void:
 	var stage_in_chapter := maxi(int(story_stage.get("chapter_stage", 1)) - 1, 0)
 	var boss_strength := (0.95 + float(chapter_index) * 0.18 + float(stage_in_chapter) * 0.08) * _story_stage_strength()
 	_spawn_enemy_from(_make_enemy_data(bosses[chapter_index], boss_strength))
+	_story_log("Boss spawned: %s" % bosses[chapter_index])
 
 func _story_stage_strength() -> float:
 	return float(story_stage.get("enemy_hp", 1.0)) if not story_stage.is_empty() else 1.0
@@ -5235,7 +8891,7 @@ func _start_wave(w: int) -> void:
 	var ws: float  = 1.0 + float(w - 1) * 0.18
 	if not story_stage.is_empty():
 		ws *= float(story_stage.get("enemy_hp", 1.0))
-		if int(story_stage.get("chapter_stage", 1)) == 3:
+		if str(story_stage.get("objective", "escort")) == "nests":
 			ws *= 0.84
 
 	# After wave 10 pick one random enemy modifier per wave.
@@ -5262,11 +8918,11 @@ func _start_wave(w: int) -> void:
 		if dungeon_mode == "coin_burrow": base_count = mini(22 + w * 6, 100)
 		elif dungeon_mode == "forgecore": base_count = mini(18 + w * 4, 90)
 		elif not story_stage.is_empty():
-			match int(story_stage.get("chapter_stage", 1)):
-				1: base_count = mini(22 + w * 5, 75)
-				2: base_count = mini(34 + w * 10, 125)
-				3: base_count = mini(48 + w * 12, 140)
-				4: base_count = mini(20 + w * 4, 60)
+			match str(story_stage.get("objective", "escort")):
+				"escort": base_count = mini(22 + w * 5, 75)
+				"defend": base_count = mini(34 + w * 10, 125)
+				"nests": base_count = mini(48 + w * 12, 140)
+				"keys": base_count = mini(20 + w * 4, 60)
 				_: base_count = mini(32 + w * 7, 120)
 		for _i in base_count:
 			# Randomly pick one of 3 normal subtypes
@@ -5275,11 +8931,11 @@ func _start_wave(w: int) -> void:
 				_wave_spawn_q.append(_make_enemy_data("normal_fast", ws * 0.90))
 			elif dungeon_mode == "forgecore" and roll < 0.65:
 				_wave_spawn_q.append(_make_enemy_data("normal_tank", ws * 1.12))
-			elif not story_stage.is_empty() and int(story_stage.get("chapter_stage", 1)) == 1 and roll < 0.55:
+			elif not story_stage.is_empty() and str(story_stage.get("objective", "escort")) == "escort" and roll < 0.55:
 				_wave_spawn_q.append(_make_enemy_data("normal_fast", ws * 0.92))
-			elif not story_stage.is_empty() and int(story_stage.get("chapter_stage", 1)) == 3 and roll < 0.75:
+			elif not story_stage.is_empty() and str(story_stage.get("objective", "escort")) == "nests" and roll < 0.75:
 				_wave_spawn_q.append(_make_enemy_data("normal", ws))
-			elif not story_stage.is_empty() and int(story_stage.get("chapter_stage", 1)) == 5 and roll < 0.55:
+			elif not story_stage.is_empty() and str(story_stage.get("objective", "escort")) == "hazards" and roll < 0.55:
 				_wave_spawn_q.append(_make_enemy_data("normal_tank", ws * 1.08))
 			elif roll < 0.30:
 				_wave_spawn_q.append(_make_enemy_data("normal_tank", ws))
@@ -5289,19 +8945,19 @@ func _start_wave(w: int) -> void:
 				_wave_spawn_q.append(_make_enemy_data("normal", ws))
 
 func _story_victory_wave() -> int:
-	match int(story_stage.get("chapter_stage", 1)):
-		1: return 3
-		2: return 5
-		3: return 4
-		4: return 4
+	match str(story_stage.get("objective", "escort")):
+		"escort": return 3
+		"defend": return 5
+		"nests": return 4
+		"keys": return 4
 		_: return 6
 
 func _is_mode_boss_wave(w: int) -> bool:
 	if dungeon_mode == "coin_burrow": return w % 5 == 0
 	if dungeon_mode == "forgecore": return w % 2 == 0
 	if not story_stage.is_empty():
-		var stage_number := int(story_stage.get("chapter_stage", 1))
-		return w == _story_victory_wave() or (stage_number == 4 and w == 2)
+		# Story bosses are authored objective encounters, never generic wave bosses.
+		return false
 	return w % 4 == 0
 
 func _mode_boss_type(w: int) -> String:
@@ -5319,21 +8975,280 @@ func _mode_objective_text() -> String:
 	if dungeon_mode == "coin_burrow": return "Crack safe %d of %d · %d coins carried · %ds remaining" % [_adventure_progress + 1, _adventure_target, _coin_carried, maxi(0, ceili(_adventure_timer))]
 	if dungeon_mode == "forgecore": return "Activate and defend forge %d of %d" % [mini(_adventure_progress + 1, _adventure_target), _adventure_target]
 	if not story_stage.is_empty():
-		match int(story_stage.get("chapter_stage", 1)):
-			1:
+		if int(story_stage.get("chapter", 1)) > 1: return _custom_story_objective_text()
+		if _chapter_one != null: return _chapter_one_objective_text()
+		match str(story_stage.get("objective", "escort")):
+			"escort":
 				if _adventure_state == "story_escort_wait": return "Prepare, then start the wandering scout escort"
-				return "Protect the wandering scout · %ds remaining" % maxi(0, ceili(_adventure_timer))
-			2:
+				if _story_gate_remaining > 0: return "Escort checkpoint %d of %d · clear %d attackers" % [_story_route_index, _story_route_waypoints.size(), _story_gate_remaining]
+				return "Protect Scout · checkpoint %d/%d · %ds" % [_story_route_index, _story_route_waypoints.size(), maxi(0, ceili(_adventure_timer))]
+			"defend":
 				if _adventure_state == "story_defend_wait": return "Prepare, then summon the shrine when ready"
 				return "Defend the shrine · %ds remaining" % maxi(0, ceili(_adventure_timer))
-			3:
+			"nests":
 				var nest_index := _find_adventure_prop("nest")
 				if nest_index < 0: return "Prepare, then spawn nest %d of 3" % (_story_nests_destroyed + 1)
 				var shield_left := float(_adventure_props[nest_index].get("shield_t", 0.0))
 				return "Nest %d of 3 · %s" % [_story_nests_destroyed + 1, "Shielded %.1fs" % shield_left if shield_left > 0.0 else "Destroy it now"]
-			4: return "Keys %d of %d · Enemy drop chance %.1f%%" % [_adventure_progress, _adventure_target, _story_key_drop_chance() * 100.0]
+			"keys": return "Keys %d of %d · Enemy drop chance %.1f%%" % [_adventure_progress, _adventure_target, _story_key_drop_chance() * 100.0]
 			_: return "Avoid the hazard barrage and defeat enemies · %ds remaining" % maxi(0, ceili(_adventure_timer))
 	return ""
+
+func _chapter_one_objective_text() -> String:
+	match _chapter_one.stage_number:
+		1:
+			if not _chapter_one.flag("mission_started"): return "Escort the Scout · Follow, Wait, and Hurry commands"
+			if _chapter_one.phase == "barricade": return "Open the barricade · Progress %d%%" % roundi(float(_story_custom_progress.get("channel", 0.0)) * 100.0)
+			if _chapter_one.phase == "extraction": return "Protect the extraction · %ds" % ceili(_c1_phase_timer)
+			return "Escort the Scout · Route %d/%d · Command %s" % [_story_route_index, _story_route_waypoints.size(), _c1_command.capitalize()]
+		2:
+			var shrine_index: int = _find_adventure_prop("shrine")
+			var energy: int = roundi(float(_adventure_props[shrine_index].get("energy", 0.0))) if shrine_index >= 0 else 0
+			if not _chapter_one.flag("mission_started"): return "Summon the Shrine when ready · Energy spores power it"
+			if _chapter_one.phase == "cleansing_channel": return "Protect the cleansing pulse · %ds" % ceili(_c1_phase_timer)
+			return "Shrine Energy %d%% · Each spore adds 2%%" % energy
+		3:
+			if not _chapter_one.flag("mission_started"): return "Track three different Supply Thief Nests"
+			if _chapter_one.phase == "nest_3": return "Nest's Shields %d/3 · Nest Core %s" % [int(_story_custom_progress.get("feeding_sacs", 0)), "Vulnerable" if int(_story_custom_progress.get("feeding_sacs", 0)) >= 3 else "Protected"]
+			return "Destroy %s · Nests %d/3" % [_chapter_one.phase.replace("_", " ").capitalize(), _story_nests_destroyed]
+		4:
+			if _chapter_one.phase == "gate_window": return "Gate Closing %ds · Reach the exit" % ceili(_c1_phase_timer)
+			if _chapter_one.phase.begins_with("tracking_carrier_"):
+				var examine_percent: int = roundi(float(_story_custom_progress.get("track_examine", 0.0)) * 100.0)
+				return "Examine footprint %d%% · Tracks %d/4 · Keys %d/3" % [examine_percent, int(_story_custom_progress.get("tracks_found", 0)), _adventure_progress]
+			return "Keys Recovered %d/3 · %s" % [_adventure_progress, _chapter_one.phase.replace("_", " ").capitalize()]
+		5:
+			if _chapter_one.phase == "crestkeeper_boss": return "Crestkeeper's Gate · Defeat the Crestkeeper"
+			if _chapter_one.phase == "overheat_burst": return "Machine ruptured · Boss incoming · %ds" % ceili(_c1_phase_timer)
+			if _chapter_one.phase == "rotating_barrage" and _c1_phase_timer <= 5.0: return "MACHINE OVERHEATING · %ds" % ceili(_c1_phase_timer)
+			return "Crestkeeper's Gate · Barrage Phase %d/3 · %ds until next phase" % [mini(_adventure_progress + 1, 3), ceili(_c1_phase_timer)]
+	return "Complete the Story objective"
+
+func _custom_story_objective_text() -> String:
+	if _chapter_two != null and int(story_stage.get("chapter", 0)) == 2:
+		return _chapter_two_objective_text()
+	if _chapter_three != null and int(story_stage.get("chapter", 0)) == 3:
+		return _chapter_three_objective_text()
+	if _chapter_four != null and int(story_stage.get("chapter", 0)) == 4:
+		return _chapter_four_objective_text()
+	if _chapter_five != null and int(story_stage.get("chapter", 0)) == 5:
+		return _chapter_five_objective_text()
+	if _story_final_triggered and not _story_final_completed:
+		return "Final encounter · %d required enemies remaining" % _story_final_remaining
+	if _story_gate_remaining > 0:
+		return "Objective secured · clear the ambush: %d remaining" % _story_gate_remaining
+	match _story_custom_id:
+		"frozen_braziers": return "Rekindle brazier %d of %d · %.1fs" % [mini(_adventure_progress + 1, _adventure_target), _adventure_target, _story_custom_interaction]
+		"ice_captives": return "Captives freed: %d of %d" % [_adventure_progress, _adventure_target]
+		"thaw_runes": return "Memorize: %s" % _sequence_text(_story_custom_sequence) if _story_custom_timer > 0.0 else "Rune sequence hidden · entered %d of 4" % int(_story_custom_progress.get("entered", 0))
+		"frost_mimic": return "Treasury encounters: %d of %d · resolve each chest" % [_adventure_progress, _adventure_target]
+		"frost_colossus": return "Break armour crystals: %d of %d" % [_adventure_progress, _adventure_target] if _story_custom_phase == 0 else "Armour broken · defeat the Frostbound Colossus"
+		"cleanse_mire": return "Pools purified: %d of %d · cleansing energy: %d/%d" % [_adventure_progress, _adventure_target, int(_story_custom_progress.get("energy", 0)), int(_story_custom_progress.get("energy_needed", 3))]
+		"plaguebeast": return "Track the Plaguebeast · escapes: %d of 2" % int(_story_custom_progress.get("escapes", 0))
+		"venom_harvest": return "Spider Venom %d/3 · Toad Bile %d/3 · Wasp Stinger %d/3" % [int(_story_custom_progress.get("spider", 0)), int(_story_custom_progress.get("toad", 0)), int(_story_custom_progress.get("wasp", 0))]
+		"fragile_cure": return "Carry cure · checkpoint %d/3 · vial %d%%" % [int(_story_custom_progress.get("checkpoints", 0)), floori(float(_story_custom_progress.get("vial", 100.0)))]
+		"grand_antidote": return "Recipe %s · submitted %d/3 · carrying %s" % [_sequence_text(_story_custom_sequence), int(_story_custom_progress.get("submitted", 0)), _ingredient_name(_story_custom_carried)]
+		"silent_descent":
+			var safe_points: int = int(_story_custom_progress.get("safe_points", 0))
+			if bool(_story_custom_progress.get("hidden", false)):
+				var hold_progress: float = float(_story_custom_progress.get("safe_point_hold", 0.0))
+				if safe_points < 3 and bool(_story_custom_progress.get("inside_active_safe_point", false)):
+					return "ACTIVATING SAFE POINT %d/3 · Stay inside %ds · Alert falling %d%%" % [safe_points + 1, ceili(10.0 - hold_progress), floori(_story_custom_alert)]
+				return "SAFE POINT COVER · HIDDEN · Alert falling %d%%" % floori(_story_custom_alert)
+			if bool(_story_custom_progress.get("detected", false)) and float(_story_custom_progress.get("detection_time", 0.0)) < 1.0:
+				return "SENTRY NOTICING YOU · Leave the purple sight cone · Alert %d%%" % floori(_story_custom_alert)
+			if safe_points < 3:
+				return "Reach marked Safe Point %d/3 · Avoid sight cones · Alert %d%%" % [safe_points + 1, floori(_story_custom_alert)]
+			return "All Safe Points reached · Enter the Inner Gate · Alert %d%%" % floori(_story_custom_alert)
+		"soul_liberation": return "Souls collected: %d/6 · catch each released soul" % _adventure_progress
+		"mirror_labyrinth": return "Labyrinth room %d/%d · Choose one of three mirrors · A wrong mirror triggers an ambush" % [_adventure_progress + 1, _adventure_target]
+		"twin_eclipse": return "Activate both obelisks · window: %.1fs" % float(_story_custom_progress.get("window", 0.0))
+		"abyss_king":
+			if _story_custom_phase == 1: return "Phase 1 · destroy ritual anchors: %d/3 · corruption %ds" % [_adventure_progress, maxi(0, ceili(_story_custom_timer))]
+			if _story_custom_phase == 2: return "Phase 2 · %s" % ("Crown vulnerable · strike now · safe inside strike area" if _is_abyss_crown_vulnerable() else "Crown reflecting · keep away")
+			return "Phase 3 · defeat the fully vulnerable Abyss King"
+	return str(_story_custom_data.get("desc", "Complete the objective"))
+
+func _chapter_five_objective_text() -> String:
+	match _chapter_five.stage_number:
+		1:
+			if _chapter_five.phase == "route_selection": return "Silent Descent · Choose an infiltration route"
+			if _chapter_five.phase == "quiet_exit": return "Quiet unlock complete · Cross the final threshold · Alert %d%%" % roundi(_chapter_five.meter("alert"))
+			if _chapter_five.phase == "moving_escape": return "Lockdown escape · Cross the final threshold · Alert %d%%" % roundi(_chapter_five.meter("alert"))
+			return "Silent Descent · Checkpoints %d/3 · Alert %d%% · %s" % [_chapter_five.count("checkpoints_reached"), roundi(_chapter_five.meter("alert")), _c5_sentry_status()]
+		2:
+			if _chapter_five.phase == "portal_sealing": return "Seal the Abyss Portal · Stabilizers %d/3 · Portal Keeper %s" % [_chapter_five.count("seals_stable"), "defeated" if _chapter_five.flag("boss_defeated") else "active"]
+			return "Soul Liberation · Saved %d/6 · Active %d · Abyss Pressure %d%%" % [_chapter_five.count("spirits_saved"), _count_adventure_props("released_soul"), roundi(_chapter_five.meter("abyss_pressure"))]
+		3:
+			if _chapter_five.phase == "guardian": return "Reach the Labyrinth Exit · Defeat the Mirror Guardian"
+			return "Mirror Labyrinth · Room %d/4 · %s · Abyss Pressure %d%%" % [_chapter_five.count("rooms_completed") + 1, str(_chapter_five.mirror_room.get("clue", "Read the inscription")), roundi(_chapter_five.meter("abyss_pressure"))]
+		4:
+			if _chapter_five.phase == "sync_attempt": return "SYNC WINDOW %.1fs · Reach Obelisk B" % _chapter_five.timer("sync")
+			if _chapter_five.phase == "sync_hold": return "%s · %.1fs · Stop the Eclipse Elite" % ["SYNC INTERRUPTED" if _chapter_five.flag("elite_disruption_active") else "Hold synchronization", _chapter_five.timer("hold")]
+			if _chapter_five.flag("preparation_complete") and _chapter_five.flag("route_prepared"): return "Twin Eclipse ready · Return to Obelisk A and start synchronization"
+			return "Twin Eclipse · Obelisk A: %s · Obelisk B: %s · Prepare route" % ["Stable" if _chapter_five.flag("obelisk_a_stabilized") else "Unstable", "Stable" if _chapter_five.flag("obelisk_b_stabilized") else "Unstable"]
+		5:
+			if _chapter_five.phase == "ritual_anchors": return "Throne of the Deep · Ritual Anchors %d/3 · Ritual %.0fs" % [_chapter_five.count("anchors_destroyed"), _chapter_five.timer("ritual")]
+			if _chapter_five.phase == "abyss_crown": return "Break the Abyss Crown · Sections %d/4 · Activate both seals" % _chapter_five.count("crown_sections_broken")
+			return "Abyss King · %s" % _chapter_five.phase.replace("_", " ").capitalize()
+	return "Complete the Chapter 5 objective"
+
+func _c5_sentry_status() -> String:
+	if _chapter_five != null and _chapter_five.flag("hidden"):
+		return "Hidden"
+	var rank: Dictionary = {"unaware":0, "suspicious":1, "searching":2, "alerted":3}
+	var status: String = "unaware"
+	for prop in _adventure_props:
+		if str(prop.get("kind", "")) == "sentry" and int(rank.get(str(prop.get("state", "unaware")), 0)) > int(rank.get(status, 0)):
+			status = str(prop.get("state", "unaware"))
+	return status.capitalize()
+
+func _chapter_four_objective_text() -> String:
+	var heat: int = roundi(_chapter_four.meter("heat"))
+	match _chapter_four.stage_number:
+		1:
+			if _chapter_four.phase == "cart_extraction":
+				return "%s · Forge heat %d%%" % ["Clear the marked cart obstruction" if _find_story_enemy("c4_cart_blocker") >= 0 else "Escort the loaded mining cart to extraction", heat]
+			return "Mine and deliver Ember Ore %d/12 · Carrying %d/3 · Forge heat %d%%" % [_chapter_four.count("ore_delivered"), _chapter_four.count("ore_carried"), heat]
+		2:
+			if _chapter_four.phase == "powered_traversal": return "Follow the powered lava route · Junction %d/3 · Heat %d%%" % [_chapter_four.count("route_nodes"), heat]
+			if _chapter_four.phase == "forge_stabilization":
+				var jammed: bool = _find_story_enemy("c4_forge_jammer") >= 0
+				return "%s · Stabilization %ds · Heat %d%%" % ["Defeat the Forge Jammer" if jammed else "Defend the powered circuit", ceili(_chapter_four.timer("stabilization")), heat]
+			return "Toggle lava valves · Forge mechanisms powered %d/3 · Heat %d%%" % [_chapter_four.count("mechanisms_powered"), heat]
+		3:
+			if _chapter_four.flag("capture_channel_active"):
+				return "CAPTURING GOLEM · Hold position · %d%%" % roundi(clampf(_c4_action_timer / 2.5, 0.0, 1.0) * 100.0)
+			var mechanic: String = str(["Charge it into the wall", "Cool it at the vent", "Destroy its repair drones", "Activate both forge tethers"][_chapter_four.count("golems_captured")]) if _chapter_four.count("golems_captured") < 4 else "Capture complete"
+			return "Rogue Golems %d/4 · Weaken without killing · %s" % [_chapter_four.count("golems_captured"), mechanic]
+		4:
+			if _chapter_four.phase == "relic_assembly": return "Assemble the Lost Relic at the central forge · Components 3/3"
+			if _chapter_four.phase == "relic_guardian": return "Use your forged relic to defeat the Relic Guardian"
+			return "Clear the forge chamber · Relic components %d/3" % _chapter_four.count("components_collected")
+		5:
+			var shutdown: int = _chapter_four.count("regulators_disabled")
+			var clue: String = "complete"
+			if shutdown < _chapter_four.sequence.size(): clue = str(_chapter_four.sequence[shutdown] + 1)
+			return "Shutdown regulator %s · %d/4 · Heat %d%% · %s" % [clue, shutdown, heat, "Boss systems %d" % maxi(0, 4 - shutdown) if _chapter_four.flag("boss_spawned") else "Contain meltdown"]
+	return "Complete the Emberforge objective"
+
+func _chapter_three_objective_text() -> String:
+	match _chapter_three.stage_number:
+		1:
+			if _chapter_three.phase == "reclamation_surge":
+				if _chapter_three.timer("reclamation") <= 0.0:
+					var unstable_pools: int = 0
+					for pool in _adventure_props:
+						if str(pool.get("kind", "")) == "corrupted_pool" and float(pool.get("stability", 100.0)) < 35.0:
+							unstable_pools += 1
+					return "Reclamation Overtime · stabilize %d weakening pool%s" % [unstable_pools, "" if unstable_pools == 1 else "s"]
+				return "Reclamation Surge · %ds · stabilize weakening pools" % ceili(_chapter_three.timer("reclamation"))
+			var instruction: String = "Collect the glowing energy, then stand beside Pool 1"
+			if _chapter_three.phase == "moving_purification": instruction = "Follow the moving antidote marker around Pool 2"
+			elif _chapter_three.phase == "multi_point_purification": instruction = "Carry energy to each marked corruption node"
+			return "Pools: %d/3 · Energy: %d/%d · %s" % [_chapter_three.count("pools_purified"), _chapter_three.count("energy"), _chapter_three.count("energy_max"), instruction]
+		2:
+			if _chapter_three.phase == "final_hunt": return "Final Hunt · defeat the actual Plaguebeast"
+			if _chapter_three.phase == "tracking_ambush": return "Wrong trail · defeat the ambush before tracking resumes"
+			if _chapter_three.phase == "first_sighting": return "Force the Plaguebeast to retreat, then follow its trail"
+			return "Choose 1 of %d trails · correct clues: %d/3" % [_chapter_three.count("tracking_trails"), _chapter_three.count("tracking_phases_complete")]
+		3:
+			if _chapter_three.phase == "ingredient_extraction": return "Carry the Ingredient Case to extraction"
+			if _chapter_three.flag("ingredients_contaminated"): return "Ingredients contaminated · stand near the Cleansing Station for 2 seconds"
+			if _chapter_three.phase == "region_select":
+				var selection_region: int = _chapter_three.count("selection_region")
+				if selection_region >= 0:
+					return "Remain near %s for %ds to choose it" % [str(["Spider Grounds", "Toad Marsh", "Wasp Hive"][selection_region]), maxi(0, ceili(2.0 - _c3_action_timer))]
+				return "Choose a hunting ground · stand near Spider, Toad, or Wasp for 2 seconds"
+			if _chapter_three.phase == "region_hunt":
+				var active_region: int = _chapter_three.count("active_region")
+				var creature_name: String = str(["Spider", "Toad", "Wasp"][active_region])
+				var target_kind: String = str(["c3_web_nest", "c3_bile_vessel", "c3_wasp_hive"][active_region])
+				var marked_tag: String = str(["c3_marked_spider", "c3_marked_toad", "c3_marked_wasp"][active_region])
+				if _find_adventure_prop(target_kind) >= 0:
+					return "%s venom %d/3 · stand near the marked habitat for %ds to lure it" % [creature_name, _chapter_three.count(creature_name.to_lower()), maxi(0, ceili(_c3_region_lure_duration(active_region) - _c3_action_timer))]
+				if _find_story_enemy(marked_tag) >= 0:
+					return "%s venom %d/3 · defeat the marked %s" % [creature_name, _chapter_three.count(creature_name.to_lower()), creature_name]
+			return "Venom Harvest · Spider %d/3 · Toad %d/3 · Wasp %d/3" % [_chapter_three.count("spider"), _chapter_three.count("toad"), _chapter_three.count("wasp")]
+		4:
+			var integrity: int = roundi(_chapter_three.meter("vial_integrity"))
+			if _chapter_three.phase == "vial_collection": return "Collect the fragile Antidote Vial"
+			if _chapter_three.phase == "route_select":
+				var selection_route: int = _chapter_three.count("selection_route")
+				if selection_route >= 0: return "Hold near the %s Route for %ds to select it" % ["Short" if selection_route == 0 else "Long", maxi(0, ceili(2.5 - _c3_action_timer))]
+				return "Choose a route · remain near Short or Long for 3 seconds"
+			if _chapter_three.phase == "vial_delivery":
+				var hold_duration: float = 5.0 if _chapter_three.count("route") == 0 else 4.0
+				return "Vial integrity %d%% · hold at checkpoint %d/%d for %ds" % [integrity, _chapter_three.count("route_checkpoints") + 1, _chapter_three.count("route_checkpoints_required"), maxi(0, ceili(hold_duration - _c3_action_timer))]
+			if _chapter_three.phase == "route_ambush": return "Vial integrity %d%% · defeat the checkpoint guards" % integrity
+			if _chapter_three.phase == "infected_altar": return "Vial integrity %d%% · hold near the altar for %ds to place it" % [integrity, maxi(0, ceili(4.0 - _c3_action_timer))]
+			if _chapter_three.phase == "antidote_transfer": return "Antidote Transfer · %ds · remain near the altar and survive" % ceili(_chapter_three.timer("transfer"))
+			return "Antidote Integrity: %d%% · Checkpoints: %d/%d" % [integrity, _chapter_three.count("route_checkpoints"), _chapter_three.count("route_checkpoints_required")]
+		5:
+			if _chapter_three.phase == "blight_tyrant": return "Grand Antidote brewed · defeat the Blight Vine Tyrant"
+			if _chapter_three.phase == "ingredient_collection":
+				if _story_custom_timer > 0.0 and not str(_story_custom_progress.get("brew_feedback", "")).is_empty():
+					return str(_story_custom_progress.get("brew_feedback", ""))
+				var submitted: int = _chapter_three.count("ingredients_submitted")
+				var next_ingredient: String = _ingredient_name(str(_chapter_three.recipe[submitted])) if submitted < _chapter_three.recipe.size() else "Begin brewing"
+				if not _story_custom_carried.is_empty():
+					return "Carry %s to the cauldron · Next required: %s" % [_ingredient_name(_story_custom_carried), next_ingredient]
+				return "Collect and deliver in order: %s · Next: %s" % [_ingredient_recipe_text(_chapter_three.recipe), next_ingredient]
+			if _chapter_three.phase == "active_brewing":
+				var heat: int = roundi(_chapter_three.meter("heat"))
+				var purity: int = roundi(_chapter_three.meter("purity"))
+				var brew: int = roundi(_chapter_three.meter("brew_progress"))
+				if purity < 35: return "Purity %d%% too low · stand near the cauldron to restore purity" % purity
+				if heat < 35: return "Heat %d%% too low · move away from the cauldron to raise it above 35%%" % heat
+				if heat > 82: return "Heat %d%% too high · stand near the cauldron to cool it below 82%%" % heat
+				return "Brewing %d%% · Heat %d%% is stable · stay near to cool, move away to heat" % [brew, heat]
+			return "Grand Antidote · follow the marked objectives"
+	return "Complete the Blightroot Marsh objective"
+
+func _chapter_two_objective_text() -> String:
+	var cold_status: String = "Freezing" if _chapter_two.cold_exposure >= 100.0 else ("Severely Chilled" if _chapter_two.cold_exposure >= 75.0 else ("Chilled" if _chapter_two.cold_exposure >= 50.0 else "Stable"))
+	var cold_text: String = " · Cold Exposure: %d%% (%s)" % [roundi(_chapter_two.cold_exposure), cold_status]
+	match _chapter_two.stage_number:
+		1:
+			if _chapter_two.phase == "warmth_stabilization":
+				return "Stabilize the Warmth Chain · %ds · Active Warmth %d/4%s" % [ceili(_chapter_two.timer("stabilization")), _chapter_two.count("active_braziers"), cold_text]
+			return "Braziers Lit: %d/4 · Active Warmth: %d/4 · Carrying %s%s" % [_chapter_two.count("braziers_lit"), _chapter_two.count("active_braziers"), "Flame Charge" if _story_custom_carried == "flame_charge" else "No Flame", cold_text]
+		2:
+			return "Captives Released: %d/5 · Captives Safe: %d/5 · Refrozen: %d%s" % [_chapter_two.count("captives_released"), _chapter_two.count("captives_extracted"), _chapter_two.count("captives_refrozen"), cold_text]
+		3:
+			if _chapter_two.phase == "sequence_reveal":
+				return "Memorize: %s · %.1fs%s" % [_sequence_text(_story_custom_sequence), _story_custom_timer, cold_text]
+			return "Thaw Sequence: %d/4 · %s%s" % [_chapter_two.count("runes_correct"), "Spreading freeze" if _chapter_two.phase == "spreading_freeze" else "Find the next rune", cold_text]
+		4:
+			if _chapter_two.phase == "frost_mimic_battle": return "Defeat the actual Frost Mimic"
+			return "Open one chest · Wrong chests trigger an ambush · Chests Remaining: %d" % _chapter_two.count("suspects_remaining")
+		5:
+			if _chapter_two.phase == "final_vulnerable": return "Frostbound Colossus · Armour broken · Defeat it%s" % cold_text
+			return "Frostbound Colossus · Armour Crystals: %d/3 · Attack the exposed crystal%s" % [3 - _chapter_two.count("crystals_broken"), cold_text]
+	return "Complete the Frostbound Hollow objective"
+
+func _sequence_text(sequence: Array[int]) -> String:
+	var parts: Array[String] = []
+	for value in sequence: parts.append(str(value + 1))
+	return " → ".join(parts)
+
+func _ingredient_recipe_text(sequence: Array[int]) -> String:
+	var parts: Array[String] = []
+	for value in sequence:
+		parts.append(_ingredient_name(str(value)))
+	return " → ".join(parts)
+
+func _ingredient_name(value: String) -> String:
+	if value.is_empty(): return "none"
+	var names := ["Spider Venom", "Toad Bile", "Wasp Stinger", "Mirecap Mushroom"]
+	var index := clampi(int(value), 0, names.size() - 1)
+	return names[index]
+
+func _bit_count(value: int) -> int:
+	var count := 0
+	for bit in 3:
+		if (value & (1 << bit)) != 0: count += 1
+	return count
 
 func _enemy_mod_display_name(mod: String) -> String:
 	match mod:
@@ -5394,6 +9309,14 @@ func _make_enemy_data(kind: String, ws: float) -> Dictionary:
 	var boss_dmg_mult: float = float(boss_progress.get("dmg", 1.0))
 	var boss_spd_mult: float = float(boss_progress.get("spd", 1.0))
 	match kind:
+		"portal_keeper_boss":
+			return {"kind":"portal_keeper_boss", "hp_mult":22.0 * ws * boss_hp_mult, "spd_fixed":92.0 * boss_spd_mult, "dmg_mult":1.45 * ws * boss_dmg_mult, "r":72.0, "col":Color(0.34, 0.18, 0.62)}
+		"mirror_guardian_boss":
+			return {"kind":"mirror_guardian_boss", "hp_mult":24.0 * ws * boss_hp_mult, "spd_fixed":128.0 * boss_spd_mult, "dmg_mult":1.40 * ws * boss_dmg_mult, "r":68.0, "col":Color(0.76, 0.32, 0.92)}
+		"eclipse_elite_boss":
+			return {"kind":"eclipse_elite_boss", "hp_mult":25.0 * ws * boss_hp_mult, "spd_fixed":106.0 * boss_spd_mult, "dmg_mult":1.55 * ws * boss_dmg_mult, "r":74.0, "col":Color(0.92, 0.54, 0.16)}
+		"abyss_king_boss":
+			return {"kind":"abyss_king_boss", "hp_mult":42.0 * ws * boss_hp_mult, "spd_fixed":96.0 * boss_spd_mult, "dmg_mult":1.85 * ws * boss_dmg_mult, "r":92.0, "col":Color(0.42, 0.12, 0.68)}
 		"teleporter_boss":
 			return {
 				"kind": "teleporter_boss",
@@ -5563,6 +9486,13 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 		final_dmg *= 1.0 + (e.get("bleed_bonus", 0.25) as float)
 	if _is_boss_kind(ekind):
 		final_dmg *= 1.0 + _ring_bonus("boss_dmg")
+	if str(e.get("story_tag", "")) == "frost_colossus" and _chapter_two != null and _chapter_two.count("crystals_broken") < 3:
+		final_dmg *= 0.04
+	if str(e.get("story_tag", "")) == "protected_key_carrier":
+		for guard in _enemies:
+			if str(guard.get("story_tag", "")) == "carrier_guard":
+				final_dmg *= 0.05
+				break
 	var crit_chance: float = _ring_bonus("crit_chance")
 	var did_crit: bool = false
 	if crit_chance > 0.0 and randf() < crit_chance:
@@ -5575,10 +9505,36 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 		_combat_vfx.emit_impact(e["pos"] as Vector2, did_crit, (e["hp"] as float) - final_dmg <= 0.0)
 	e["hp"]      = (e["hp"] as float) - final_dmg
 	e["iframes"] = ENEMY_HIT_IF
+	var story_enemy_tag: String = str(e.get("story_tag", ""))
+	if story_enemy_tag == "abyss_king" and _chapter_five != null and not _chapter_five.flag("final_phase_entered"):
+		var ritual_floor: float = maxf(1.0, float(e.get("objective_max_hp", 100.0)) * 0.72)
+		e["hp"] = maxf(float(e["hp"]), ritual_floor)
+		if not _chapter_five.flag("ritual_shield_announced"):
+			_chapter_five.set_flag("ritual_shield_announced")
+			_spawn_reaction_popup(e["pos"] as Vector2, "RITUAL SHIELD", Color(0.78, 0.42, 1.0))
+			_story_log("Boss phase gate: Ritual Shield Active")
+	elif story_enemy_tag == "abyss_king" and _chapter_five != null:
+		var phase_floor_ratio: float = {"final_boss_a":0.65, "final_boss_b":0.35, "final_boss_c":0.22}.get(_chapter_five.phase, 0.0) as float
+		if phase_floor_ratio > 0.0:
+			e["hp"] = maxf(float(e["hp"]), float(e.get("objective_max_hp", 100.0)) * phase_floor_ratio)
+	if story_enemy_tag.begins_with("c4_golem_") and _chapter_four != null:
+		var capture_floor: float = maxf(1.0, float(e.get("objective_max_hp", 100.0)) * 0.20)
+		e["hp"] = maxf(float(e["hp"]), capture_floor)
+	elif story_enemy_tag == "c4_thunderforge_behemoth" and _chapter_four != null and not _chapter_four.flag("shutdown_complete"):
+		var shutdown_floor: float = maxf(1.0, float(e.get("objective_max_hp", 100.0)) * 0.25)
+		e["hp"] = maxf(float(e["hp"]), shutdown_floor)
+		if float(e["hp"]) <= shutdown_floor and not _chapter_four.flag("boss_protection_announced"):
+			_chapter_four.set_flag("boss_protection_announced")
+			_spawn_reaction_popup(e["pos"] as Vector2, "FORGE PROTECTED", Color(1.0, 0.56, 0.16))
+			_story_log("Boss phase gate: Forge protection holds until shutdown completes")
+	if str(e.get("story_tag", "")) == "frost_colossus" and _chapter_two != null and _chapter_two.count("crystals_broken") < 3 and float(e.hp) <= 0.0:
+		e["hp"] = 1.0
 	if (e["hp"] as float) <= 0.0:
 		var ep: Vector2   = e["pos"] as Vector2
 		_xp_orbs.append({"pos": ep, "val": _xp_drop()})
 		_kills += 1
+		if _handle_custom_story_enemy_death(e):
+			return
 		var is_boss: bool = _is_boss_kind(ekind)
 		_try_drop_story_key(ep, is_boss)
 		# Potion drop: 25% base + ring bonus, from any boss
@@ -5586,16 +9542,18 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 		if is_boss and randf() < potion_rate:
 			_potions.append({"pos": ep + Vector2(randf_range(-20, 20), randf_range(-20, 20)), "life": 15.0})
 		if is_boss:
-			if not account_username.is_empty(): ProgressionStore.record_mission_event(account_username, "boss_kills")
+			if not story_stage.is_empty():
+				_story_log("Boss defeated: %s" % ekind)
+			if not account_username.is_empty() and not is_story_test_run: ProgressionStore.record_mission_event(account_username, "boss_kills")
 			if not dungeon_mode.is_empty() and _adventure_state not in ["coin_hunt", "forge_activate"]:
 				_dungeon_depth_cleared = maxi(_dungeon_depth_cleared, _wave)
 			_boss_keys += 1
 			_try_drop_dungeon_key(ep, ekind)
-			if _objective_boss_active and not story_stage.is_empty() and not _story_victory_started:
-				_story_victory_started = true
+			if _objective_boss_active and not story_stage.is_empty():
 				_objective_boss_active = false
+				_story_required_boss_defeated = true
 				_enemies.remove_at(idx)
-				call_deferred("_show_story_victory")
+				_request_story_victory("objective_boss_defeated")
 				return
 			if _objective_boss_active and dungeon_mode == "forgecore":
 				_objective_boss_active = false
@@ -5604,14 +9562,11 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 				_enemies.remove_at(idx)
 				call_deferred("_show_forge_modifier_choice")
 				return
-			if not story_stage.is_empty() and _wave >= _story_victory_wave() and not _story_victory_started:
-				_story_victory_started = true
-				_enemies.remove_at(idx)
-				call_deferred("_show_story_victory")
-				return
+			if not story_stage.is_empty() and int(story_stage.get("chapter", 1)) == 1 and int(story_stage.get("chapter_stage", 1)) == 5 and _wave >= _story_victory_wave():
+				_request_story_victory("chapter_one_wave_boss_defeated")
 		# Ring drop: 60% base chance from any boss (+ ring bonus, clamped).
 		var ring_rate: float = min(1.0, 0.60 + _ring_bonus("ring_drop_rate"))
-		if is_boss and randf() < ring_rate:
+		if is_boss and not is_story_test_run and randf() < ring_rate:
 			var ring: Dictionary = RingStore.roll_ring()
 			_ring_drops.append({"pos": ep + Vector2(randf_range(-30, 30), randf_range(-30, 30)), "life": 20.0, "ring": ring})
 		var bleed_seed: bool = e.get("bleed_seed", false) as bool
@@ -5795,8 +9750,9 @@ func _update_ring_drops(delta: float) -> void:
 			continue
 		if (_player_pos.distance_to(rd["pos"] as Vector2)) < 32.0:
 			var ring: Dictionary = RingStore.normalize_ring(rd["ring"] as Dictionary)
-			RingStore.add_ring_to_stash(account_username, ring)
-			_rings_obtained.append(ring)
+			if not is_story_test_run:
+				RingStore.add_ring_to_stash(account_username, ring)
+				_rings_obtained.append(ring)
 			_ring_drops.remove_at(i)
 
 func _update_artifact_drops(delta: float) -> void:
@@ -5811,7 +9767,8 @@ func _update_artifact_drops(delta: float) -> void:
 			continue
 		if (_player_pos.distance_to(ad["pos"] as Vector2)) < 32.0:
 			var artifact: Dictionary = ad["artifact"] as Dictionary
-			ArtifactStore.ensure_artifact_in_stash(account_username, artifact)
+			if not is_story_test_run:
+				ArtifactStore.ensure_artifact_in_stash(account_username, artifact)
 			_artifact_drops.remove_at(i)
 
 func _update_boss_projs(delta: float) -> void:
@@ -5840,10 +9797,21 @@ func _update_boss_projs(delta: float) -> void:
 			_boss_projs.remove_at(i)
 			continue
 		# Damage player if they touch it
-		if _player_iframes <= 0.0 and bpp.distance_to(_player_pos) < PLAYER_R + 12.0:
+		var can_hit: bool = not bool(bp.get("phase_flicker", false)) or _c1_projectile_flicker_alpha(bp) >= 0.45
+		if can_hit and _player_iframes <= 0.0 and bpp.distance_to(_player_pos) < PLAYER_R + 12.0:
 			if _damage_player(bp["dmg"] as float, IFRAMES_SEC):
 				return
 			_boss_projs.remove_at(i)
+
+func _c1_projectile_flicker_alpha(projectile: Dictionary) -> float:
+	var cycle: float = fmod(_elapsed / 2.4 + float(projectile.get("flicker_offset", 0.0)), 1.0)
+	if cycle < 0.60:
+		return 0.04
+	if cycle < 0.72:
+		return lerpf(0.04, 1.0, (cycle - 0.60) / 0.12)
+	if cycle < 0.90:
+		return 1.0
+	return lerpf(1.0, 0.04, (cycle - 0.90) / 0.10)
 
 func _explode_lava_fireball(pos: Vector2, dmg: float, radius: float) -> void:
 	if _player_iframes <= 0.0 and _player_pos.distance_to(pos) < PLAYER_R + radius:
@@ -5951,11 +9919,21 @@ func _apply_level_up_hp_growth() -> void:
 
 func _draw_adventure_objectives() -> void:
 	var font := ThemeDB.fallback_font
-	if _adventure_state == "story_hazards":
+	if _is_story_hazard_arena_active():
 		var arena_half := _story_hazard_arena_half_size()
 		var arena_rect := Rect2(_story_hazard_arena_center - arena_half, arena_half * 2.0)
 		draw_rect(arena_rect, Color(0.96, 0.40, 0.12, 0.78), false, 8.0)
 		draw_rect(arena_rect.grow(-10.0), Color(1.0, 0.76, 0.26, 0.34), false, 3.0)
+	# The extraction enclosure is ground scenery. Draw it first so the Scout
+	# and enemies remain visible inside its barricades.
+	for background_prop in _adventure_props:
+		if str(background_prop.get("kind", "")) != "c1_extraction":
+			continue
+		var extraction_pos: Vector2 = background_prop.get("pos", Vector2.ZERO) as Vector2
+		var extraction_size := Vector2(520.0, 520.0)
+		if _chapter_one_extraction_tex != null:
+			draw_texture_rect(_chapter_one_extraction_tex, Rect2(extraction_pos - extraction_size * 0.5, extraction_size), false)
+		draw_arc(extraction_pos, 210.0 + sin(_elapsed * 4.0) * 5.0, 0, TAU, 48, Color(1.0, 0.78, 0.22, 0.88), 5.0)
 	for prop in _adventure_props:
 		var pos: Vector2 = prop.pos
 		var kind := String(prop.kind)
@@ -5972,13 +9950,40 @@ func _draw_adventure_objectives() -> void:
 				if shield_left > 0.0:
 					draw_circle(pos, 104.0 + sin(_elapsed * 5.0) * 5.0, Color(0.54, 0.28, 0.94, 0.16))
 					draw_arc(pos, 104.0, 0, TAU, 48, Color(0.78, 0.54, 1.0, 0.92), 6.0)
-					draw_string(font, pos + Vector2(-70, -112), "Shielded %.1fs" % shield_left, HORIZONTAL_ALIGNMENT_CENTER, 140, 20, Color.WHITE)
+					draw_string(font, pos + Vector2(-90, -112), "Shielded %.1fs" % shield_left, HORIZONTAL_ALIGNMENT_CENTER, 180, 26, Color.WHITE)
 			"hazard_emitter":
 				var emitter_size := Vector2(210, 210)
 				if _objective_hazard_tex != null: draw_texture_rect(_objective_hazard_tex, Rect2(pos - emitter_size * 0.5, emitter_size), false)
 				draw_arc(pos, 118.0 + sin(_elapsed * 7.0) * 5.0, 0, TAU, 48, Color(1.0, 0.38, 0.10, 0.82), 5.0)
+				if _chapter_one != null and _chapter_one.stage_number == 5 and _chapter_one.phase == "rotating_barrage" and _c1_phase_timer <= 5.0:
+					draw_string(font, pos + Vector2(-110.0, -145.0), "OVERHEATING", HORIZONTAL_ALIGNMENT_CENTER, 220.0, 25, Color(1.0, 0.82, 0.18))
+				if _chapter_one != null and _chapter_one.stage_number == 5 and _chapter_one.phase == "overheat_burst" and _chapter_one_overheat_burst_tex != null:
+					var burst_size := Vector2(360.0, 360.0)
+					draw_texture_rect(_chapter_one_overheat_burst_tex, Rect2(pos - burst_size * 0.5, burst_size), false)
+			"c1_barricade":
+				var barricade_size := Vector2(300.0, 230.0)
+				if _chapter_one_barricade_tex != null: draw_texture_rect(_chapter_one_barricade_tex, Rect2(pos - barricade_size * 0.5, barricade_size), false)
+			"c1_extraction":
+				pass
+			"c1_energy_spore":
+				var spore_size := Vector2(92.0, 92.0) * (1.0 + sin(_elapsed * 5.0 + pos.x * 0.01) * 0.08)
+				if _chapter_one_energy_spore_tex != null: draw_texture_rect(_chapter_one_energy_spore_tex, Rect2(pos - spore_size * 0.5, spore_size), false)
+				draw_arc(pos, 52.0, 0, TAU, 32, Color(0.48, 1.0, 0.88, 0.82), 3.0)
+			"c1_feeding_sac":
+				var sac_size := Vector2(170.0, 170.0) * (1.0 + sin(_elapsed * 3.5 + pos.x * 0.01) * 0.05)
+				if _chapter_one_feeding_sac_tex != null: draw_texture_rect(_chapter_one_feeding_sac_tex, Rect2(pos - sac_size * 0.5, sac_size), false)
+				draw_arc(pos, 92.0, 0, TAU, 40, Color(1.0, 0.48, 0.16, 0.72), 4.0)
+			"c1_gate":
+				var gate_size := Vector2(250.0, 310.0)
+				if _chapter_one_watchpath_exit_tex != null: draw_texture_rect(_chapter_one_watchpath_exit_tex, Rect2(pos - gate_size * 0.5, gate_size), false)
+				draw_arc(pos, 132.0 + sin(_elapsed * 4.0) * 5.0, 0, TAU, 48, Color(1.0, 0.78, 0.22, 0.84), 5.0)
+			"c1_track_marker":
+				var tracks_size := Vector2(138.0, 138.0) * (1.0 + sin(_elapsed * 4.0 + pos.x * 0.01) * 0.04)
+				if _chapter_one_animal_tracks_tex != null: draw_texture_rect(_chapter_one_animal_tracks_tex, Rect2(pos - tracks_size * 0.5, tracks_size), false)
 			"key":
-				draw_circle(pos, 18, Color(1.0, 0.82, 0.18)); draw_line(pos + Vector2(16, 0), pos + Vector2(58, 0), Color(1.0, 0.72, 0.10), 12); draw_line(pos + Vector2(43, 0), pos + Vector2(43, 17), Color(1.0, 0.72, 0.10), 9)
+				var key_size := Vector2(112.0, 112.0) * (1.0 + sin(_elapsed * 5.0) * 0.06)
+				if _chapter_one_watchpath_key_tex != null: draw_texture_rect(_chapter_one_watchpath_key_tex, Rect2(pos - key_size * 0.5, key_size), false)
+				draw_arc(pos, 62.0, 0, TAU, 32, Color(1.0, 0.78, 0.18, 0.88), 4.0)
 			"safe":
 				draw_circle(pos, SAFE_INTERACTION_RADIUS, Color(1.0, 0.76, 0.18, 0.08))
 				draw_arc(pos, SAFE_INTERACTION_RADIUS, 0, TAU, 64, Color(1.0, 0.76, 0.18, 0.72), 5.0)
@@ -5989,6 +9994,8 @@ func _draw_adventure_objectives() -> void:
 					draw_circle(pos, FORGE_INTERACTION_RADIUS, Color(1.0, 0.40, 0.14, 0.08))
 					draw_arc(pos, FORGE_INTERACTION_RADIUS, 0, TAU, 64, Color(1.0, 0.48, 0.18, 0.72), 5.0)
 				if _objective_forge_tex != null: draw_texture_rect(_objective_forge_tex, Rect2(pos - Vector2(115, 115), Vector2(230, 230)), false)
+			_:
+				_draw_custom_story_prop(prop, font)
 		if prop.has("hp") and float(prop.get("max_hp", 0.0)) > 1.0:
 			var ratio := clampf(float(prop.hp) / float(prop.max_hp), 0.0, 1.0)
 			draw_rect(Rect2(pos + Vector2(-55, 68), Vector2(110, 10)), Color(0.10,0.08,0.08,0.9), true)
@@ -5999,25 +10006,311 @@ func _draw_adventure_objectives() -> void:
 		var interaction_radius := STORY_NEST_EFFECTIVE_RADIUS if kind == "nest" else (SAFE_INTERACTION_RADIUS if kind == "safe" else FORGE_INTERACTION_RADIUS)
 		if pos.distance_to(_player_pos) < interaction_radius and kind in ["nest", "safe", "forge"]:
 			var prompt := "Stay inside the effective area" if kind == "nest" else ("Activating forge" if kind == "forge" and not bool(prop.get("active", false)) else ("Defend the forge" if kind == "forge" else "Cracking safe"))
-			draw_string(font, pos + Vector2(-110, -132 if kind == "nest" else -82), prompt, HORIZONTAL_ALIGNMENT_CENTER, 220 if kind == "nest" else 130, 19, Color.WHITE)
+			draw_string(font, pos + Vector2(-130, -132 if kind == "nest" else -82), prompt, HORIZONTAL_ALIGNMENT_CENTER, 260, 26, Color.WHITE)
+	if _chapter_two != null and _chapter_two.stage_number == 1 and _story_custom_carried == "flame_charge" and _custom_story_asset_tex.has("flame_charge"):
+		var carried_size := Vector2(74.0, 74.0) * (1.0 + sin(_elapsed * 5.0) * 0.06)
+		var carried_pos: Vector2 = _player_pos + Vector2(58.0, -74.0)
+		draw_texture_rect(_custom_story_asset_tex["flame_charge"] as Texture2D, Rect2(carried_pos - carried_size * 0.5, carried_size), false)
+
+func _draw_custom_story_prop(prop: Dictionary, font: Font) -> void:
+	var kind := str(prop.get("kind", ""))
+	if not _is_custom_story_prop(kind): return
+	var pos: Vector2 = prop.pos
+	var color := _custom_story_prop_color(kind)
+	var pulse := 1.0 + sin(_elapsed * 4.0 + pos.x * 0.01) * 0.08
+	if kind == "brazier" and bool(prop.get("active", false)):
+		var warmth_color: Color = Color(0.38, 0.72, 1.0, 0.10) if bool(prop.get("suppressed", false)) else Color(1.0, 0.58, 0.16, 0.12)
+		draw_circle(pos, 245.0, warmth_color)
+		draw_arc(pos, 245.0, 0.0, TAU, 64, Color(warmth_color.r, warmth_color.g, warmth_color.b, 0.62), 4.0)
+	var chapter_three_asset_id: String = _chapter_three_prop_asset_id(prop)
+	var chapter_three_asset_size: float = 215.0 if kind in ["c3_web_nest", "c3_bile_vessel", "c3_wasp_hive"] else 175.0
+	if not chapter_three_asset_id.is_empty() and _draw_story_asset_by_id(chapter_three_asset_id, pos, chapter_three_asset_size, pulse):
+		var chapter_three_marker: String = _custom_story_prop_marker(prop)
+		if not chapter_three_marker.is_empty():
+			draw_string(font, pos + Vector2(-140, 8), chapter_three_marker, HORIZONTAL_ALIGNMENT_CENTER, 280, 24, Color.WHITE)
+		return
+	var chapter_two_asset_id: String = _chapter_two_prop_asset_id(prop)
+	if not chapter_two_asset_id.is_empty() and _draw_story_asset_by_id(chapter_two_asset_id, pos, _chapter_two_prop_asset_size(kind), pulse):
+		var chapter_two_marker := _custom_story_prop_marker(prop)
+		if not chapter_two_marker.is_empty(): draw_string(font, pos + Vector2(-140, 8), chapter_two_marker, HORIZONTAL_ALIGNMENT_CENTER, 280, 24, Color.WHITE)
+		return
+	if kind in ["hiding_zone", "corrupted_pool"]:
+		draw_circle(pos, 120.0, Color(color.r, color.g, color.b, 0.12))
+		draw_arc(pos, 120.0, 0, TAU, 48, Color(color.r, color.g, color.b, 0.72), 4.0)
+		_draw_custom_story_asset(kind, pos, pulse)
+		if kind == "corrupted_pool" and prop.has("zone_pos") and _custom_story_asset_tex.has("antidote_vial"):
+			var zone_pos: Vector2 = prop.get("zone_pos", pos) as Vector2
+			var zone_size := Vector2(92.0, 92.0) * pulse
+			draw_texture_rect(_custom_story_asset_tex["antidote_vial"] as Texture2D, Rect2(zone_pos - zone_size * 0.5, zone_size), false)
+	elif kind == "sentry":
+		if bool(prop.get("disabled", false)):
+			_draw_custom_story_asset(kind, pos, pulse)
+			return
+		var facing: Vector2 = prop.get("facing", Vector2.RIGHT) as Vector2
+		var sight_range: float = 410.0
+		var left: Vector2 = pos + facing.rotated(-0.58) * sight_range
+		var right: Vector2 = pos + facing.rotated(0.58) * sight_range
+		draw_colored_polygon(PackedVector2Array([pos, left, right]), Color(1.0, 0.18, 0.12, 0.18))
+		draw_line(pos, left, Color(1.0, 0.30, 0.20, 0.82), 4.0)
+		draw_line(pos, right, Color(1.0, 0.30, 0.20, 0.82), 4.0)
+		draw_arc(pos, sight_range, facing.angle() - 0.58, facing.angle() + 0.58, 28, Color(1.0, 0.30, 0.20, 0.82), 4.0)
+		_draw_custom_story_asset(kind, pos, pulse)
+	else:
+		if not _draw_custom_story_asset(kind, pos, pulse):
+			draw_circle(pos, 52.0 * pulse, Color(color.r, color.g, color.b, 0.22))
+			draw_arc(pos, 52.0 * pulse, 0, TAU, 32, color, 6.0)
+			draw_circle(pos, 28.0, Color(color.r, color.g, color.b, 0.82))
+	var marker := _custom_story_prop_marker(prop)
+	if not marker.is_empty(): draw_string(font, pos + Vector2(-140, 8), marker, HORIZONTAL_ALIGNMENT_CENTER, 280, 24, Color.WHITE)
+
+func _load_custom_story_assets() -> void:
+	var asset_ids := ["frozen_brazier", "ice_captive", "thaw_rune", "frost_mimic", "frost_colossus", "corrupted_pool", "plaguebeast", "venom_harvest", "antidote_vial", "antidote_cauldron", "ember_ore", "lava_valve", "rogue_golem", "lost_relic", "forge_regulator", "abyss_sentry", "liberated_soul", "mirror_portal", "eclipse_obelisk", "abyss_king"]
+	for asset_id in asset_ids:
+		var path := "res://assets/story/objectives/custom/%s.png" % asset_id
+		if ResourceLoader.exists(path):
+			_custom_story_asset_tex[asset_id] = load(path) as Texture2D
+	var chapter_two_asset_ids := ["flame_charge", "flamekeeper", "brazier_suppression", "frozen_prison", "frost_captive", "frost_jailer", "suspect_chest", "armour_crystal", "frost_clue", "thaw_rune_correct", "thaw_rune_wrong"]
+	for asset_id in chapter_two_asset_ids:
+		var path := "res://assets/story/objectives/chapter2/%s.png" % asset_id
+		if ResourceLoader.exists(path):
+			_custom_story_asset_tex[asset_id] = load(path) as Texture2D
+	var chapter_three_asset_ids := ["venom_spider", "venom_toad", "venom_wasp", "spider_habitat", "toad_habitat", "wasp_hive"]
+	for asset_id in chapter_three_asset_ids:
+		var path := "res://assets/story/objectives/chapter3/%s.png" % asset_id
+		if ResourceLoader.exists(path):
+			_custom_story_asset_tex[asset_id] = load(path) as Texture2D
+
+func _chapter_two_prop_asset_id(prop: Dictionary) -> String:
+	if _chapter_two == null:
+		return ""
+	var kind := str(prop.get("kind", ""))
+	if kind == "released_soul":
+		return "frozen_prison" if bool(prop.get("refrozen", false)) else "frost_captive"
+	if kind == "thaw_rune":
+		var feedback := str(prop.get("feedback", ""))
+		if feedback == "correct": return "thaw_rune_correct"
+		if feedback == "wrong": return "thaw_rune_wrong"
+		return "thaw_rune"
+	return str({
+		"brazier":"frozen_brazier", "c2_brazier_suppression":"brazier_suppression",
+		"ice_prison":"frozen_prison", "thaw_rune":"thaw_rune", "mimic_chest":"suspect_chest",
+		"frost_clue":"frost_clue", "armour_crystal":"armour_crystal",
+	}.get(kind, ""))
+
+func _chapter_two_prop_asset_size(kind: String) -> float:
+	return float({"ice_prison":210.0, "mimic_chest":170.0, "armour_crystal":180.0, "c2_brazier_suppression":170.0, "released_soul":135.0, "frost_clue":110.0}.get(kind, 150.0))
+
+func _chapter_three_prop_asset_id(prop: Dictionary) -> String:
+	var kind: String = str(prop.get("kind", ""))
+	if kind == "c3_region":
+		return str(["venom_spider", "venom_toad", "venom_wasp"][clampi(int(prop.get("region", 0)), 0, 2)])
+	return str({"c3_web_nest":"spider_habitat", "c3_bile_vessel":"toad_habitat", "c3_wasp_hive":"wasp_hive"}.get(kind, ""))
+
+func _draw_story_asset_by_id(asset_id: String, pos: Vector2, size: float, pulse: float = 1.0) -> bool:
+	if not _custom_story_asset_tex.has(asset_id):
+		return false
+	var draw_size := Vector2(size, size) * pulse
+	draw_texture_rect(_custom_story_asset_tex[asset_id] as Texture2D, Rect2(pos - draw_size * 0.5, draw_size), false)
+	return true
+
+func _custom_story_prop_asset_id(kind: String) -> String:
+	return str({
+		"brazier": "frozen_brazier", "ice_prison": "ice_captive", "thaw_rune": "thaw_rune",
+		"mimic_chest": "frost_mimic", "armour_crystal": "frost_colossus",
+		"corrupted_pool": "corrupted_pool", "tracker": "plaguebeast", "ingredient": "venom_harvest",
+		"c3_cleansing_energy":"antidote_vial", "c3_corruption_node":"corrupted_pool", "c3_tracking_clue":"plaguebeast", "c3_region":"venom_harvest",
+		"c3_web_nest":"venom_harvest", "c3_bile_vessel":"venom_harvest", "c3_wasp_hive":"venom_harvest",
+		"c3_cleanse_station":"corrupted_pool", "c3_extraction":"venom_harvest", "c3_vial":"antidote_vial",
+		"c3_route":"antidote_vial", "c3_cure_checkpoint":"antidote_vial", "c3_brew_ingredient":"venom_harvest",
+		"infected_altar": "antidote_vial", "healing_fountain": "antidote_vial", "cure_checkpoint": "antidote_vial", "cauldron": "antidote_cauldron",
+		"ember_ore": "ember_ore", "lava_valve": "lava_valve", "relic_chamber": "lost_relic",
+		"relic_forge": "lost_relic", "regulator": "forge_regulator",
+		"c4_ore_deposit":"ember_ore", "c4_ore_bag":"ember_ore", "c4_mining_cart":"lost_relic",
+		"c4_cooling_vent":"lava_valve", "c4_lava_vent":"lava_valve", "c4_extraction":"lost_relic", "c4_forge_mechanism":"forge_regulator",
+		"c4_route_node":"lava_valve", "c4_charge_wall":"lost_relic", "c4_tether":"forge_regulator", "sentry": "abyss_sentry",
+		"hiding_zone":"mirror_portal", "citadel_gate": "mirror_portal", "abyss_portal": "mirror_portal", "mirror_portal": "mirror_portal",
+		"security_switch":"forge_regulator", "spirit_safe_zone":"liberated_soul", "portal_seal":"eclipse_obelisk", "mirror_clue":"mirror_portal", "labyrinth_exit":"mirror_portal", "eclipse_seal":"abyss_king", "eclipse_ring":"eclipse_obelisk", "eclipse_shortcut":"forge_regulator", "eclipse_disruption":"forge_regulator", "crown_seal":"eclipse_obelisk", "final_threshold":"mirror_portal",
+		"soul_chain": "liberated_soul", "released_soul": "liberated_soul",
+		"eclipse_obelisk": "eclipse_obelisk", "ritual_anchor": "abyss_king", "abyss_crown": "abyss_king",
+	}.get(kind, ""))
+
+func _draw_custom_story_asset(kind: String, pos: Vector2, pulse: float = 1.0) -> bool:
+	var asset_id := _custom_story_prop_asset_id(kind)
+	if asset_id.is_empty() or not _custom_story_asset_tex.has(asset_id): return false
+	var size := 150.0
+	if kind in ["ice_prison", "corrupted_pool", "cauldron", "relic_chamber", "relic_forge", "mirror_portal", "eclipse_obelisk", "citadel_gate", "abyss_portal"]: size = 190.0
+	if kind in ["released_soul", "soul_chain"]: size = 120.0
+	var draw_size := Vector2(size, size) * pulse
+	draw_texture_rect(_custom_story_asset_tex[asset_id] as Texture2D, Rect2(pos - draw_size * 0.5, draw_size), false)
+	return true
+
+func _custom_story_enemy_texture(story_tag: String) -> Texture2D:
+	var asset_id := str({"c2_flamekeeper":"flamekeeper", "c2_brazier_suppressor":"brazier_suppression", "c2_colossus_summon":"frost_jailer", "frost_colossus":"frost_colossus", "plaguebeast":"plaguebeast", "c3_plague_sighting":"plaguebeast", "c3_plaguebeast_final":"plaguebeast", "c3_marked_spider":"venom_spider", "c3_spider_pack":"venom_spider", "c3_marked_toad":"venom_toad", "c3_toad_pack":"venom_toad", "c3_marked_wasp":"venom_wasp", "c3_wasp_pack":"venom_wasp", "rogue_golem":"rogue_golem", "c4_relic_guardian":"rogue_golem", "c5_portal_keeper":"abyss_sentry", "c5_mirror_guardian":"mirror_portal", "c5_eclipse_elite":"eclipse_obelisk", "abyss_king":"abyss_king"}.get(story_tag, ""))
+	if story_tag.begins_with("c2_jailer"):
+		asset_id = "frost_jailer"
+	elif story_tag.begins_with("c4_golem_"):
+		asset_id = "rogue_golem"
+	return _custom_story_asset_tex.get(asset_id, null) as Texture2D
+
+func _is_custom_story_prop(kind: String) -> bool:
+	return kind in ["c1_barricade", "c1_feeding_sac", "c1_gate", "brazier", "c2_brazier_suppression", "ice_prison", "thaw_rune", "mimic_chest", "frost_clue", "armour_crystal", "corrupted_pool", "tracker", "infected_altar", "healing_fountain", "cure_checkpoint", "ingredient", "cauldron", "c3_cleansing_energy", "c3_corruption_node", "c3_tracking_clue", "c3_region", "c3_web_nest", "c3_bile_vessel", "c3_wasp_hive", "c3_cleanse_station", "c3_extraction", "c3_vial", "c3_route", "c3_cure_checkpoint", "c3_brew_ingredient", "ember_ore", "lava_valve", "relic_chamber", "relic_forge", "regulator", "c4_ore_deposit", "c4_ore_bag", "c4_mining_cart", "c4_cooling_vent", "c4_lava_vent", "c4_extraction", "c4_forge_mechanism", "c4_route_node", "c4_charge_wall", "c4_tether", "sentry", "hiding_zone", "citadel_gate", "abyss_portal", "soul_chain", "released_soul", "mirror_portal", "eclipse_obelisk", "ritual_anchor", "abyss_crown", "security_switch", "spirit_safe_zone", "portal_seal", "mirror_clue", "labyrinth_exit", "eclipse_seal", "eclipse_ring", "eclipse_shortcut", "eclipse_disruption", "crown_seal", "final_threshold"]
+
+func _custom_story_prop_color(kind: String) -> Color:
+	if kind == "c1_barricade": return Color(0.74, 0.48, 0.22)
+	if kind == "c1_feeding_sac": return Color(0.82, 0.30, 0.54)
+	if kind == "c1_gate": return Color(0.96, 0.78, 0.22)
+	if kind in ["brazier", "ember_ore", "lava_valve", "regulator", "relic_forge"]: return Color(1.0, 0.42, 0.12)
+	if kind in ["ice_prison", "thaw_rune", "armour_crystal"]: return Color(0.42, 0.86, 1.0)
+	if kind in ["corrupted_pool", "ingredient", "cauldron", "infected_altar"]: return Color(0.46, 0.92, 0.30)
+	if kind in ["sentry", "citadel_gate", "abyss_portal", "soul_chain", "released_soul", "mirror_portal", "eclipse_obelisk", "ritual_anchor", "abyss_crown"]: return Color(0.72, 0.38, 1.0)
+	return Color(1.0, 0.78, 0.22)
+
+func _custom_story_prop_marker(prop: Dictionary) -> String:
+	var kind := str(prop.get("kind", ""))
+	if kind == "brazier" and bool(prop.get("suppressed", false)): return "SUPPRESSED"
+	if kind == "armour_crystal" and bool(prop.get("exposed", false)): return "EXPOSED"
+	if kind == "released_soul" and bool(prop.get("refrozen", false)): return "REFROZEN"
+	if kind == "released_soul" and float(prop.get("refreeze", 0.0)) > 1.0: return "%d%%" % roundi(float(prop.get("refreeze", 0.0)))
+	if kind == "mimic_chest" and bool(prop.get("excluded", false)): return "FROST FOUND"
+	if kind == "thaw_rune": return str(int(prop.get("rune", 0)) + 1)
+	if kind == "regulator": return str(int(prop.get("regulator", 0)) + 1)
+	if kind == "c4_ore_deposit":
+		if bool(prop.get("heat_locked", false)): return "SEALED BY HEAT · USE A COOLING VENT"
+		if float(prop.get("progress", 0.0)) > 0.0:
+			var deposit_duration: float = float([3.0, 5.0, 4.0][clampi(int(prop.get("deposit_type", 0)), 0, 2)])
+			return "MINING %d%%" % roundi(clampf(float(prop.get("progress", 0.0)) / deposit_duration, 0.0, 1.0) * 100.0)
+		return str(["SAFE ORE", "RICH ORE", "UNSTABLE ORE"][clampi(int(prop.get("deposit_type", 0)), 0, 2)])
+	if kind == "c4_ore_bag": return "DROPPED ORE"
+	if kind == "c4_mining_cart": return "CART %d/12" % int(prop.get("loaded", 0))
+	if kind == "c4_cooling_vent": return "COOLING VENT · %d" % int(prop.get("charges", 0))
+	if kind == "c4_lava_vent": return "UNSTABLE LAVA VENT"
+	if kind == "c4_extraction": return "CART EXTRACTION"
+	if kind == "c4_forge_mechanism": return "JAMMED" if bool(prop.get("jammed", false)) else ("POWERED" if bool(prop.get("powered", false)) else "OFFLINE")
+	if kind == "c4_route_node": return "ROUTE %d" % (int(prop.get("route", 0)) + 1)
+	if kind == "c4_charge_wall": return "CHARGE WALL"
+	if kind == "c4_tether": return "ACTIVE" if bool(prop.get("active", false)) else "HOLD TO ACTIVATE"
+	if kind == "hiding_zone" and _story_custom_id == "silent_descent":
+		if bool(prop.get("visited", false)):
+			return "SAFE POINT %d · ACTIVATED" % (int(prop.get("section", 0)) + 1)
+		var activation_progress: float = float(prop.get("activation_progress", 0.0))
+		if activation_progress > 0.0:
+			return "SAFE POINT %d · HOLD %ds" % [int(prop.get("section", 0)) + 1, ceili(10.0 - activation_progress)]
+		return "SAFE POINT %d · HOLD 10s" % (int(prop.get("section", 0)) + 1)
+	if kind == "mirror_portal": return str(prop.get("symbol", int(prop.get("portal", 0)) + 1))
+	if kind == "sentry": return str(prop.get("state", "unaware")).to_upper()
+	if kind == "security_switch": return "DISABLED" if bool(prop.get("disabled", false)) else "HOLD TO DISABLE"
+	if kind == "spirit_safe_zone": return "SPIRIT SANCTUARY"
+	if kind == "portal_seal": return "STABLE" if bool(prop.get("stable", false)) else "HOLD TO STABILIZE"
+	if kind == "mirror_clue": return "CLUE INSCRIPTION"
+	if kind == "labyrinth_exit": return "LABYRINTH EXIT"
+	if kind == "eclipse_seal": return "CORRUPTION SEAL"
+	if kind == "eclipse_ring": return "HOLD TO ALIGN"
+	if kind == "eclipse_shortcut": return "SHORTCUT OPEN" if bool(prop.get("active", false)) else "HOLD TO OPEN SHORTCUT"
+	if kind == "crown_seal": return "CROWN SEAL %s" % ("A" if int(prop.get("seal", 0)) == 0 else "B")
+	if kind == "final_threshold": return "ESCAPE THRESHOLD"
+	if kind == "ingredient": return str(int(prop.get("ingredient", 0)) + 1)
+	if kind == "cure_checkpoint": return str(int(prop.get("checkpoint", 0)) + 1)
+	if kind == "c3_cleansing_energy": return "+%d ENERGY" % int(prop.get("value", 2))
+	if kind == "corrupted_pool" and _chapter_three != null and _chapter_three.stage_number == 1:
+		var pool_index: int = int(prop.get("pool", 0))
+		if _chapter_three.phase == "reclamation_surge":
+			return "STABLE" if float(prop.get("stability", 100.0)) >= 35.0 else "STABILIZE"
+		if bool(prop.get("purified", false)): return "PURIFIED"
+		if pool_index == _chapter_three.count("pools_purified"): return "PURIFY HERE"
+		return "LOCKED"
+	if kind == "c3_tracking_clue": return "TRAIL %d" % (int(prop.get("route", 0)) + 1)
+	if kind == "c3_region":
+		var region: int = int(prop.get("region", 0))
+		if _chapter_three != null and _chapter_three.count("selection_region") == region and _c3_action_timer > 0.0:
+			return "SELECT %ds" % maxi(0, ceili(2.0 - _c3_action_timer))
+		return str(["SPIDER", "TOAD", "WASP"][region])
+	if kind in ["c3_web_nest", "c3_bile_vessel", "c3_wasp_hive"]:
+		var lure_region: int = int(prop.get("region", 0))
+		return "LURE %ds" % maxi(0, ceili(_c3_region_lure_duration(lure_region) - float(prop.get("progress", 0.0))))
+	if kind == "c3_route":
+		var route: int = int(prop.get("route", 0))
+		if _chapter_three != null and _chapter_three.count("selection_route") == route and _c3_action_timer > 0.0:
+			return "SELECT %ds" % maxi(0, ceili(2.5 - _c3_action_timer))
+		return "SHORT" if route == 0 else "LONG"
+	if kind == "c3_cure_checkpoint":
+		if _chapter_three != null and _chapter_three.phase == "vial_delivery":
+			var hold_duration: float = 5.0 if _chapter_three.count("route") == 0 else 4.0
+			return "HOLD %ds" % maxi(0, ceili(hold_duration - float(prop.get("progress", 0.0))))
+		return "CHECKPOINT %d" % (int(prop.get("checkpoint", 0)) + 1)
+	if kind == "infected_altar" and _chapter_three != null and _chapter_three.stage_number == 4 and _chapter_three.phase == "infected_altar":
+		return "PLACE VIAL %ds" % maxi(0, ceili(4.0 - float(prop.get("progress", 0.0))))
+	if kind == "c3_brew_ingredient": return _ingredient_name(str(prop.get("ingredient", 0)))
+	if kind == "cauldron" and _chapter_three != null and _chapter_three.stage_number == 5:
+		if _story_custom_timer > 0.0 and not str(_story_custom_progress.get("brew_feedback", "")).is_empty():
+			return "WRONG INGREDIENT" if str(_story_custom_progress.get("brew_feedback", "")).begins_with("WRONG") else "CORRECT"
+		if _chapter_three.phase == "ingredient_collection":
+			return "SUBMIT %s" % _ingredient_name(_story_custom_carried) if not _story_custom_carried.is_empty() else "CAULDRON"
+		if _chapter_three.phase == "active_brewing":
+			var heat: float = _chapter_three.meter("heat")
+			if _chapter_three.meter("purity") < 35.0: return "RESTORE PURITY"
+			if heat < 35.0: return "MOVE AWAY · HEAT UP"
+			if heat > 82.0: return "STAND NEAR · COOL"
+			return "BREWING"
+	if kind == "ember_ore": return "+%d" % int(prop.get("value", 1))
+	if kind == "mimic_chest" and bool(prop.get("real", false)) and sin(_elapsed * 5.0) > 0.78: return "?"
+	return ""
 
 func _draw_story_objective_indicators() -> void:
 	if story_stage.is_empty() and dungeon_mode.is_empty():
 		return
 	for prop in _adventure_props:
 		var kind := String(prop.get("kind", ""))
-		if kind not in ["scout", "shrine", "nest", "key", "hazard_emitter", "safe", "forge"]:
+		if kind not in ["scout", "shrine", "nest", "key", "hazard_emitter", "c1_extraction", "c1_energy_spore", "c1_track_marker", "c1_gate", "safe", "forge"] and not _should_indicate_custom_prop(prop):
 			continue
 		if kind == "forge" and bool(prop.get("active", false)):
 			continue
 		var objective_pos: Vector2 = prop.pos
-		var near_radius := STORY_NEST_EFFECTIVE_RADIUS if kind == "nest" else (SAFE_INTERACTION_RADIUS if kind == "safe" else (FORGE_INTERACTION_RADIUS if kind == "forge" else 240.0))
+		var near_radius := STORY_NEST_EFFECTIVE_RADIUS if kind == "nest" else (SAFE_INTERACTION_RADIUS if kind == "safe" else (FORGE_INTERACTION_RADIUS if kind == "forge" else (150.0 if _is_custom_story_prop(kind) else 240.0)))
 		if objective_pos.distance_to(_player_pos) < near_radius:
 			continue
 		var color := _story_objective_indicator_color(kind)
-		var marker_radius := 48.0 + sin(_elapsed * 4.0) * 6.0
-		draw_arc(objective_pos, marker_radius, 0, TAU, 32, color, 5.0)
-		_draw_player_direction_indicator(objective_pos, _story_objective_indicator_label(kind), color, near_radius)
+		var indicator_label: String = _story_objective_indicator_label(kind)
+		if kind == "c3_brew_ingredient":
+			indicator_label = _ingredient_name(str(prop.get("ingredient", 0)))
+		_draw_player_direction_indicator(objective_pos, indicator_label, color, near_radius)
+	for enemy in _enemies:
+		var tag := str(enemy.get("story_tag", ""))
+		var chapter_four_target: bool = tag.begins_with("c4_golem_") or tag.begins_with("c4_chamber_guardian_") or tag in ["c4_ore_thief", "c4_cart_blocker", "c4_relic_guardian", "c4_thunderforge_behemoth", "c4_forge_jammer"]
+		if tag not in ["fleeing_key_carrier", "protected_key_carrier", "watchpath_captain", "frost_mimic", "frost_colossus", "plaguebeast", "c3_energy_carrier", "c3_plague_sighting", "c3_plaguebeast_final", "c3_marked_spider", "c3_marked_toad", "c3_marked_wasp", "c3_blight_tyrant", "rogue_golem", "relic_guardian", "abyss_king"] and not chapter_four_target: continue
+		var label: String = str({"fleeing_key_carrier":"Fleeing Carrier", "protected_key_carrier":"Protected Carrier", "watchpath_captain":"Watchpath Captain", "frost_mimic":"Frost Mimic", "frost_colossus":"Frostbound Colossus", "plaguebeast":"Plaguebeast", "c3_energy_carrier":"Cleansing Energy Carrier", "c3_plague_sighting":"Plaguebeast Sighting", "c3_plaguebeast_final":"Plaguebeast", "c3_marked_spider":"Marked Spider", "c3_marked_toad":"Marked Toad", "c3_marked_wasp":"Marked Wasp", "c3_blight_tyrant":"Blight Vine Tyrant", "c4_ore_thief":"Ore Thief", "c4_cart_blocker":"Cart Obstruction", "c4_relic_guardian":"Relic Guardian", "c4_thunderforge_behemoth":"Thunderforge Behemoth", "c4_forge_jammer":"Forge Jammer", "rogue_golem":"Rogue Golem", "relic_guardian":"Chamber Guardian", "abyss_king":"Abyss King"}.get(tag, "Rogue Golem" if tag.begins_with("c4_golem_") else ("Chamber Guardian" if tag.begins_with("c4_chamber_guardian_") else "Target")))
+		if tag.begins_with("c4_golem_") and _chapter_four != null and _chapter_four.flag("capture_ready"):
+			label = "CAPTURABLE · Hold Nearby"
+		_draw_player_direction_indicator(enemy.pos as Vector2, label, Color(1.0, 0.42, 0.18, 0.98), 240.0)
+
+func _should_indicate_custom_prop(prop: Dictionary) -> bool:
+	var kind := str(prop.get("kind", ""))
+	if kind == "corrupted_pool" and _chapter_three != null and _chapter_three.stage_number == 1:
+		return _chapter_three.phase == "reclamation_surge" or int(prop.get("pool", -1)) == _chapter_three.count("pools_purified")
+	if kind == "hiding_zone" and _story_custom_id == "silent_descent":
+		var reached: int = _chapter_five.count("checkpoints_reached") if _chapter_five != null else int(_story_custom_progress.get("safe_points", 0))
+		return not bool(prop.get("visited", false)) and int(prop.get("section", -1)) == reached
+	if kind == "citadel_gate" and _story_custom_id == "silent_descent":
+		return (_chapter_five.count("checkpoints_reached") if _chapter_five != null else int(_story_custom_progress.get("safe_points", 0))) >= 3
+	if kind in ["sentry", "hiding_zone", "healing_fountain", "abyss_portal", "frost_clue", "c4_lava_vent"]: return false
+	if kind == "thaw_rune":
+		if _chapter_two != null and _chapter_two.flag("rune_sequence_started"):
+			return false
+		var entered := int(_story_custom_progress.get("entered", 0))
+		return entered < _story_custom_sequence.size() and int(prop.get("rune", -1)) == _story_custom_sequence[entered]
+	if kind == "regulator":
+		if _chapter_four != null and _chapter_four.stage_number == 5:
+			var shutdown: int = _chapter_four.count("regulators_disabled")
+			return shutdown < _chapter_four.sequence.size() and int(prop.get("regulator", -1)) == _chapter_four.sequence[shutdown]
+		var entered := int(_story_custom_progress.get("entered", 0))
+		return entered < _story_custom_sequence.size() and int(prop.get("regulator", -1)) == _story_custom_sequence[entered]
+	if kind == "mirror_portal": return false
+	if kind == "cure_checkpoint": return int(prop.get("checkpoint", -1)) == int(_story_custom_progress.get("checkpoints", 0))
+	if kind == "infected_altar": return int(_story_custom_progress.get("checkpoints", 0)) >= 3
+	if kind == "cauldron":
+		if _chapter_three != null and _chapter_three.stage_number == 5:
+			return _chapter_three.phase == "active_brewing" or not _story_custom_carried.is_empty() or _story_custom_timer > 0.0
+		return not _story_custom_carried.is_empty()
+	return _is_custom_story_prop(kind)
 
 func _draw_player_direction_indicator(target_pos: Vector2, label: String, color: Color, near_radius: float) -> void:
 	if _objective_arrow_tex == null or target_pos.distance_to(_player_pos) < near_radius:
@@ -6031,7 +10324,7 @@ func _draw_player_direction_indicator(target_pos: Vector2, label: String, color:
 	draw_set_transform(arrow_pos, direction.angle() + PI * 0.5, Vector2.ONE)
 	draw_texture_rect(_objective_arrow_tex, Rect2(-arrow_size * 0.5, arrow_size), false, color)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_string(ThemeDB.fallback_font, arrow_pos + Vector2(-75, 58), label, HORIZONTAL_ALIGNMENT_CENTER, 150, 20, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, arrow_pos + Vector2(-110, 58), label, HORIZONTAL_ALIGNMENT_CENTER, 220, 26, Color.WHITE)
 
 func _story_objective_indicator_color(kind: String) -> Color:
 	match kind:
@@ -6039,9 +10332,14 @@ func _story_objective_indicator_color(kind: String) -> Color:
 		"shrine": return Color(0.28, 0.90, 1.0, 0.98)
 		"nest": return Color(0.88, 0.48, 1.0, 0.98)
 		"hazard_emitter": return Color(1.0, 0.38, 0.10, 0.98)
+		"c1_extraction": return Color(1.0, 0.78, 0.22, 0.98)
+		"c1_energy_spore": return Color(0.42, 1.0, 0.88, 0.98)
+		"c1_track_marker", "c1_gate": return Color(1.0, 0.78, 0.22, 0.98)
 		"safe": return Color(1.0, 0.78, 0.16, 0.98)
 		"forge": return Color(1.0, 0.42, 0.12, 0.98)
-		_: return Color(1.0, 0.84, 0.18, 0.98)
+		_:
+			var custom_color := _custom_story_prop_color(kind)
+			return Color(custom_color.r, custom_color.g, custom_color.b, 0.98) if _is_custom_story_prop(kind) else Color(1.0, 0.84, 0.18, 0.98)
 
 func _story_objective_indicator_label(kind: String) -> String:
 	match kind:
@@ -6049,9 +10347,19 @@ func _story_objective_indicator_label(kind: String) -> String:
 		"shrine": return "Shrine"
 		"nest": return "Enemy Nest"
 		"hazard_emitter": return "Hazard"
+		"c1_extraction": return "Extraction Point"
+		"c1_energy_spore": return "Energy Spore"
+		"c1_track_marker": return "Carrier Tracks"
+		"c1_gate": return "Watchpath Exit"
+		"c1_barricade": return "Scout Barricade"
+		"c1_feeding_sac": return "Nest's Shield"
 		"safe": return "Coin Safe"
 		"forge": return "Forge"
-		_: return "Key"
+		_: return _custom_story_indicator_label(kind) if _is_custom_story_prop(kind) else "Key"
+
+func _custom_story_indicator_label(kind: String) -> String:
+	var labels := {"brazier":"Frozen Brazier", "ice_prison":"Ice Prison", "thaw_rune":"Next Rune", "mimic_chest":"Chest", "armour_crystal":"Armour Crystal", "corrupted_pool":"Active Corrupted Pool", "tracker":"Plaguebeast", "c3_cleansing_energy":"Cleansing Energy", "c3_corruption_node":"Corruption Node", "c3_tracking_clue":"Tracking Clue", "c3_region":"Harvest Region", "c3_web_nest":"Web Nest", "c3_bile_vessel":"Bile Vessel", "c3_wasp_hive":"Wasp Hive", "c3_cleanse_station":"Cleansing Station", "c3_extraction":"Ingredient Extraction", "c3_vial":"Antidote Vial", "c3_route":"Route Choice", "c3_cure_checkpoint":"Cure Checkpoint", "c3_brew_ingredient":"Brew Ingredient", "infected_altar":"Infected Altar", "ingredient":"Ingredient", "cauldron":"Cauldron", "ember_ore":"Ember Ore", "lava_valve":"Lava Valve", "relic_chamber":"Relic Chamber", "relic_forge":"Central Forge", "regulator":"Next Regulator", "c4_ore_deposit":"Ember Ore Deposit", "c4_ore_bag":"Dropped Ember Ore", "c4_mining_cart":"Mining Cart", "c4_cooling_vent":"Cooling Vent", "c4_lava_vent":"Lava Vent", "c4_extraction":"Extraction", "c4_forge_mechanism":"Forge Mechanism", "c4_route_node":"Powered Route", "c4_charge_wall":"Charge Wall", "c4_tether":"Forge Tether", "hiding_zone":"Next Safe Point", "citadel_gate":"Inner Citadel", "soul_chain":"Soul Chain", "released_soul":"Released Soul", "mirror_portal":"Mirror Portal", "eclipse_obelisk":"Obelisk", "ritual_anchor":"Ritual Anchor", "abyss_crown":"Abyss Crown", "security_switch":"Security Switch", "spirit_safe_zone":"Spirit Sanctuary", "portal_seal":"Portal Stabilizer", "mirror_clue":"Clue Inscription", "labyrinth_exit":"Labyrinth Exit", "eclipse_seal":"Corruption Seal", "eclipse_ring":"Eclipse Rings", "eclipse_shortcut":"Route Shortcut", "crown_seal":"Crown Seal", "final_threshold":"Escape Threshold"}
+	return str(labels.get(kind, "Objective"))
 
 func _draw() -> void:
 	_draw_bg()
@@ -6597,11 +10905,12 @@ func _draw() -> void:
 		var e_alive_t: float = e.get("alive_t", 0.0) as float
 		var e_facing_x: int  = e.get("facing_x", 1) as int
 		var e_is_boss: bool  = _is_boss_kind(ekind)
+		var e_story_tex := _custom_story_enemy_texture(str(e.get("story_tag", "")))
 		var e_walk: float    = e_alive_t * 9.0
 		var e_bob: float     = 0.0 if e_is_boss else sin(e_walk) * 2.5
 		var edp: Vector2     = ep + Vector2(0.0, e_bob)
 		# Stubby legs behind body (normals without texture only)
-		if not e_is_boss and not _enemy_tex.has(ekind):
+		if not e_is_boss and not _enemy_tex.has(ekind) and e_story_tex == null:
 			var e_leg_col: Color = ec.darkened(0.30)
 			var e_leg_l: float   = sin(e_walk) * (er * 0.40)
 			var e_leg_r: float   = sin(e_walk + PI) * (er * 0.40)
@@ -6612,14 +10921,16 @@ func _draw() -> void:
 		if enraged and not efrozen:
 			draw_col = ec.lerp(Color(1.0, 0.18, 0.05), 0.55)
 		# Draw PNG sprite when an imported enemy or boss image exists, otherwise fallback to shape art.
-		var e_has_tex: bool = _enemy_tex.has(ekind)
+		var e_has_tex: bool = _enemy_tex.has(ekind) or e_story_tex != null
 		if e_has_tex:
 			var e_tex_size: float = er * 2.4
 			var enemy_squash := 1.0 + sin(e_walk * 2.0) * 0.035 if not e_is_boss else 1.0
 			var enemy_tilt := sin(e_walk) * 0.035 if not e_is_boss else 0.0
 			draw_set_transform(edp, enemy_tilt * float(e_facing_x), Vector2(float(e_facing_x) / enemy_squash, enemy_squash))
 			var enemy_modulate := Color(1, 1, 1, 0.55) if efrozen else Color.WHITE
-			if not e_is_boss and _enemy_walk_tex.has(ekind):
+			if e_story_tex != null:
+				draw_texture_rect(e_story_tex, Rect2(Vector2(-e_tex_size * 0.65, -e_tex_size * 0.65), Vector2(e_tex_size * 1.3, e_tex_size * 1.3)), false, enemy_modulate)
+			elif not e_is_boss and _enemy_walk_tex.has(ekind):
 				var walk_tex := _enemy_walk_tex[ekind] as Texture2D
 				var frame := posmod(int(floor(e_alive_t * (11.0 if ekind == "normal_fast" else 7.0))), 4)
 				var source_size := walk_tex.get_size()
@@ -6641,6 +10952,9 @@ func _draw() -> void:
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		else:
 			draw_circle(edp, er, draw_col)
+		if str(e.get("story_tag", "")) == "rogue_golem" and float(e.get("hp", 1.0)) / maxf(float(e.get("objective_max_hp", 1.0)), 1.0) <= 0.25:
+			draw_circle(edp, er + 15.0, Color(0.24, 1.0, 0.52, 0.12))
+			draw_arc(edp, er + 15.0, 0.0, TAU, 32, Color(0.32, 1.0, 0.58, 0.95), 5.0)
 		if enraged and ekind in ["normal", "normal_tank", "normal_fast"]:
 			# Red pulsing ring to warn player
 			var pulse: float = 0.55 + 0.45 * sin(_elapsed * 8.0)
@@ -6865,6 +11179,8 @@ func _draw() -> void:
 		var bpp: Vector2 = bproj["pos"] as Vector2
 		var proj_kind: String = bproj.get("kind", "straight") as String
 		var outer_col: Color = Color(1.0, 0.08, 0.02, 0.92) if proj_kind == "lava_reflect" else Color(1.0, 0.25, 0.05, 0.88) if proj_kind == "homing" else Color(1.0, 0.55, 0.05, 0.85)
+		var projectile_alpha: float = _c1_projectile_flicker_alpha(bproj) if bool(bproj.get("phase_flicker", false)) else 1.0
+		outer_col.a *= projectile_alpha
 		
 		if proj_kind == "prism_beam":
 			draw_circle(bpp, 8.0, Color(0.85, 0.50, 1.0, 0.88))
@@ -6876,8 +11192,8 @@ func _draw() -> void:
 			draw_arc(bpp, 11.0, 0.0, TAU, 14, Color(0.30, 0.70, 0.20, 0.60), 1.8)
 		else:
 			draw_circle(bpp, 12.0, outer_col)
-			draw_circle(bpp, 7.0, Color(1.0, 0.90, 0.30))
-			draw_arc(bpp, 14.0, 0.0, TAU, 16, Color(1.0, 0.35, 0.02, 0.55), 2.0)
+			draw_circle(bpp, 7.0, Color(1.0, 0.90, 0.30, projectile_alpha))
+			draw_arc(bpp, 14.0, 0.0, TAU, 16, Color(1.0, 0.35, 0.02, 0.55 * projectile_alpha), 2.0)
 		
 		if proj_kind == "lava_reflect":
 			var target: Vector2 = bproj["target"] as Vector2
@@ -6959,7 +11275,7 @@ func _draw() -> void:
 		draw_circle(pp, 14.0 * pulse, Color(0.15, 0.80, 0.25, 0.30))
 		draw_circle(pp, 10.0 * pulse, Color(0.25, 0.95, 0.40))
 		draw_circle(pp, 5.0 * pulse, Color(0.70, 1.0, 0.72, 0.90))
-		draw_string(ThemeDB.fallback_font, pp + Vector2(-8, -18), "+HP", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.30, 1.0, 0.45))
+		draw_string(ThemeDB.fallback_font, pp + Vector2(-12, -24), "+HP", HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(0.30, 1.0, 0.45))
 
 	# Ring drops
 	for rd in _ring_drops:
@@ -6967,7 +11283,7 @@ func _draw() -> void:
 		var rpulse: float = 0.80 + sin(_elapsed * 4.0) * 0.20
 		draw_arc(rp, 14.0 * rpulse, 0.0, TAU, 24, Color(0.98, 0.82, 0.15, 0.90), 3.5)
 		draw_arc(rp, 8.0 * rpulse, 0.0, TAU, 16, Color(1.0, 0.95, 0.55, 0.55), 2.0)
-		draw_string(ThemeDB.fallback_font, rp + Vector2(-12, -28), "\u25c6 Ring", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1.0, 0.88, 0.25))
+		draw_string(ThemeDB.fallback_font, rp + Vector2(-18, -32), "\u25c6 Ring", HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(1.0, 0.88, 0.25))
 
 	# Artifact drops
 	for ad in _artifact_drops:
@@ -6976,7 +11292,7 @@ func _draw() -> void:
 		draw_arc(ap, 14.0 * apulse, 0.0, TAU, 24, Color(0.98, 0.82, 0.15, 0.90), 3.5)
 		draw_arc(ap, 8.0 * apulse, 0.0, TAU, 16, Color(1.0, 0.95, 0.55, 0.55), 2.0)
 		var artifact_label_pos: Vector2 = Vector2(ap.x - 56.0, ap.y - 28.0)
-		draw_string(ThemeDB.fallback_font, artifact_label_pos, "\u25c6 Artifact", HORIZONTAL_ALIGNMENT_CENTER, 112.0, 18, Color(1.0, 0.88, 0.25))
+		draw_string(ThemeDB.fallback_font, artifact_label_pos + Vector2(-24.0, 0.0), "\u25c6 Artifact", HORIZONTAL_ALIGNMENT_CENTER, 160.0, 26, Color(1.0, 0.88, 0.25))
 
 	# AOE flashes (drawn after enemies for dramatic screen overlay)
 	for fl in []:
@@ -7708,14 +12024,19 @@ func _draw() -> void:
 		var player_squash := 1.0 + sin(p_walk * 2.0) * 0.045 if p_is_moving else 1.0
 		var player_tilt := sin(p_walk) * 0.04 if p_is_moving else 0.0
 		draw_set_transform(pdp, player_tilt * float(_player_facing_x), Vector2(float(_player_facing_x) / player_squash, player_squash))
-		if p_is_moving and _player_walk_tex != null:
-			var player_frame := posmod(int(floor(_elapsed * 8.0)), 4)
+		if _player_walk_tex != null:
 			var sheet_size := _player_walk_tex.get_size()
-			var player_frame_width := sheet_size.x / 4.0
+			var player_frame_count: int = 4
+			var player_frame := posmod(int(floor(_elapsed * 8.0)), player_frame_count) if p_is_moving else 0
+			var player_frame_width := sheet_size.x / float(player_frame_count)
 			var player_frame_y := maxf((sheet_size.y - player_frame_width) * 0.5, 0.0)
+			var player_frame_offset := Vector2.ZERO
+			if _char_id == "capy_brown":
+				var brown_frame_offsets: Array[float] = [-19.6, -0.4, -7.0, 20.4]
+				player_frame_offset.x = brown_frame_offsets[player_frame]
 			draw_texture_rect_region(
 				_player_walk_tex,
-				Rect2(Vector2(-PLAYER_SPRITE_SIZE * 0.5, -PLAYER_SPRITE_SIZE * 0.5), Vector2(PLAYER_SPRITE_SIZE, PLAYER_SPRITE_SIZE)),
+				Rect2(Vector2(-PLAYER_SPRITE_SIZE * 0.5, -PLAYER_SPRITE_SIZE * 0.5) + player_frame_offset, Vector2(PLAYER_SPRITE_SIZE, PLAYER_SPRITE_SIZE)),
 				Rect2(Vector2(player_frame_width * float(player_frame), player_frame_y), Vector2(player_frame_width, minf(player_frame_width, sheet_size.y)))
 			)
 		else:
@@ -7753,7 +12074,7 @@ func _draw() -> void:
 
 	var overlay_room_id := _current_room().get("id", "lava") as String
 	var overlay_view := get_viewport_rect().size
-	var overlay_center := _story_hazard_arena_center if _adventure_state == "story_hazards" else _player_pos
+	var overlay_center := _story_hazard_arena_center if _is_story_hazard_arena_active() else _player_pos
 	var overlay_rect := Rect2(overlay_center - overlay_view * 0.5, overlay_view)
 	match overlay_room_id:
 		"darkness": _draw_darkness_overlay(overlay_rect)
@@ -8112,7 +12433,7 @@ func _draw_bg() -> void:
 	var view: Vector2 = get_viewport_rect().size
 	var hw: float     = view.x * 0.5 + 128.0
 	var hh: float     = view.y * 0.5 + 128.0
-	var background_center := _story_hazard_arena_center if _adventure_state == "story_hazards" else _player_pos
+	var background_center := _story_hazard_arena_center if _is_story_hazard_arena_active() else _player_pos
 	var cx: float     = background_center.x
 	var cy: float     = background_center.y
 	var room: Dictionary = _current_room()
@@ -8120,7 +12441,7 @@ func _draw_bg() -> void:
 	var bg_view_rect: Rect2 = Rect2(cx - hw, cy - hh, hw * 2.0, hh * 2.0)
 	var room_bg_tex: Texture2D = _room_bg_texture(room_id)
 	if room_bg_tex != null:
-		if _adventure_state == "story_hazards":
+		if _is_story_hazard_arena_active():
 			_draw_room_bg(room_bg_tex, bg_view_rect)
 		elif room_id == "darkness" or room_id == "spike" or room_id == "lava" or room_id == "frozen" or room_id == "poison":
 			_draw_room_bg_tiled(room_bg_tex, bg_view_rect)
@@ -8499,7 +12820,7 @@ func _build_hud() -> void:
 	_affix_chip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_affix_chip.stretch_mode = TextureRect.STRETCH_SCALE
 	_affix_chip.position = Vector2(24, bottom_left_y + 66.0)
-	_affix_chip.size = Vector2(620, 58)
+	_affix_chip.size = Vector2(view.x - 48.0, 98)
 	hud.add_child(_affix_chip)
 
 	# Enemy modifier summary
@@ -8507,8 +12828,11 @@ func _build_hud() -> void:
 	_enemy_mod_lbl.text = ""
 	_enemy_mod_lbl.add_theme_font_size_override("font_size", 34)
 	_enemy_mod_lbl.add_theme_color_override("font_color", Color(1.0, 0.58, 0.20))
-	_enemy_mod_lbl.position = Vector2(56, bottom_left_y + 72.0); _enemy_mod_lbl.size = Vector2(560, 44)
-	_enemy_mod_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_enemy_mod_lbl.position = Vector2(56, bottom_left_y + 70.0); _enemy_mod_lbl.size = Vector2(view.x - 112.0, 88)
+	_enemy_mod_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_enemy_mod_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_enemy_mod_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_enemy_mod_lbl.max_lines_visible = 3
 	hud.add_child(_enemy_mod_lbl)
 
 	# Learned skill cooldown icons — directly above the floor effect details.
@@ -8565,6 +12889,18 @@ func _build_hud() -> void:
 	var objective_pressed := objective_normal.duplicate() as StyleBoxFlat; objective_pressed.bg_color = Color(0.80, 0.56, 0.03); objective_pressed.shadow_size = 4
 	var objective_disabled := objective_normal.duplicate() as StyleBoxFlat; objective_disabled.bg_color = Color(0.18, 0.16, 0.12, 0.94); objective_disabled.border_color = Color(0.38, 0.34, 0.26); objective_disabled.shadow_size = 0
 	_objective_start_btn.add_theme_stylebox_override("normal", objective_normal); _objective_start_btn.add_theme_stylebox_override("hover", objective_hover); _objective_start_btn.add_theme_stylebox_override("pressed", objective_pressed); _objective_start_btn.add_theme_stylebox_override("disabled", objective_disabled); _objective_start_btn.add_theme_color_override("font_disabled_color", Color(0.62, 0.58, 0.48)); _objective_start_btn.button_down.connect(_on_story_objective_start_pressed); objective_layer.add_child(_objective_start_btn)
+	if is_story_test_run:
+		var test_label := Label.new()
+		test_label.text = "DEV TEST — C%dS%d\nProgress and rewards are not saved" % [int(story_stage.get("chapter", 0)), int(story_stage.get("chapter_stage", 0))]
+		test_label.position = Vector2(22.0, 160.0)
+		test_label.size = Vector2(430.0, 72.0)
+		test_label.add_theme_font_size_override("font_size", 20)
+		test_label.add_theme_color_override("font_color", Color(1.0, 0.76, 0.26, 0.96))
+		test_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
+		test_label.add_theme_constant_override("outline_size", 5)
+		test_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		objective_layer.add_child(test_label)
+		_setup_story_debug_overlay(objective_layer)
 
 	# Passive attributes panel (top-right, collapsible)
 	var passive_w: float = clamp(view.x * 0.33, 320.0, 420.0)
@@ -8654,6 +12990,115 @@ func _build_hud() -> void:
 	# Joystick visual
 	_joy_vis = JoystickVisual.new()
 	hud.add_child(_joy_vis)
+
+func _setup_story_debug_overlay(layer: CanvasLayer) -> void:
+	if not OS.is_debug_build() or not is_story_test_run:
+		return
+	var view := get_viewport_rect().size
+	_story_debug_toggle = _pause_btn("Show Validator", Color(0.16, 0.20, 0.30, 0.94), Color.WHITE)
+	_story_debug_toggle.position = Vector2(view.x - 260.0, 158.0)
+	_story_debug_toggle.size = Vector2(230.0, 58.0)
+	_story_debug_toggle.custom_minimum_size = Vector2.ZERO
+	_story_debug_toggle.add_theme_font_size_override("font_size", 20)
+	_story_debug_toggle.pressed.connect(func() -> void:
+		_story_debug_overlay_visible = not _story_debug_overlay_visible
+		_story_debug_overlay.visible = _story_debug_overlay_visible
+		_story_debug_toggle.text = "Hide Validator" if _story_debug_overlay_visible else "Show Validator"
+		_refresh_story_debug_overlay(true)
+	)
+	layer.add_child(_story_debug_toggle)
+	_story_debug_overlay = PanelContainer.new()
+	_story_debug_overlay.position = Vector2(view.x - 500.0, 228.0)
+	_story_debug_overlay.size = Vector2(470.0, 580.0)
+	_story_debug_overlay.visible = false
+	var panel_style := StyleBoxFlat.new(); panel_style.bg_color = Color(0.015, 0.025, 0.045, 0.94); panel_style.border_color = Color(0.95, 0.68, 0.18, 0.90); panel_style.set_border_width_all(2); panel_style.set_corner_radius_all(18); panel_style.content_margin_left = 18; panel_style.content_margin_right = 18; panel_style.content_margin_top = 16; panel_style.content_margin_bottom = 16; _story_debug_overlay.add_theme_stylebox_override("panel", panel_style)
+	layer.add_child(_story_debug_overlay)
+	var debug_box := VBoxContainer.new(); debug_box.add_theme_constant_override("separation", 10); _story_debug_overlay.add_child(debug_box)
+	_story_debug_label = Label.new()
+	_story_debug_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_story_debug_label.add_theme_font_size_override("font_size", 21)
+	_story_debug_label.add_theme_color_override("font_color", Color(0.94, 0.92, 0.84))
+	debug_box.add_child(_story_debug_label)
+	var request_button := _pause_btn("Request Victory", Color(0.44, 0.20, 0.12, 0.96), Color.WHITE)
+	request_button.custom_minimum_size = Vector2(0.0, 64.0)
+	request_button.add_theme_font_size_override("font_size", 22)
+	request_button.pressed.connect(func() -> void: _request_story_victory("debug_manual_request"))
+	debug_box.add_child(request_button)
+	_refresh_story_debug_overlay(true)
+
+func _update_story_debug_overlay(delta: float) -> void:
+	if _story_debug_overlay == null or not _story_debug_overlay_visible:
+		return
+	_story_debug_update_timer -= delta
+	if _story_debug_update_timer <= 0.0:
+		_story_debug_update_timer = 0.25
+		_refresh_story_debug_overlay()
+
+func _refresh_story_debug_overlay(force: bool = false) -> void:
+	if _story_debug_label == null:
+		return
+	var state: Dictionary = _story_completion_state()
+	var minutes: int = floori(_elapsed / 60.0)
+	var seconds: int = floori(_elapsed) % 60
+	var lines: Array[String] = [
+		"DEV TEST — C%dS%d" % [int(story_stage.get("chapter", 0)), int(story_stage.get("chapter_stage", 0))],
+		"Elapsed: %02d:%02d" % [minutes, seconds],
+		"Phase: %s" % _story_debug_phase(),
+		"",
+	]
+	var total: int = int(state.get("required_total", 0))
+	if total > 1:
+		lines.append("Primary: %d / %d" % [int(state.get("required_completed", 0)), total])
+	else:
+		lines.append("Primary complete: %s" % str(state.get("primary_complete", false)))
+	if bool(state.get("staged_required", false)):
+		lines.append("Generated: %d / %d" % [int(state.get("required_generated", 0)), total])
+		lines.append("Pending objective: %s" % str(state.get("pending_spawn", false)))
+		lines.append("Active objectives: %d" % int(state.get("required_active", 0)))
+	var objective: String = str(story_stage.get("objective", ""))
+	if objective in ["escort", "defend", "hazards"]:
+		lines.append("Timer expired: %s" % str(state.get("timer_expired", false)))
+	if objective == "escort":
+		lines.append("Route complete: %s" % str(state.get("route_complete", false)))
+	if objective in ["escort", "defend"]:
+		lines.append("Target alive: %s" % str(state.get("target_alive", false)))
+	if bool(state.get("finale_required", false)):
+		lines.append("Finale required: true")
+		lines.append("Finale complete: %s" % str(state.get("finale_complete", false)))
+	if bool(state.get("boss_required", false)):
+		lines.append("Boss required: true")
+		lines.append("Boss defeated: %s" % str(state.get("boss_defeated", false)))
+	lines.append("")
+	lines.append("Last victory request:")
+	lines.append(_story_last_victory_request)
+	lines.append("")
+	lines.append("Result:")
+	lines.append(_story_last_victory_result)
+	var text_value: String = "\n".join(lines)
+	if force or text_value != _story_debug_signature:
+		_story_debug_signature = text_value
+		_story_debug_label.text = text_value
+
+func _story_debug_phase() -> String:
+	if _chapter_one != null and int(story_stage.get("chapter", 0)) == 1:
+		return _chapter_one.phase
+	if _chapter_two != null and int(story_stage.get("chapter", 0)) == 2:
+		return _chapter_two.phase
+	if _chapter_three != null and int(story_stage.get("chapter", 0)) == 3:
+		return _chapter_three.phase
+	if _chapter_four != null and int(story_stage.get("chapter", 0)) == 4:
+		return _chapter_four.phase
+	if _story_final_triggered and not _story_final_completed:
+		return "final_assault"
+	if _adventure_state == "story_boss":
+		return "objective_boss"
+	if _story_custom_id == "abyss_king":
+		return "ritual_anchors" if _story_custom_phase == 1 else ("abyss_crown" if _story_custom_phase == 2 else "abyss_king")
+	if _story_custom_id == "frost_mimic":
+		return "mimic_battle" if _find_story_enemy("frost_mimic") >= 0 else "mimic_search"
+	if _story_custom_id == "thaw_runes":
+		return "sequence_reveal" if _story_custom_timer > 0.0 else "rune_activation"
+	return _story_custom_id if not _story_custom_id.is_empty() else _adventure_state.trim_prefix("story_")
 
 func _toggle_passive_panel() -> void:
 	_passive_collapsed = not _passive_collapsed
@@ -8819,7 +13264,10 @@ func _show_return_to_menu_confirm(parent_layer: CanvasLayer) -> void:
 	)
 	quit_btn.pressed.connect(func() -> void:
 		parent_layer.queue_free()
-		match_ended.emit("lobby")
+		if is_story_test_run:
+			_finish_story_test("story_test_exit")
+		else:
+			match_ended.emit("lobby")
 	)
 
 func _pause_btn(label: String, bg: Color, fg: Color) -> Button:
@@ -8877,9 +13325,15 @@ func _update_hud() -> void:
 		_fit_hud_chip(_room_effect_chip, _room_effect_lbl, 240.0, 620.0)
 
 	if _enemy_mod_lbl != null:
-		var mode_objective := _mode_objective_text()
+		var mode_objective: String = _mode_objective_text()
 		if not mode_objective.is_empty():
 			_enemy_mod_lbl.text = mode_objective
+			_enemy_mod_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			_enemy_mod_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			_enemy_mod_lbl.position = Vector2(56.0, get_viewport_rect().size.y - 98.0)
+			_enemy_mod_lbl.size = Vector2(get_viewport_rect().size.x - 112.0, 88.0)
+			_affix_chip.position = Vector2(24.0, get_viewport_rect().size.y - 104.0)
+			_affix_chip.size = Vector2(get_viewport_rect().size.x - 48.0, 98.0)
 		elif _wave >= 10 and not _active_enemy_mod.is_empty():
 			var affix_text: String = "Floor affix: %s" % _active_enemy_mod_name
 			if affix_text.length() > 40:
@@ -8887,13 +13341,31 @@ func _update_hud() -> void:
 			_enemy_mod_lbl.text = affix_text
 		else:
 			_enemy_mod_lbl.text = "Floor affix: none"
-		_fit_hud_chip(_affix_chip, _enemy_mod_lbl, 260.0, get_viewport_rect().size.x - 48.0)
+		if mode_objective.is_empty():
+			_enemy_mod_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
+			_enemy_mod_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+			_enemy_mod_lbl.position = Vector2(56.0, get_viewport_rect().size.y - 96.0)
+			_enemy_mod_lbl.size.y = 44.0
+			_affix_chip.position = Vector2(24.0, get_viewport_rect().size.y - 102.0)
+			_affix_chip.size.y = 58.0
+			_fit_hud_chip(_affix_chip, _enemy_mod_lbl, 260.0, get_viewport_rect().size.x - 48.0)
 
 	_update_skill_cooldown_hud()
 	_refresh_passive_panel()
 	_update_story_objective_button()
 
 func _on_story_objective_start_pressed() -> void:
+	if _adventure_state == "story_chapter_one" and _chapter_one != null:
+		_handle_chapter_one_action()
+		_update_story_objective_button()
+		return
+	if _chapter_five != null and int(story_stage.get("chapter", 0)) == 5:
+		if _chapter_five.stage_number == 1 and _chapter_five.phase == "route_selection":
+			_show_c5_route_choice()
+		elif _chapter_five.stage_number == 4:
+			_begin_c5_eclipse_sync()
+		_update_story_objective_button()
+		return
 	match _adventure_state:
 		"story_escort_wait": _begin_story_escort()
 		"story_defend_wait": _begin_story_defense()
@@ -8905,6 +13377,39 @@ func _update_story_objective_button() -> void:
 		return
 	_objective_start_btn.visible = false
 	_objective_start_btn.disabled = false
+	if _adventure_state == "story_chapter_one" and _chapter_one != null:
+		match _chapter_one.stage_number:
+			1:
+				if not _chapter_one.flag("mission_started"):
+					_objective_start_btn.text = "START ESCORT · FOLLOW / WAIT / HURRY"
+					_objective_start_btn.visible = true
+				elif _chapter_one.phase in ["first_route", "short_route", "long_route", "final_pursuit"]:
+					_objective_start_btn.text = "SCOUT: %s · TAP TO CHANGE" % _c1_command.to_upper()
+					_objective_start_btn.visible = true
+			2:
+				if not _chapter_one.flag("mission_started"):
+					_objective_start_btn.text = "SUMMON MUSHROOM SHRINE"
+					_objective_start_btn.visible = true
+			3:
+				if not _chapter_one.flag("mission_started"):
+					_objective_start_btn.text = "TRACK THE SWARM NEST"
+					_objective_start_btn.visible = true
+			4:
+				if not _chapter_one.flag("mission_started"):
+					_objective_start_btn.text = "TRACK THE FIRST KEY CARRIER"
+					_objective_start_btn.visible = true
+		return
+	if _chapter_five != null and int(story_stage.get("chapter", 0)) == 5:
+		if _chapter_five.stage_number == 1 and _chapter_five.phase == "route_selection":
+			_objective_start_btn.text = "CHOOSE INFILTRATION ROUTE"
+			_objective_start_btn.visible = true
+		elif _chapter_five.stage_number == 4 and _chapter_five.phase == "obelisk_preparation" and _chapter_five.flag("preparation_complete") and _chapter_five.flag("route_prepared"):
+			for prop in _adventure_props:
+				if str(prop.get("kind", "")) == "eclipse_obelisk" and int(prop.get("obelisk", -1)) == 0 and (prop.pos as Vector2).distance_to(_player_pos) <= 210.0:
+					_objective_start_btn.text = "BEGIN ECLIPSE SYNCHRONIZATION"
+					_objective_start_btn.visible = true
+					break
+		return
 	match _adventure_state:
 		"story_escort_wait":
 			_objective_start_btn.text = "START SCOUT ESCORT"
@@ -8916,6 +13421,134 @@ func _update_story_objective_button() -> void:
 			if _story_nests_destroyed < 3 and _find_adventure_prop("nest") < 0:
 				_objective_start_btn.text = "SPAWN NEST %d OF 3" % (_story_nests_destroyed + 1)
 				_objective_start_btn.visible = true
+
+func _show_c5_route_choice() -> void:
+	if _adventure_choice_layer != null or _chapter_five == null or _chapter_five.phase != "route_selection": return
+	_paused = true
+	var view: Vector2 = get_viewport_rect().size
+	var layer := CanvasLayer.new()
+	layer.layer = 135
+	add_child(layer)
+	_adventure_choice_layer = layer
+	var shade := ColorRect.new()
+	shade.color = Color(0.01, 0.01, 0.04, 0.90)
+	shade.size = view
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.add_child(shade)
+	var box := VBoxContainer.new()
+	box.position = Vector2(65.0, view.y * 0.20)
+	box.size = Vector2(view.x - 130.0, 650.0)
+	box.add_theme_constant_override("separation", 18)
+	layer.add_child(box)
+	var title := Label.new()
+	title.text = "CHOOSE INFILTRATION ROUTE"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 42)
+	box.add_child(title)
+	var choices: Array[Dictionary] = [
+		{"id":"shadow", "text":"SHADOW ROUTE\nLongest · More hiding zones · Fewer sentries"},
+		{"id":"mechanism", "text":"MECHANISM ROUTE\nDisable security switches · Moderate distance"},
+		{"id":"risk", "text":"RISK ROUTE\nFastest · Dense patrol coverage"},
+	]
+	for choice in choices:
+		var button := _pause_btn(str(choice.text), Color(0.26, 0.18, 0.42), Color.WHITE)
+		button.custom_minimum_size = Vector2(0.0, 122.0)
+		button.add_theme_font_size_override("font_size", 30)
+		button.pressed.connect(_select_c5_route.bind(str(choice.id)))
+		box.add_child(button)
+
+func _select_c5_route(route: String) -> void:
+	if _adventure_choice_layer != null:
+		_adventure_choice_layer.queue_free()
+		_adventure_choice_layer = null
+	_paused = false
+	_begin_c5_infiltration(route)
+
+func _handle_chapter_one_action() -> void:
+	match _chapter_one.stage_number:
+		1:
+			if not _chapter_one.flag("mission_started"):
+				_chapter_one.set_flag("mission_started")
+				_story_route_waypoints = [_player_pos + Vector2(1400.0, -360.0), _player_pos + Vector2(4000.0, 420.0)]
+				_story_route_index = 0
+				_adventure_props.append({"kind":"scout", "pos":_player_pos + Vector2(-100.0, 20.0), "hp":520.0, "max_hp":520.0})
+				_c1_enter_phase("first_route")
+			elif _chapter_one.phase == "route_choice":
+				_show_c1_route_choice()
+			else:
+				_c1_command = "wait" if _c1_command == "follow" else ("hurry" if _c1_command == "wait" else "follow")
+				_story_log("Escort command: %s" % _c1_command)
+		2:
+			if not _chapter_one.flag("mission_started"):
+				_chapter_one.set_flag("mission_started")
+				_adventure_timer = 0.0
+				_c1_enter_phase("energy_defence")
+		3:
+			if not _chapter_one.flag("mission_started"):
+				_chapter_one.set_flag("mission_started")
+				_spawn_c1_nest(1)
+		4:
+			if not _chapter_one.flag("mission_started"):
+				_chapter_one.set_flag("mission_started")
+				_begin_c1_key_hunt(1)
+
+func _show_c1_route_choice() -> void:
+	if _chapter_one == null or _chapter_one.phase != "route_choice" or _adventure_choice_layer != null:
+		return
+	_paused = true
+	var view: Vector2 = get_viewport_rect().size
+	var layer := CanvasLayer.new()
+	layer.layer = 130
+	add_child(layer)
+	_adventure_choice_layer = layer
+	var shade := ColorRect.new()
+	shade.color = Color(0.02, 0.03, 0.02, 0.84)
+	shade.size = view
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.add_child(shade)
+	var box := VBoxContainer.new()
+	box.position = Vector2(56.0, view.y * 0.28)
+	box.size = Vector2(view.x - 112.0, 370.0)
+	box.add_theme_constant_override("separation", 18)
+	layer.add_child(box)
+	var title := Label.new()
+	title.text = "CHOOSE THE SCOUT'S ROUTE"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 38)
+	title.add_theme_color_override("font_color", Color(1.0, 0.82, 0.32))
+	box.add_child(title)
+	var short_route := _pause_btn("SHORT ROUTE\nFaster · More danger", Color(0.48, 0.24, 0.08), Color.WHITE)
+	short_route.custom_minimum_size = Vector2(0.0, 112.0)
+	short_route.add_theme_font_size_override("font_size", 30)
+	short_route.pressed.connect(_choose_c1_route.bind("short"))
+	box.add_child(short_route)
+	var long_route := _pause_btn("LONG ROUTE\nSafer · More ground to cover", Color(0.16, 0.34, 0.24), Color.WHITE)
+	long_route.custom_minimum_size = Vector2(0.0, 112.0)
+	long_route.add_theme_font_size_override("font_size", 30)
+	long_route.pressed.connect(_choose_c1_route.bind("long"))
+	box.add_child(long_route)
+
+func _choose_c1_route(route: String) -> void:
+	if _chapter_one == null or _chapter_one.phase != "route_choice" or route not in ["short", "long"]:
+		return
+	_c1_route_choice = route
+	if _adventure_choice_layer != null:
+		_adventure_choice_layer.queue_free()
+		_adventure_choice_layer = null
+	_paused = false
+	var scout_index: int = _find_adventure_prop("scout")
+	var origin: Vector2 = _adventure_props[scout_index].pos as Vector2 if scout_index >= 0 else _player_pos
+	_story_route_waypoints.clear()
+	if route == "short":
+		_story_route_waypoints.append(origin + Vector2(1800.0, -720.0))
+		_story_route_waypoints.append(origin + Vector2(4200.0, 0.0))
+	else:
+		_story_route_waypoints.append(origin + Vector2(1200.0, 720.0))
+		_story_route_waypoints.append(origin + Vector2(2800.0, 980.0))
+		_story_route_waypoints.append(origin + Vector2(5200.0, 0.0))
+	_story_route_index = 0
+	_c1_enter_phase("%s_route" % route)
+	_story_log("Route selected: %s" % route)
 
 func _fit_hud_chip(chip: TextureRect, label: Label, min_width: float, max_width: float) -> void:
 	if chip == null or label == null:
@@ -9871,7 +14504,7 @@ func _consume_combo_requirements(combo_sid: String) -> void:
 # ═════════════════════════════════════════════════════════════════════════════
 
 func _try_drop_dungeon_key(ep: Vector2, enemy_kind: String) -> void:
-	if account_username.is_empty():
+	if account_username.is_empty() or is_story_test_run:
 		return
 	if not PurchaseStore.is_key_drop_available(account_username):
 		return
@@ -9935,10 +14568,19 @@ func _show_revive_banner() -> void:
 	tween.tween_callback(layer.queue_free)
 
 func _on_death() -> void:
+	if not story_stage.is_empty() and _story_telemetry != null:
+		_story_telemetry.player_death()
+		var failure_reason: String = _story_custom_failure if not _story_custom_failure.is_empty() else "player_defeated"
+		_story_telemetry.failure(failure_reason)
 	_game_over = true
 	_paused    = true
 	_ring_drops.clear()
 	queue_redraw()
+	if is_story_test_run:
+		if _story_telemetry != null:
+			_story_telemetry.log_event("Test stage failed")
+		_show_story_test_result(false)
+		return
 	if _run_key_dropped:
 		PurchaseStore.start_key_drop_cooldown(account_username)
 
@@ -10008,7 +14650,7 @@ func _on_death() -> void:
 	var s: int = int(_elapsed) % 60
 	var stats := Label.new()
 	var reward_line := ""
-	if not story_stage.is_empty(): reward_line = "Story stage not cleared."
+	if not story_stage.is_empty(): reward_line = _story_custom_failure if not _story_custom_failure.is_empty() else "Story stage not cleared."
 	elif not dungeon_mode.is_empty(): reward_line = "Depth %d reached  ·  +%d Camp Coins  ·  +%d upgrade materials" % [int(_progression_reward.get("depth", _wave)), int(_progression_reward.get("coins", 0)), int(_progression_reward.get("materials", 0))]
 	else: reward_line = "+%d camp coins  ·  +%d XP  ·  Mastery Lv.%d" % [int(_progression_reward.get("coins", 0)), int(_progression_reward.get("xp", 0)), int(_progression_reward.get("mastery_level", 1))]
 	stats.text = "Survived  %d:%02d\nLevel %d  ·  %d kills\n%s%s" % [m, s, _level, _kills, reward_line, "" if not dungeon_mode.is_empty() or not story_stage.is_empty() else "\nNext: %s" % String(_progression_reward.get("next_unlock", "Keep exploring the dungeon"))]
@@ -10031,7 +14673,7 @@ func _on_death() -> void:
 		_add_death_artifact_reward(layer, view, art_y)
 
 	# ── Revive button (watch ad to revive, available if not already used) ───────────
-	if not _ad_revive_used and dungeon_mode.is_empty():
+	if not _ad_revive_used and dungeon_mode.is_empty() and _story_custom_failure.is_empty():
 		var revive_btn := Button.new()
 		revive_btn.text = "📺  Watch Ad to Revive"
 		revive_btn.add_theme_font_size_override("font_size", 34)
@@ -10112,9 +14754,17 @@ func _on_death() -> void:
 	layer.add_child(back)
 
 func _show_story_victory() -> void:
+	if not _story_victory_validated:
+		_request_story_victory("unvalidated_show_story_victory_call")
+		return
 	_game_over = true
 	_paused = true
-	var result := StoryStore.record_clear(account_username, String(story_stage.get("id", "")))
+	if is_story_test_run:
+		if _story_telemetry != null:
+			_story_telemetry.log_event("Test stage completed")
+		_show_story_test_result(true)
+		return
+	var result := StoryStore.record_clear(account_username, str(story_stage.get("id", "")), {"elapsed":_elapsed, "kills":_kills, "level":_level})
 	ProgressionStore.record_mission_event(account_username, "story_clears")
 	ProgressionStore.record_mission_event(account_username, "enemy_kills", _kills)
 	var view := get_viewport_rect().size
@@ -10123,10 +14773,29 @@ func _show_story_victory() -> void:
 	var title := Label.new(); title.text = "STAGE CLEARED!"; title.position = Vector2(0, view.y * 0.20); title.size = Vector2(view.x, 90); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 64); title.add_theme_color_override("font_color", Color("ffd66b")); layer.add_child(title)
 	var body := Label.new(); body.position = Vector2(60, view.y * 0.33); body.size = Vector2(view.x - 120, 360); body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; body.add_theme_font_size_override("font_size", 30)
 	var reward_message := "+%d camp coins  ·  +%d upgrade materials" % [int(result.get("coins", 0)), int(result.get("materials", 0))]
+	if not bool(result.get("first_clear", false)):
+		reward_message = "Replay reward (30%%)\n%s" % reward_message
 	if int(story_stage.get("chapter_stage", 0)) == 5 and bool(result.get("first_clear", false)):
 		reward_message += "\nChapter reward chest is ready on the map!"
 	body.text = "%s\n\n%s" % [String(story_stage.get("story", "The road ahead is open.")), reward_message]; layer.add_child(body)
 	var back := Button.new(); back.text = "Return to Story Map"; back.position = Vector2((view.x - 460) * 0.5, view.y * 0.72); back.size = Vector2(460, 92); back.add_theme_font_size_override("font_size", 32); back.pressed.connect(func(): match_ended.emit("story_clear")); layer.add_child(back)
+
+func _show_story_test_result(success: bool) -> void:
+	var view := get_viewport_rect().size
+	var layer := CanvasLayer.new(); layer.layer = 180; add_child(layer)
+	var shade := ColorRect.new(); shade.color = Color(0.01, 0.02, 0.03, 0.96); shade.size = view; shade.mouse_filter = Control.MOUSE_FILTER_STOP; layer.add_child(shade)
+	var title := Label.new(); title.text = "TEST STAGE COMPLETE" if success else "TEST STAGE FAILED"; title.position = Vector2(40.0, view.y * 0.18); title.size = Vector2(view.x - 80.0, 90.0); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 54); title.add_theme_color_override("font_color", Color("ffd66b") if success else Color("ff806e")); layer.add_child(title)
+	var stage_label := Label.new(); stage_label.text = "C%dS%d\nProgress and rewards were not saved" % [int(story_stage.get("chapter", 0)), int(story_stage.get("chapter_stage", 0))]; stage_label.position = Vector2(60.0, view.y * 0.31); stage_label.size = Vector2(view.x - 120.0, 120.0); stage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; stage_label.add_theme_font_size_override("font_size", 28); layer.add_child(stage_label)
+	var buttons := VBoxContainer.new(); buttons.position = Vector2(90.0, view.y * 0.48); buttons.size = Vector2(view.x - 180.0, 310.0); buttons.add_theme_constant_override("separation", 18); layer.add_child(buttons)
+	var retry := _pause_btn("Retry Stage", Color(0.46, 0.30, 0.08), Color.WHITE); retry.custom_minimum_size = Vector2(0.0, 84.0); retry.pressed.connect(_finish_story_test.bind("story_test_retry")); buttons.add_child(retry)
+	var choose := _pause_btn("Choose Another Stage", Color(0.24, 0.28, 0.46), Color.WHITE); choose.custom_minimum_size = Vector2(0.0, 84.0); choose.pressed.connect(_finish_story_test.bind("story_test_choose")); buttons.add_child(choose)
+	var exit := _pause_btn("Return to Story Menu", Color(0.20, 0.32, 0.34), Color.WHITE); exit.custom_minimum_size = Vector2(0.0, 84.0); exit.pressed.connect(_finish_story_test.bind("story_test_exit")); buttons.add_child(exit)
+
+func _finish_story_test(action: String) -> void:
+	if _story_telemetry != null:
+		if action == "story_test_retry":
+			_story_telemetry.retry("test_stage")
+	match_ended.emit(action)
 
 func _add_death_ring_rewards(layer: Node, view: Vector2, y: float) -> void:
 	var panel := PanelContainer.new()

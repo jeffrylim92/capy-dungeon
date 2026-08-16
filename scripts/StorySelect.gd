@@ -4,18 +4,23 @@ extends Node2D
 const STORY_ATMOSPHERE := preload("res://scripts/StoryAtmosphere.gd")
 
 signal stage_selected(stage: Dictionary)
+signal test_stage_selected(stage: Dictionary)
 signal back_requested
 signal cloud_sync_requested
 
 var account_username := ""
 var initial_stage_index := -1
+var open_dev_test_selector_on_ready: bool = false
 var _stage_index := 0
 var _page_root: CanvasLayer
 var _reward_layer: CanvasLayer
+var _dev_test_layer: CanvasLayer
 
 func _ready() -> void:
 	_stage_index = clampi(initial_stage_index, 0, StoryStore.stage_count() - 1) if initial_stage_index >= 0 else StoryStore.unlocked_stage(StoryStore.load_profile(account_username))
 	_build_page()
+	if open_dev_test_selector_on_ready and OS.is_debug_build():
+		call_deferred("_show_dev_story_test_selector")
 
 func _build_page() -> void:
 	if _page_root != null and is_instance_valid(_page_root): _page_root.queue_free()
@@ -33,7 +38,7 @@ func _build_page() -> void:
 	var atmosphere := STORY_ATMOSPHERE.new() as StoryAtmosphere; atmosphere.setup(chapter_number - 1, view); _page_root.add_child(atmosphere)
 	_add_parallax_layer("res://assets/story/chapters/ch%d_fg.png" % chapter_number, view, Vector2(9, 2), Vector2(-9, -2), 4.8)
 	var shade := ColorRect.new(); shade.color = Color(0.01, 0.02, 0.03, 0.48 if unlocked else 0.72); shade.size = view; _page_root.add_child(shade)
-	var top := Label.new(); top.text = "CHAPTER %d\n%s" % [chapter_number, String(chapter.name)]; top.position = Vector2(265, 30); top.size = Vector2(view.x - 530, 120); top.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; top.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; top.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; top.add_theme_font_size_override("font_size", 27); top.add_theme_color_override("font_color", Color("ffd66b")); _page_root.add_child(top)
+	var top := Label.new(); top.text = "CHAPTER %d\n%s" % [chapter_number, String(chapter.name)]; top.position = Vector2(265, 30); top.size = Vector2(view.x - 530, 135); top.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; top.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; top.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; top.add_theme_font_size_override("font_size", 35); top.add_theme_color_override("font_color", Color("ffd66b")); _page_root.add_child(top)
 	if _stage_index > 0:
 		_add_nav_button("Previous Stage", Vector2(25, 48), Vector2(225, 78), true, -1)
 	if int(stage.chapter_stage) == 5:
@@ -48,16 +53,62 @@ func _build_page() -> void:
 	else:
 		var next_unlocked := cleared
 		_add_nav_button("Next Stage", Vector2(view.x - 250, 48), Vector2(225, 78), next_unlocked, 1)
-	var panel := PanelContainer.new(); panel.position = Vector2(82, view.y * 0.56); panel.size = Vector2(view.x - 164, 510); panel.add_theme_stylebox_override("panel", _panel_style()); _page_root.add_child(panel)
+	var panel := PanelContainer.new(); panel.position = Vector2(82, view.y * 0.53); panel.size = Vector2(view.x - 164, 620); panel.add_theme_stylebox_override("panel", _panel_style()); _page_root.add_child(panel)
 	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 16); panel.add_child(box)
-	var name := Label.new(); name.text = String(stage.name); name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; name.add_theme_font_size_override("font_size", 42); name.add_theme_color_override("font_color", Color.WHITE); box.add_child(name)
-	var story := Label.new(); story.text = String(stage.story); story.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; story.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; story.add_theme_font_size_override("font_size", 25); box.add_child(story)
-	var challenge := Label.new(); challenge.text = "Challenge  ·  %s" % String(stage.challenge); challenge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; challenge.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; challenge.add_theme_font_size_override("font_size", 21); challenge.add_theme_color_override("font_color", Color("ffca68")); box.add_child(challenge)
-	var reward := Label.new(); reward.text = "Stage reward  ·  %d camp coins  ·  %d upgrade materials" % [int(stage.coins), int(stage.materials)]; reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; reward.add_theme_font_size_override("font_size", 23); reward.add_theme_color_override("font_color", Color("a7ed9a")); box.add_child(reward)
-	var play := Button.new(); play.text = "REPLAY STAGE" if cleared else ("PLAY STAGE" if unlocked else "LOCKED  ·  COMPLETE PREVIOUS STAGE"); play.disabled = not unlocked; play.custom_minimum_size = Vector2(0, 94); play.add_theme_font_size_override("font_size", 34); play.pressed.connect(func() -> void: stage_selected.emit(stage.duplicate(true))); _style_button(play); box.add_child(play)
-	var wallet := Label.new(); wallet.text = "Upgrade materials: %d  ·  Camp coins: %d" % [int(profile.get("materials", 0)), int(ProgressionStore.load_profile(account_username).get("coins", 0))]; wallet.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; wallet.add_theme_font_size_override("font_size", 21); box.add_child(wallet)
-	var back := Button.new(); back.text = "Play Modes"; back.position = Vector2(30, view.y - 105); back.size = Vector2(250, 70); back.add_theme_font_size_override("font_size", 26); back.pressed.connect(func(): back_requested.emit()); _style_button(back); _page_root.add_child(back)
-	var count := Label.new(); count.text = "Stage %d / 5" % int(stage.chapter_stage); count.position = Vector2(view.x - 210, view.y - 100); count.size = Vector2(170, 55); count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; count.add_theme_font_size_override("font_size", 27); _page_root.add_child(count)
+	var name := Label.new(); name.text = String(stage.name); name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; name.add_theme_font_size_override("font_size", 50); name.add_theme_color_override("font_color", Color.WHITE); box.add_child(name)
+	var story := Label.new(); story.text = String(stage.story); story.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; story.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; story.add_theme_font_size_override("font_size", 32); box.add_child(story)
+	var challenge := Label.new(); challenge.text = "Challenge  ·  %s" % String(stage.challenge); challenge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; challenge.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; challenge.add_theme_font_size_override("font_size", 28); challenge.add_theme_color_override("font_color", Color("ffca68")); box.add_child(challenge)
+	var displayed_reward: Dictionary = StoryStore.stage_reward(str(stage.get("id", "")), cleared)
+	var reward := Label.new(); reward.text = "%s  ·  %d camp coins  ·  %d upgrade materials" % ["Replay reward (30%)" if cleared else "First-clear reward (100%)", int(displayed_reward.get("coins", 0)), int(displayed_reward.get("materials", 0))]; reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; reward.add_theme_font_size_override("font_size", 30); reward.add_theme_color_override("font_color", Color("a7ed9a")); box.add_child(reward)
+	var play := Button.new(); play.text = "REPLAY STAGE" if cleared else ("PLAY STAGE" if unlocked else "LOCKED  ·  COMPLETE PREVIOUS STAGE"); play.disabled = not unlocked; play.custom_minimum_size = Vector2(0, 108); play.add_theme_font_size_override("font_size", 40); play.pressed.connect(func() -> void: stage_selected.emit(stage.duplicate(true))); _style_button(play); box.add_child(play)
+	var wallet := Label.new(); wallet.text = "Upgrade materials: %d  ·  Camp coins: %d" % [int(profile.get("materials", 0)), int(ProgressionStore.load_profile(account_username).get("coins", 0))]; wallet.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; wallet.add_theme_font_size_override("font_size", 28); box.add_child(wallet)
+	var back := Button.new(); back.text = "Play Modes"; back.position = Vector2(30, view.y - 112); back.size = Vector2(270, 78); back.add_theme_font_size_override("font_size", 32); back.pressed.connect(func(): back_requested.emit()); _style_button(back); _page_root.add_child(back)
+	var count := Label.new(); count.text = "Stage %d / 5" % int(stage.chapter_stage); count.position = Vector2(view.x - 245, view.y - 106); count.size = Vector2(205, 62); count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; count.add_theme_font_size_override("font_size", 33); _page_root.add_child(count)
+	if OS.is_debug_build():
+		_add_dev_story_test_button(view)
+
+func _add_dev_story_test_button(view: Vector2) -> void:
+	var button := Button.new()
+	button.text = "DEV STORY TEST"
+	button.position = Vector2((view.x - 330.0) * 0.5, view.y - 112.0)
+	button.size = Vector2(330.0, 78.0)
+	button.add_theme_font_size_override("font_size", 30)
+	button.pressed.connect(_show_dev_story_test_selector)
+	_style_button(button)
+	_page_root.add_child(button)
+
+func _show_dev_story_test_selector() -> void:
+	if not OS.is_debug_build():
+		push_warning("Story test selector requested in a release build.")
+		return
+	if _dev_test_layer != null and is_instance_valid(_dev_test_layer):
+		_dev_test_layer.queue_free()
+	_dev_test_layer = CanvasLayer.new()
+	_dev_test_layer.layer = 210
+	add_child(_dev_test_layer)
+	var view := get_viewport_rect().size
+	var shade := ColorRect.new(); shade.color = Color(0.01, 0.01, 0.02, 0.92); shade.size = view; shade.mouse_filter = Control.MOUSE_FILTER_STOP; _dev_test_layer.add_child(shade)
+	var panel := PanelContainer.new(); panel.position = Vector2(65.0, view.y * 0.20); panel.size = Vector2(view.x - 130.0, 680.0); panel.add_theme_stylebox_override("panel", _panel_style()); _dev_test_layer.add_child(panel)
+	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 22); panel.add_child(box)
+	var title := Label.new(); title.text = "DEV STORY TEST"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 50); title.add_theme_color_override("font_color", Color("ffd66b")); box.add_child(title)
+	var note := Label.new(); note.text = "Progress, rewards, records, and unlocks are not saved."; note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; note.add_theme_font_size_override("font_size", 34); box.add_child(note)
+	var stages := OptionButton.new(); stages.custom_minimum_size = Vector2(0.0, 108.0); stages.add_theme_font_size_override("font_size", 38); stages.add_theme_icon_override("arrow", load("res://assets/icons/dev_dropdown_arrow.svg") as Texture2D); stages.add_theme_constant_override("arrow_margin", 26); stages.alignment = HORIZONTAL_ALIGNMENT_CENTER; _style_button(stages)
+	var stage_popup: PopupMenu = stages.get_popup(); stage_popup.add_theme_font_size_override("font_size", 35); stage_popup.add_theme_constant_override("item_start_padding", 32); stage_popup.add_theme_constant_override("item_end_padding", 32); stage_popup.add_theme_constant_override("v_separation", 10)
+	for index in StoryStore.stage_count():
+		var stage: Dictionary = StoryStore.stage(index)
+		stages.add_item("C%dS%d — %s" % [int(stage.chapter), int(stage.chapter_stage), str(stage.name).get_slice("  ", 1)], index)
+	stages.select(clampi(_stage_index, 0, StoryStore.stage_count() - 1)); box.add_child(stages)
+	var start := Button.new(); start.text = "START TEST"; start.custom_minimum_size = Vector2(0.0, 102.0); start.add_theme_font_size_override("font_size", 40); _style_button(start); box.add_child(start)
+	start.pressed.connect(func() -> void:
+		if not OS.is_debug_build():
+			push_warning("Story test launch rejected in a release build.")
+			return
+		var selected_index: int = stages.get_selected_id()
+		var selected_stage: Dictionary = StoryStore.stage(selected_index).duplicate(true)
+		print("[Story][TEST][C%dS%d][0.00s] Test stage selected" % [int(selected_stage.chapter), int(selected_stage.chapter_stage)])
+		test_stage_selected.emit(selected_stage)
+	)
+	var cancel := Button.new(); cancel.text = "Cancel"; cancel.custom_minimum_size = Vector2(0.0, 88.0); cancel.add_theme_font_size_override("font_size", 36); cancel.pressed.connect(func() -> void: _dev_test_layer.queue_free()); _style_button(cancel); box.add_child(cancel)
 
 func _add_claim_button(view: Vector2, chapter_number: int, enabled: bool) -> void:
 	var button := Button.new(); button.text = "Claim Chapter Reward"; button.position = Vector2(view.x - 280, 48); button.size = Vector2(255, 78); button.disabled = not enabled; button.add_theme_font_size_override("font_size", 19); button.pressed.connect(_show_chapter_reward.bind(chapter_number, false)); _style_button(button); _page_root.add_child(button)
@@ -102,7 +153,7 @@ func _add_scene_layer(path: String, view: Vector2) -> void:
 	var bg := TextureRect.new(); bg.texture = load(path) as Texture2D; bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED; bg.size = view; _page_root.add_child(bg)
 
 func _add_nav_button(text: String, pos: Vector2, button_size: Vector2, enabled: bool, direction: int) -> void:
-	var button := Button.new(); button.text = text; button.position = pos; button.size = button_size; button.disabled = not enabled; button.add_theme_font_size_override("font_size", 20); button.pressed.connect(func() -> void: _stage_index += direction; _build_page()); _style_button(button); _page_root.add_child(button)
+	var button := Button.new(); button.text = text; button.position = pos; button.size = button_size; button.disabled = not enabled; button.add_theme_font_size_override("font_size", 28); button.pressed.connect(func() -> void: _stage_index += direction; _build_page()); _style_button(button); _page_root.add_child(button)
 
 func _add_parallax_layer(path: String, view: Vector2, start_pos: Vector2, end_pos: Vector2, duration: float) -> void:
 	if not ResourceLoader.exists(path): return

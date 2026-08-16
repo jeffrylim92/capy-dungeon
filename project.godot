@@ -38,6 +38,7 @@ config/version_code=1
 
 [autoload]
 
+MobileTypography="*res://scripts/MobileTypography.gd"
 CrashReporter="*res://scripts/CrashReporter.gd"
 PurchaseStore="*res://scripts/PurchaseStore.gd"
 SkillMgr="*res://scripts/SkillManager.gd"
