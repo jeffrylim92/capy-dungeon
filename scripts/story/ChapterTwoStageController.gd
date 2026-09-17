@@ -1,6 +1,8 @@
 class_name ChapterTwoStageController
 extends RefCounted
 
+const MIMIC_CHEST_COUNT: int = 6
+
 var stage_number: int = 0
 var phase: String = "setup"
 var cold_exposure: float = 0.0
@@ -56,6 +58,34 @@ func tick_timer(key: String, delta: float) -> float:
 
 func timer(key: String) -> float:
 	return float(timers.get(key, 0.0))
+
+static func build_mimic_layout(seed_value: int) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var real_chest: int = rng.randi_range(0, MIMIC_CHEST_COUNT - 1)
+	var safe_chests: Array[int] = []
+	for chest_index in MIMIC_CHEST_COUNT:
+		if chest_index != real_chest:
+			safe_chests.append(chest_index)
+	for index in range(safe_chests.size() - 1, 0, -1):
+		var swap_index: int = rng.randi_range(0, index)
+		var swap_value: int = safe_chests[index]
+		safe_chests[index] = safe_chests[swap_index]
+		safe_chests[swap_index] = swap_value
+	return {"real_chest":real_chest, "safe_chests":safe_chests}
+
+static func validate_mimic_layout(layout: Dictionary) -> bool:
+	var real_chest: int = int(layout.get("real_chest", -1))
+	var safe_chests: Array = layout.get("safe_chests", []) as Array
+	if real_chest < 0 or real_chest >= MIMIC_CHEST_COUNT or safe_chests.size() != MIMIC_CHEST_COUNT - 1:
+		return false
+	var seen: Dictionary = {}
+	for safe_variant in safe_chests:
+		var safe_chest: int = int(safe_variant)
+		if safe_chest < 0 or safe_chest >= MIMIC_CHEST_COUNT or safe_chest == real_chest or seen.has(safe_chest):
+			return false
+		seen[safe_chest] = true
+	return seen.size() == MIMIC_CHEST_COUNT - 1
 
 func completion_state() -> Dictionary:
 	var result: Dictionary = flags.duplicate(true)

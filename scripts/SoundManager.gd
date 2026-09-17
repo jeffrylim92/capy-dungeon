@@ -32,10 +32,25 @@ const GENERATED_CUES: Dictionary = {
 	"skill_boomerang": {"freq": 500.0, "duration": 0.15, "wave": "triangle", "slide": 1.85},
 	"skill_seven_slash": {"freq": 980.0, "duration": 0.30, "wave": "square", "slide": 0.45},
 	"skill_swirl_tangerine": {"freq": 330.0, "duration": 0.34, "wave": "triangle", "slide": 1.65},
+	"boss_intro": {"freq": 170.0, "duration": 0.32, "wave": "triangle", "slide": 1.42, "amp": 0.34},
+	"boss_phase": {"freq": 260.0, "duration": 0.24, "wave": "square", "slide": 1.62, "amp": 0.28},
+	"boss_break": {"freq": 720.0, "duration": 0.30, "wave": "ice", "slide": 0.24, "amp": 0.34},
+	"boss_blocked": {"freq": 145.0, "duration": 0.15, "wave": "square", "slide": 0.72, "amp": 0.22},
+	"boss_defeated": {"freq": 310.0, "duration": 0.42, "wave": "triangle", "slide": 0.38, "amp": 0.34},
+	"combat_hit": {"freq": 390.0, "duration": 0.055, "wave": "noise", "slide": 0.62, "amp": 0.16},
+	"combat_heavy": {"freq": 240.0, "duration": 0.09, "wave": "triangle", "slide": 0.48, "amp": 0.24},
+	"combat_crit": {"freq": 860.0, "duration": 0.11, "wave": "electric", "slide": 0.42, "amp": 0.24},
+	"player_hit": {"freq": 180.0, "duration": 0.10, "wave": "square", "slide": 0.56, "amp": 0.22},
+	"heal": {"freq": 540.0, "duration": 0.14, "wave": "sine", "slide": 1.52, "amp": 0.22},
+	"enemy_death": {"freq": 280.0, "duration": 0.08, "wave": "triangle", "slide": 0.42, "amp": 0.18},
+	"elite_death": {"freq": 210.0, "duration": 0.16, "wave": "square", "slide": 1.40, "amp": 0.26},
+	"ultimate": {"freq": 150.0, "duration": 0.24, "wave": "triangle", "slide": 2.20, "amp": 0.30},
 }
 
 var _players: Array[AudioStreamPlayer] = []
+var _player_priorities: Array[int] = []
 var _cache: Dictionary = {}  # cue -> AudioStream or null
+var _next_allowed_usec: Dictionary = {}
 
 func _ready() -> void:
 	for i in range(POOL_SIZE):
@@ -43,16 +58,35 @@ func _ready() -> void:
 		p.bus = "SFX"
 		add_child(p)
 		_players.append(p)
+		_player_priorities.append(0)
 
-func play(cue: String, volume_db: float = 0.0, pitch_scale: float = 1.0) -> void:
+func play(cue: String, volume_db: float = 0.0, pitch_scale: float = 1.0, priority: int = 1) -> void:
 	var s: AudioStream = _load_cue(cue)
 	if s == null:
 		return
-	var p := _next_player()
+	var player_index := _next_player_index(priority)
+	if player_index < 0:
+		return
+	var p := _players[player_index]
+	_player_priorities[player_index] = priority
 	p.stream = s
 	p.volume_db = volume_db
 	p.pitch_scale = pitch_scale
 	p.play()
+
+func play_limited(cue: String, min_interval: float, volume_db: float = 0.0, pitch_scale: float = 1.0, priority: int = 1, pitch_variation: float = 0.0) -> bool:
+	var now := Time.get_ticks_usec()
+	if now < int(_next_allowed_usec.get(cue, 0)):
+		return false
+	_next_allowed_usec[cue] = now + int(maxf(min_interval, 0.0) * 1000000.0)
+	var varied_pitch := pitch_scale
+	if pitch_variation > 0.0:
+		varied_pitch *= randf_range(1.0 - pitch_variation, 1.0 + pitch_variation)
+	play(cue, volume_db, varied_pitch, priority)
+	return true
+
+func clear_limits() -> void:
+	_next_allowed_usec.clear()
 
 func _load_cue(cue: String) -> AudioStream:
 	if _cache.has(cue):
@@ -116,8 +150,12 @@ func _wave_sample(wave: String, phase: float, rng: RandomNumberGenerator) -> flo
 		_:
 			return sin(phase)
 
-func _next_player() -> AudioStreamPlayer:
-	for p in _players:
-		if not p.playing:
-			return p
-	return _players[0]
+func _next_player_index(priority: int) -> int:
+	for index in _players.size():
+		if not _players[index].playing:
+			return index
+	var lowest_index := 0
+	for index in range(1, _player_priorities.size()):
+		if _player_priorities[index] < _player_priorities[lowest_index]:
+			lowest_index = index
+	return lowest_index if _player_priorities[lowest_index] <= priority else -1

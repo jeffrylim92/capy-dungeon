@@ -115,7 +115,9 @@ func _test_runes_of_thaw() -> void:
 func _test_mimic_treasury() -> void:
 	var stage := {"chapter": 2, "chapter_stage": 4, "objective": "frost_mimic"}
 	var state := _base_state()
-	state.merge({"real_mimic_opened":true, "mimic_spawned":true, "mimic_defeated":false}, true)
+	state.merge({"clue_state_valid":false, "real_mimic_opened":true, "mimic_spawned":true, "mimic_defeated":true}, true)
+	assert(not bool(Validator.validate(stage, state).get("accepted", false)))
+	state.merge({"clue_state_valid":true, "mimic_defeated":false}, true)
 	assert(not bool(Validator.validate(stage, state).get("accepted", false)))
 	state["mimic_defeated"] = true
 	assert(bool(Validator.validate(stage, state).get("accepted", false)))

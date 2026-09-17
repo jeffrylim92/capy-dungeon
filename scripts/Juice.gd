@@ -24,10 +24,9 @@ func shake(amplitude: float = 14.0, duration: float = 0.25) -> void:
 	target.position = orig
 
 func hit_stop(duration: float = 0.07, factor: float = 0.04) -> void:
-	Engine.time_scale = factor
-	# ignore_time_scale = true so the resume timer ticks in real time
-	await get_tree().create_timer(duration, true, false, true).timeout
-	Engine.time_scale = 1.0
+	var feedback := get_tree().get_first_node_in_group("combat_feedback")
+	if feedback != null and feedback.has_method("request_hitstop"):
+		feedback.request_hitstop(duration, factor)
 
 func burst(
 	at: Vector2,

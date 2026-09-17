@@ -65,6 +65,7 @@ const DEVADMIN_EXTRA_RINGS: Array[Dictionary] = [
 ]
 
 static var _stash_cache: Dictionary = {}  # username -> Array[Dictionary]
+static var _icon_cache: Dictionary = {}
 
 static func ring_icon_path(ring: Dictionary) -> String:
 	var ring_name: String = ring.get("name", "") as String
@@ -84,7 +85,11 @@ static func ring_icon(ring: Dictionary) -> Texture2D:
 	var path: String = ring_icon_path(ring)
 	if path == "":
 		return null
-	return load(path) as Texture2D
+	if _icon_cache.has(path):
+		return _icon_cache[path] as Texture2D
+	var texture := ResourceLoader.load(path) as Texture2D
+	_icon_cache[path] = texture
+	return texture
 
 # ─── Roll a random ring ───────────────────────────────────────────────────────
 static func roll_ring() -> Dictionary:

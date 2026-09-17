@@ -1,5 +1,9 @@
 extends Node2D
 
+const RewardItemCardClass := preload("res://scripts/ui/RewardItemCard.gd")
+const RewardPresentationClass := preload("res://scripts/ui/RewardPresentation.gd")
+const InventoryCardStyleClass := preload("res://scripts/ui/InventoryCardStyle.gd")
+
 signal inventory_confirmed(char_data: CharacterData)
 signal back_to_select
 signal equipment_requested
@@ -23,9 +27,12 @@ var _info_lbl: Label
 var _key_info_lbl: Label
 var _bonus_grid: GridContainer
 var _stash_grid: GridContainer
+var _stash_scroll: ScrollContainer
+var _action_bar: HBoxContainer
 var _key_timer_tick: float = 0.0
 var _filter_btns: Dictionary = {}
 var _item_popup_layer: CanvasLayer = null
+var _item_action_in_progress: bool = false
 var _rings_count_lbl: Label
 var _artifacts_count_lbl: Label
 var _prep_bg: Texture2D = preload("res://assets/backgrounds/bg_preparation_stage.png")
@@ -37,6 +44,7 @@ var _ring_slot_btns: Array[Button] = []
 var _artifact_slot_btns: Array[Button] = []
 
 func _ready() -> void:
+	add_to_group("accessibility_settings")
 	_view = get_viewport_rect().size
 	if selected_character != null:
 		_char_id = String(selected_character.id)
@@ -45,10 +53,18 @@ func _ready() -> void:
 	_rings = RingStore.load_stash(account_username)
 	_artifacts = ArtifactStore.load_stash(account_username)
 	_build_ui()
+	apply_accessibility_settings(SettingsStore.load_all())
+
+func apply_accessibility_settings(settings: Dictionary) -> void:
+	var ui_scale := float(SettingsStore.normalize(settings).get("ui_scale", 1.0))
+	if _stash_grid != null and is_instance_valid(_stash_grid):
+		_stash_grid.columns = _stash_column_count(ui_scale)
+	SettingsStore.apply_ui_scale(self, ui_scale)
 
 func _build_ui() -> void:
-	var mx: float = 28.0
-	var cw: float = _view.x - mx * 2.0
+	var safe := SettingsStore.safe_area(_view)
+	var outer_margin := 22.0
+	var cw := safe.size.x - outer_margin * 2.0
 
 	var bg := TextureRect.new()
 	bg.texture = _prep_bg
@@ -88,15 +104,31 @@ func _build_ui() -> void:
 	torch_glow_r.size = Vector2(46, 140)
 	add_child(torch_glow_r)
 
+	var screen_margin := MarginContainer.new()
+	screen_margin.name = "InventoryScreen"
+	screen_margin.position = safe.position
+	screen_margin.size = safe.size
+	screen_margin.add_theme_constant_override("margin_left", roundi(outer_margin))
+	screen_margin.add_theme_constant_override("margin_right", roundi(outer_margin))
+	screen_margin.add_theme_constant_override("margin_top", 14)
+	screen_margin.add_theme_constant_override("margin_bottom", 16)
+	add_child(screen_margin)
+
+	var screen := VBoxContainer.new()
+	screen.name = "InventoryScreenLayout"
+	screen.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	screen.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	screen.add_theme_constant_override("separation", 10)
+	screen_margin.add_child(screen)
+
 	var title_panel := PanelContainer.new()
-	title_panel.position = Vector2(mx + 70.0, 14)
-	title_panel.size = Vector2(cw - 140.0, 96)
+	title_panel.custom_minimum_size = Vector2(0, 90)
 	title_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.72, 0.53, 0.16, 0.98), Color(0.08, 0.07, 0.05, 0.95), 16, 3))
-	add_child(title_panel)
+	screen.add_child(title_panel)
 
 	var title := Label.new()
 	title.text = "INVENTORY"
-	title.add_theme_font_size_override("font_size", 70)
+	title.add_theme_font_size_override("font_size", 58)
 	title.add_theme_color_override("font_color", Color(0.98, 0.80, 0.24))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -109,23 +141,25 @@ func _build_ui() -> void:
 	char_lbl.add_theme_font_size_override("font_size", 26)
 	char_lbl.add_theme_color_override("font_color", Color(0.84, 0.70, 0.46))
 	char_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	char_lbl.position = Vector2(mx, 126)
-	char_lbl.size = Vector2(cw, 34)
-	add_child(char_lbl)
+	char_lbl.custom_minimum_size = Vector2(0, 32)
+	char_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	screen.add_child(char_lbl)
 
 	var root := VBoxContainer.new()
-	root.position = Vector2(mx, 180)
-	root.size = Vector2(cw, _view.y - 286)
+	root.name = "InventoryContent"
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_theme_constant_override("separation", 14)
-	add_child(root)
+	screen.add_child(root)
 
 	var equipped_panel := PanelContainer.new()
-	equipped_panel.custom_minimum_size = Vector2(0, clampf(_view.y * 0.28, 300.0, 430.0))
+	equipped_panel.name = "EquippedPanel"
+	equipped_panel.custom_minimum_size = Vector2(0, clampf(_view.y * 0.22, 390.0, 420.0))
 	equipped_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.70, 0.52, 0.16, 0.95), Color(0.03, 0.08, 0.10, 0.97), 20, 3))
 	root.add_child(equipped_panel)
 
 	var equipped_box := VBoxContainer.new()
-	equipped_box.add_theme_constant_override("separation", 8)
+	equipped_box.add_theme_constant_override("separation", 10)
 	equipped_panel.add_child(equipped_box)
 
 	var equipped_header := HBoxContainer.new()
@@ -134,9 +168,10 @@ func _build_ui() -> void:
 	var equipment_btn := Button.new()
 	equipment_btn.text = "Equipment"
 	equipment_btn.visible = not accessory_edit_mode
-	equipment_btn.custom_minimum_size = Vector2(190, 64)
+	equipment_btn.custom_minimum_size = Vector2(0, 64)
+	equipment_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	equipment_btn.add_theme_font_size_override("font_size", 25)
-	_apply_button_skin(equipment_btn, Color(0.70, 0.52, 0.16, 0.95), Color(0.08, 0.08, 0.12), Color(0.98, 0.86, 0.58), 3)
+	InventoryCardStyleClass.apply_button(equipment_btn)
 	equipment_btn.pressed.connect(func() -> void: equipment_requested.emit())
 	equipped_header.add_child(equipment_btn)
 	var eq_lbl := Label.new()
@@ -145,8 +180,9 @@ func _build_ui() -> void:
 	eq_lbl.add_theme_font_size_override("font_size", 58)
 	eq_lbl.add_theme_color_override("font_color", Color(0.98, 0.82, 0.34))
 	eq_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	eq_lbl.size_flags_stretch_ratio = 1.35
 	equipped_header.add_child(eq_lbl)
-	var attributes := Button.new(); attributes.text = "Attributes"; attributes.custom_minimum_size = Vector2(190, 64); attributes.add_theme_font_size_override("font_size", 25); _apply_button_skin(attributes, Color(0.70, 0.52, 0.16, 0.95), Color(0.08, 0.08, 0.12), Color(0.98, 0.86, 0.58), 3); attributes.pressed.connect(_show_combined_attributes); equipped_header.add_child(attributes)
+	var attributes := Button.new(); attributes.text = "Attributes"; attributes.custom_minimum_size = Vector2(0, 64); attributes.size_flags_horizontal = Control.SIZE_EXPAND_FILL; attributes.add_theme_font_size_override("font_size", 25); InventoryCardStyleClass.apply_button(attributes); attributes.pressed.connect(_show_combined_attributes); equipped_header.add_child(attributes)
 
 	var type_row := HBoxContainer.new()
 	type_row.add_theme_constant_override("separation", 12)
@@ -195,6 +231,7 @@ func _build_ui() -> void:
 	artifact_counter_wrap.add_child(_artifacts_count_lbl)
 
 	var equipped_row := HBoxContainer.new()
+	equipped_row.name = "EquippedRow"
 	equipped_row.add_theme_constant_override("separation", 12)
 	equipped_box.add_child(equipped_row)
 	for i in 2:
@@ -232,7 +269,7 @@ func _build_ui() -> void:
 
 	var stash_panel := PanelContainer.new()
 	stash_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	stash_panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.70, 0.52, 0.16, 0.95), Color(0.03, 0.08, 0.10, 0.97), 20, 3))
+	stash_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	root.add_child(stash_panel)
 
 	var stash_box := VBoxContainer.new()
@@ -242,9 +279,10 @@ func _build_ui() -> void:
 
 	var stash_lbl := Label.new()
 	stash_lbl.text = "INVENTORY STASH"
-	stash_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stash_lbl.add_theme_font_size_override("font_size", 52)
-	stash_lbl.add_theme_color_override("font_color", Color(0.94, 0.74, 0.32))
+	stash_lbl.custom_minimum_size = Vector2(0, 55)
+	stash_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	stash_lbl.add_theme_font_size_override("font_size", 40)
+	stash_lbl.add_theme_color_override("font_color", Color("f5f5f1"))
 	stash_box.add_child(stash_lbl)
 
 	var filter_row := HBoxContainer.new()
@@ -270,7 +308,8 @@ func _build_ui() -> void:
 			btn.expand_icon = true
 			btn.add_theme_constant_override("icon_max_width", 34)
 			btn.add_theme_constant_override("h_separation", 1)
-		btn.custom_minimum_size = Vector2(210, 56)
+		btn.custom_minimum_size = Vector2(0, 56)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.add_theme_font_size_override("font_size", 30)
 		btn.pressed.connect(func() -> void:
 			_filter = f
@@ -280,12 +319,9 @@ func _build_ui() -> void:
 		filter_row.add_child(btn)
 		_filter_btns[f] = btn
 
-	var fill := Control.new()
-	fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	filter_row.add_child(fill)
-
 	var sort_btn := OptionButton.new()
-	sort_btn.custom_minimum_size = Vector2(220, 56)
+	sort_btn.custom_minimum_size = Vector2(0, 56)
+	sort_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sort_btn.add_theme_font_size_override("font_size", 30)
 	sort_btn.add_item("Rarity")
 	sort_btn.add_item("Name")
@@ -302,19 +338,6 @@ func _build_ui() -> void:
 				_sort_mode = "rarity"
 		_rebuild_stash()
 	)
-	var sort_normal := _make_panel_style(Color(0.68, 0.52, 0.18, 0.9), Color(0.06, 0.05, 0.08, 0.96), 10, 2)
-	sort_normal.content_margin_right = 28
-	var sort_hover := sort_normal.duplicate() as StyleBoxFlat
-	sort_hover.bg_color = sort_normal.bg_color.lightened(0.10)
-	var sort_pressed := sort_normal.duplicate() as StyleBoxFlat
-	sort_pressed.bg_color = sort_normal.bg_color.darkened(0.08)
-	var sort_focus := sort_normal.duplicate() as StyleBoxFlat
-	sort_focus.border_color = Color(0.92, 0.74, 0.28, 0.98)
-	sort_focus.set_border_width_all(3)
-	sort_btn.add_theme_stylebox_override("normal", sort_normal)
-	sort_btn.add_theme_stylebox_override("hover", sort_hover)
-	sort_btn.add_theme_stylebox_override("pressed", sort_pressed)
-	sort_btn.add_theme_stylebox_override("focus", sort_focus)
 	var sort_arrow: Texture2D = sort_btn.get_theme_icon("arrow", "OptionButton")
 	if sort_arrow != null:
 		var arrow_img: Image = sort_arrow.get_image()
@@ -324,36 +347,43 @@ func _build_ui() -> void:
 			sort_btn.add_theme_icon_override("arrow", big_arrow)
 	sort_btn.add_theme_constant_override("arrow_margin", 14)
 	sort_btn.add_theme_color_override("font_color", Color(0.95, 0.82, 0.58))
+	InventoryCardStyleClass.apply_button(sort_btn)
 	var sort_popup: PopupMenu = sort_btn.get_popup()
 	sort_popup.add_theme_font_size_override("font_size", 30)
 	sort_popup.add_theme_stylebox_override("panel", _make_panel_style(Color(0.68, 0.52, 0.18, 0.92), Color(0.05, 0.05, 0.08, 0.98), 10, 2))
 	filter_row.add_child(sort_btn)
 
 	var scroll := ScrollContainer.new()
+	scroll.name = "InventoryScroll"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	stash_box.add_child(scroll)
+	_stash_scroll = scroll
 
 	_stash_grid = GridContainer.new()
-	_stash_grid.columns = clampi(int(floor(cw / 208.0)), 3, 6)
+	_stash_grid.set_meta("accessibility_no_scale", true)
+	_stash_grid.columns = _stash_column_count(float(SettingsStore.load_all().get("ui_scale", 1.0)))
 	_stash_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_stash_grid.add_theme_constant_override("h_separation", 12)
 	_stash_grid.add_theme_constant_override("v_separation", 12)
-	_stash_grid.custom_minimum_size = Vector2(cw - 6.0, 0.0)
+	_stash_grid.custom_minimum_size = Vector2(maxf(0.0, cw - 34.0), 0.0)
 	scroll.add_child(_stash_grid)
 
 	var bottom := HBoxContainer.new()
-	bottom.position = Vector2(mx, _view.y - 90)
-	bottom.size = Vector2(cw, 74)
+	bottom.name = "InventoryActionBar"
+	bottom.custom_minimum_size = Vector2(0, 78)
+	bottom.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_theme_constant_override("separation", 12)
-	add_child(bottom)
+	screen.add_child(bottom)
+	_action_bar = bottom
 
 	var back_btn := Button.new()
 	back_btn.text = "Cancel" if accessory_edit_mode else "Back"
-	back_btn.custom_minimum_size = Vector2(210, 74)
+	back_btn.custom_minimum_size = Vector2(0, 74)
+	back_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	back_btn.add_theme_font_size_override("font_size", 34)
-	_apply_button_skin(back_btn, Color(0.56, 0.40, 0.14, 0.9), Color(0.10, 0.08, 0.06), Color(0.95, 0.86, 0.70))
+	InventoryCardStyleClass.apply_button(back_btn)
 	back_btn.pressed.connect(func() -> void:
 		if accessory_edit_mode: edit_cancelled.emit()
 		else: back_to_select.emit()
@@ -363,21 +393,20 @@ func _build_ui() -> void:
 	var store_btn := Button.new()
 	store_btn.text = "Store"
 	store_btn.visible = not accessory_edit_mode
-	store_btn.custom_minimum_size = Vector2(200, 74)
+	store_btn.custom_minimum_size = Vector2(0, 74)
+	store_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	store_btn.add_theme_font_size_override("font_size", 30)
-	_apply_button_skin(store_btn, Color(0.56, 0.40, 0.14, 0.9), Color(0.10, 0.08, 0.06), Color(0.95, 0.86, 0.70))
+	InventoryCardStyleClass.apply_button(store_btn)
 	store_btn.pressed.connect(_open_store)
 	bottom.add_child(store_btn)
 
-	var bottom_fill := Control.new()
-	bottom_fill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bottom.add_child(bottom_fill)
-
 	var play_btn := Button.new()
 	play_btn.text = "Apply" if accessory_edit_mode else "Play"
-	play_btn.custom_minimum_size = Vector2(320, 74)
+	play_btn.custom_minimum_size = Vector2(0, 74)
+	play_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	play_btn.size_flags_stretch_ratio = 1.35
 	play_btn.add_theme_font_size_override("font_size", 36)
-	_apply_button_skin(play_btn, Color(0.98, 0.82, 0.14, 0.98), Color(0.42, 0.26, 0.08), Color(0.02, 0.02, 0.02), 3)
+	InventoryCardStyleClass.apply_button(play_btn, true)
 	play_btn.pressed.connect(func() -> void:
 		if accessory_edit_mode: edit_applied.emit()
 		else: _request_play()
@@ -452,7 +481,7 @@ func _show_combined_attributes() -> void:
 	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 22); panel.add_child(box)
 	var title := Label.new(); title.text = "ALL EQUIPPED ATTRIBUTES"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 42); title.add_theme_color_override("font_color", Color(1.0, 0.82, 0.34)); box.add_child(title)
 	var scroll := ScrollContainer.new(); scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL; box.add_child(scroll)
-	var label := Label.new(); label.text = "No attribute bonuses." if lines.is_empty() else "\n".join(lines); label.custom_minimum_size = Vector2(_view.x - 205, 0); label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; label.add_theme_font_size_override("font_size", 30); scroll.add_child(label)
+	var label := Label.new(); label.text = "No attribute bonuses." if lines.is_empty() else "\n".join(lines); label.custom_minimum_size = Vector2(_view.x - 205, 0); label.set_meta("accessibility_no_scale", true); label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; label.add_theme_font_size_override("font_size", 30); scroll.add_child(label)
 	var close := Button.new(); close.text = "Close"; close.custom_minimum_size = Vector2(0, 86); close.add_theme_font_size_override("font_size", 34); _apply_button_skin(close, Color(0.70, 0.52, 0.16, 0.95), Color(0.08, 0.08, 0.12), Color(0.98, 0.86, 0.58), 3); close.pressed.connect(layer.queue_free); box.add_child(close)
 
 func _process(delta: float) -> void:
@@ -462,13 +491,9 @@ func _process(delta: float) -> void:
 		_update_key_info()
 
 func _make_slot_button() -> Button:
-	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(0, 232)
+	var btn := RewardItemCardClass.new() as Button
+	btn.custom_minimum_size = Vector2(0, 300)
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	btn.add_theme_font_size_override("font_size", 1)
-	btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	btn.clip_text = true
 	return btn
 
 func _refresh_slots() -> void:
@@ -480,92 +505,19 @@ func _refresh_slots() -> void:
 		_refresh_slot_card(_artifact_slot_btns[i], "artifact", i, aa)
 	_refresh_equipped_counts()
 
-func _refresh_slot_card(btn: Button, item_type: String, slot: int, item: Variant) -> void:
-	for child in btn.get_children():
-		child.queue_free()
-
-	var wrap := MarginContainer.new()
-	wrap.set_anchors_preset(Control.PRESET_FULL_RECT)
-	wrap.offset_left = 10
-	wrap.offset_top = 10
-	wrap.offset_right = -10
-	wrap.offset_bottom = -10
-	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	btn.add_child(wrap)
-
-	var body := HBoxContainer.new()
-	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	body.add_theme_constant_override("separation", 10)
-	wrap.add_child(body)
-
+func _refresh_slot_card(btn: Button, item_type: String, _slot: int, item: Variant) -> void:
 	var has_item: bool = item != null and typeof(item) == TYPE_DICTIONARY
 	if not has_item:
-		var empty_labels := VBoxContainer.new()
-		empty_labels.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		empty_labels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		body.add_child(empty_labels)
-
-		var empty_title := Label.new()
-		empty_title.text = "Empty Slot"
-		empty_title.add_theme_font_size_override("font_size", 34)
-		empty_title.add_theme_color_override("font_color", Color(0.70, 0.66, 0.58))
-		empty_labels.add_child(empty_title)
-
-		var empty_desc := Label.new()
-		empty_desc.text = "Equip a %s to activate this slot." % item_type
-		empty_desc.autowrap_mode = TextServer.AUTOWRAP_WORD
-		empty_desc.add_theme_font_size_override("font_size", 24)
-		empty_desc.add_theme_color_override("font_color", Color(0.58, 0.54, 0.48))
-		empty_labels.add_child(empty_desc)
-
-		var empty_style := _make_panel_style(Color(0.44, 0.34, 0.16, 0.85), Color(0.04, 0.05, 0.08, 0.95), 14, 2)
-		btn.add_theme_stylebox_override("normal", empty_style)
-		btn.add_theme_stylebox_override("hover", empty_style)
-		btn.add_theme_stylebox_override("pressed", empty_style)
+		btn.call("configure", item_type, {"name":"Empty %s Slot" % item_type.capitalize(), "rarity":"common", "tier":0}, {"empty":true, "equipped_slot":true}, 1, 0, true, false, "story_loadout")
 		return
-
 	var data: Dictionary = item as Dictionary
-	var rarity: String = String(data.get("rarity", "common")).to_lower()
-	var rarity_col: Color = _rarity_color(rarity)
-	var card_style := _make_panel_style(Color(rarity_col.r, rarity_col.g, rarity_col.b, 0.92), Color(0.04, 0.05, 0.09, 0.97), 14, 2)
-	var hover_style := card_style.duplicate() as StyleBoxFlat
-	hover_style.bg_color = card_style.bg_color.lightened(0.08)
-	btn.add_theme_stylebox_override("normal", card_style)
-	btn.add_theme_stylebox_override("hover", hover_style)
-	btn.add_theme_stylebox_override("pressed", card_style)
+	btn.call("configure", item_type, data, {"equipped":true, "equipped_slot":true}, 1, 0, true, false, "story_loadout")
 
-	var content := VBoxContainer.new()
-	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_theme_constant_override("separation", 6)
-	body.add_child(content)
-
-	var top := HBoxContainer.new()
-	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_child(top)
-
-	var tier_lbl := Label.new()
-	tier_lbl.text = "T%d" % int(data.get("tier", 1))
-	tier_lbl.add_theme_font_size_override("font_size", 24)
-	tier_lbl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.74))
-	top.add_child(tier_lbl)
-
-	var item_name := Label.new()
-	item_name.text = String(data.get("name", item_type.capitalize()))
-	item_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	item_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	item_name.add_theme_font_size_override("font_size", 20)
-	item_name.add_theme_color_override("font_color", Color(0.90, 0.82, 0.68))
-	top.add_child(item_name)
-
-	var icon_rect := TextureRect.new()
-	icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon_rect.custom_minimum_size = Vector2(0, 164)
-	icon_rect.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	icon_rect.texture = RingStore.ring_icon(data) if item_type == "ring" else _artifact_icon(data)
-	content.add_child(icon_rect)
+func _stash_column_count(ui_scale: float) -> int:
+	var safe := SettingsStore.safe_area(_view)
+	var usable_width := maxf(1.0, safe.size.x - 54.0)
+	var target_width := 290.0 * clampf(ui_scale, 0.8, 1.2)
+	return clampi(floori(usable_width / target_width), 2, 3)
 
 func _equipped_count(equipped: Dictionary) -> int:
 	var count: int = 0
@@ -695,20 +647,16 @@ func _item_stat_lines(item_type: String, data: Dictionary, max_lines: int = 3) -
 		if not special_lines.is_empty():
 			for s in special_lines:
 				lines.append(s)
-		var desc_text: String = String(data.get("desc", "")).strip_edges()
-		if not desc_text.is_empty():
-			var raw_lines: PackedStringArray = desc_text.split("\n", false)
-			for raw in raw_lines:
-				var line_text: String = String(raw).strip_edges()
-				if not line_text.is_empty():
-					lines.append("✦ %s" % line_text)
 		else:
 			var effects: Dictionary = data.get("effects", {}) as Dictionary
-			for key in effects.keys():
-				var stat_key: String = String(key)
-				var stat_value: float = float(effects[key])
-				var text_value: String = _format_stat_value(stat_key, stat_value)
-				lines.append("%s %s %s" % [_stat_icon(stat_key), text_value, _pretty_stat_label(stat_key)])
+			if not effects.is_empty():
+				lines.append_array(RewardPresentationClass.item_effect_lines("artifact", data, max_lines))
+			else:
+				var desc_text: String = String(data.get("desc", "")).strip_edges()
+				for raw in desc_text.split("\n", false):
+					var line_text: String = String(raw).strip_edges()
+					if not line_text.is_empty():
+						lines.append("✦ %s" % line_text)
 
 	if lines.is_empty():
 		lines.append("✦ %s" % (data.get("desc", "No bonus") as String))
@@ -874,14 +822,7 @@ func _update_filter_buttons() -> void:
 		var btn: Button = _filter_btns[key] as Button
 		if btn == null:
 			continue
-		if key == _filter:
-			var active_style := _make_panel_style(Color(0.90, 0.70, 0.24, 0.98), Color(0.24, 0.17, 0.05), 12, 2)
-			_apply_button_style_states(btn, active_style)
-			btn.add_theme_color_override("font_color", Color(1.0, 0.92, 0.72))
-		else:
-			var idle_style := _make_panel_style(Color(0.54, 0.42, 0.18, 0.90), Color(0.05, 0.05, 0.08), 12, 2)
-			_apply_button_style_states(btn, idle_style)
-			btn.add_theme_color_override("font_color", Color(0.86, 0.74, 0.52))
+		InventoryCardStyleClass.apply_button(btn, key == _filter)
 
 func _update_key_info() -> void:
 	if _key_info_lbl == null:
@@ -967,23 +908,20 @@ func _rebuild_stash() -> void:
 		var item_type: String = row_data["type"] as String
 		var data: Dictionary = row_data["data"] as Dictionary
 		var count: int = int(row_data.get("count", 1))
-		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(0, 286)
+		var merge_progress_count := RingStore.count_merge_matches(_rings, data) if item_type == "ring" else 0
+		var state_flags := {
+			"duplicate": item_type == "ring" and count > 1,
+			"merge_ready": item_type == "ring" and count >= 3 and String(data.get("rarity", "common")).to_lower() != "legendary",
+		}
+		var btn := RewardItemCardClass.new()
+		btn.configure(item_type, data, state_flags, count, merge_progress_count, true, false, "story_loadout")
+		btn.custom_minimum_size = Vector2(0, 350)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.add_theme_font_size_override("font_size", 1)
-		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.clip_text = true
-		btn.text = ""
 		# Allow drag gestures to bubble to ScrollContainer while keeping tap-to-open.
 		btn.mouse_filter = Control.MOUSE_FILTER_PASS
-		btn.add_child(_build_stash_card_content(item_type, data, count))
-
-		var disabled: bool = false
-		btn.disabled = disabled
-		_style_stash_card(btn, item_type, data, disabled)
-		if not disabled:
-			btn.pressed.connect(func() -> void: _show_item_action_popup(item_type, data, false, -1, count))
+		btn.pressed.connect(func() -> void: _show_item_action_popup(item_type, data, false, -1, count))
 		_stash_grid.add_child(btn)
+	SettingsStore.apply_ui_scale(_stash_grid, float(SettingsStore.load_all().get("ui_scale", 1.0)))
 
 func _append_grouped_stash_item(grouped: Dictionary, item_type: String, data: Dictionary) -> void:
 	var item_id: String = String(data.get("id", ""))
@@ -1145,6 +1083,7 @@ func _artifact_icon(artifact: Dictionary) -> Texture2D:
 
 func _show_item_action_popup(item_type: String, data: Dictionary, from_equipped: bool, slot: int, stash_count: int) -> void:
 	_close_item_action_popup()
+	_item_action_in_progress = false
 	var layer := CanvasLayer.new()
 	layer.layer = 90
 	add_child(layer)
@@ -1159,6 +1098,7 @@ func _show_item_action_popup(item_type: String, data: Dictionary, from_equipped:
 
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(min(980.0, view.x - 70.0), 0.0)
+	panel.set_meta("accessibility_no_scale", true)
 	panel.position = Vector2((view.x - panel.custom_minimum_size.x) * 0.5, view.y * 0.16)
 	panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.90, 0.68, 0.20, 0.98), Color(0.03, 0.04, 0.08, 0.99), 18, 3))
 	layer.add_child(panel)
@@ -1239,7 +1179,7 @@ func _show_item_action_popup(item_type: String, data: Dictionary, from_equipped:
 	info_col.add_child(name_lbl)
 
 	var type_lbl := Label.new()
-	type_lbl.text = "%s %s" % [String(data.get("rarity", "common")).capitalize(), item_type.capitalize()]
+	type_lbl.text = "%s  ·  %s" % [RewardPresentationClass.rarity_label(data.get("rarity", "common")), item_type.to_upper()]
 	type_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	type_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 	type_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1258,6 +1198,24 @@ func _show_item_action_popup(item_type: String, data: Dictionary, from_equipped:
 		stat_lbl.add_theme_font_size_override("font_size", 42)
 		stat_lbl.add_theme_color_override("font_color", Color(0.97, 0.90, 0.72))
 		info_col.add_child(stat_lbl)
+
+	var comparison_lines := _equipped_comparison_lines(item_type, data)
+	if not comparison_lines.is_empty():
+		var comparison := VBoxContainer.new()
+		comparison.add_theme_constant_override("separation", 4)
+		info_col.add_child(comparison)
+		var comparison_title := Label.new()
+		comparison_title.text = "NEW  /  EQUIPPED"
+		comparison_title.add_theme_font_size_override("font_size", 22)
+		comparison_title.add_theme_color_override("font_color", Color("acd5ff"))
+		comparison.add_child(comparison_title)
+		for comparison_text in comparison_lines:
+			var comparison_label := Label.new()
+			comparison_label.text = comparison_text
+			comparison_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			comparison_label.add_theme_font_size_override("font_size", 20)
+			comparison_label.add_theme_color_override("font_color", Color("d7e8ec"))
+			comparison.add_child(comparison_label)
 
 	var sep := ColorRect.new()
 	sep.color = Color(0.66, 0.50, 0.18, 0.8)
@@ -1299,11 +1257,16 @@ func _show_item_action_popup(item_type: String, data: Dictionary, from_equipped:
 		root.add_child(merge_note)
 
 		merge_btn.pressed.connect(func() -> void:
+			if _item_action_in_progress:
+				return
+			_item_action_in_progress = true
 			if is_legendary_ring:
 				_info_lbl.text = "Legendary rings cannot be merged."
+				_item_action_in_progress = false
 				return
 			if _ring_merge_count_in_stash(data) < 3:
 				_info_lbl.text = "Need 3 ring of same tier and same type to merge."
+				_item_action_in_progress = false
 				return
 			var merged: Dictionary = RingStore.merge_matching_from_stash(account_username, data)
 			if merged.is_empty():
@@ -1317,6 +1280,9 @@ func _show_item_action_popup(item_type: String, data: Dictionary, from_equipped:
 		)
 
 	equip_btn.pressed.connect(func() -> void:
+		if _item_action_in_progress:
+			return
+		_item_action_in_progress = true
 		if _is_item_currently_equipped(item_type, data):
 			var eq_slot: int = _find_equipped_slot(item_type, data)
 			if eq_slot >= 0:
@@ -1337,6 +1303,7 @@ func _show_item_action_popup(item_type: String, data: Dictionary, from_equipped:
 	_apply_button_style_states(close_btn, _make_panel_style(Color(0.52, 0.42, 0.20, 0.90), Color(0.08, 0.08, 0.08, 0.98), 10, 2))
 	root.add_child(close_btn)
 	close_btn.pressed.connect(_close_item_action_popup)
+	SettingsStore.apply_ui_scale(layer, float(SettingsStore.load_all().get("ui_scale", 1.0)))
 
 func _show_replace_slot_popup(item_type: String, data: Dictionary) -> void:
 	_close_item_action_popup()
@@ -1354,6 +1321,7 @@ func _show_replace_slot_popup(item_type: String, data: Dictionary) -> void:
 
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(min(760.0, view.x - 90.0), 0.0)
+	panel.set_meta("accessibility_no_scale", true)
 	panel.position = Vector2((view.x - panel.custom_minimum_size.x) * 0.5, view.y * 0.28)
 	panel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.88, 0.66, 0.20, 0.96), Color(0.05, 0.06, 0.09, 0.98), 16, 2))
 	layer.add_child(panel)
@@ -1432,6 +1400,40 @@ func _close_item_action_popup() -> void:
 	if _item_popup_layer != null and is_instance_valid(_item_popup_layer):
 		_item_popup_layer.queue_free()
 	_item_popup_layer = null
+	_item_action_in_progress = false
+
+func _equipped_comparison_lines(item_type: String, data: Dictionary) -> Array[String]:
+	var equipped: Dictionary = _rings_equipped if item_type == "ring" else _artifacts_equipped
+	var comparison_item: Dictionary = {}
+	if item_type == "ring":
+		var attr := String(data.get("attr", ""))
+		for slot_index in 2:
+			var candidate = equipped.get("slot_%d" % slot_index, null)
+			if candidate != null and typeof(candidate) == TYPE_DICTIONARY and String((candidate as Dictionary).get("attr", "")) == attr:
+				comparison_item = candidate as Dictionary
+				break
+	if comparison_item.is_empty():
+		for slot_index in 2:
+			var candidate = equipped.get("slot_%d" % slot_index, null)
+			if candidate != null and typeof(candidate) == TYPE_DICTIONARY:
+				comparison_item = candidate as Dictionary
+				break
+	if comparison_item.is_empty() or String(comparison_item.get("id", "")) == String(data.get("id", "")):
+		return []
+	var new_effect := RewardPresentationClass.primary_effect(item_type, data)
+	var equipped_effect := RewardPresentationClass.primary_effect(item_type, comparison_item)
+	if item_type == "ring" and String(data.get("attr", "")) == String(comparison_item.get("attr", "")):
+		var delta := float(data.get("value", 0.0)) - float(comparison_item.get("value", 0.0))
+		var delta_text := "=" if is_zero_approx(delta) else ("↑" if delta > 0.0 else "↓")
+		return [
+			"%s  %s" % [delta_text, new_effect],
+			"Equipped: %s · %s" % [String(comparison_item.get("name", "Ring")), equipped_effect],
+		]
+	return [
+		"BUILD CHOICE · effects are not directly comparable",
+		"New: %s" % new_effect,
+		"Equipped: %s · %s" % [String(comparison_item.get("name", item_type.capitalize())), equipped_effect],
+	]
 
 func _is_item_currently_equipped(item_type: String, data: Dictionary) -> bool:
 	var item_id: String = String(data.get("id", ""))

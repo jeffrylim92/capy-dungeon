@@ -6,6 +6,8 @@ signal section_selected(section_id: String)
 
 const BACKGROUND: Texture2D = preload("res://assets/backgrounds/bg_camp_clearing.png")
 const CAMP_HEIGHT := 720.0
+const LABEL_SIZE := Vector2(260.0, 112.0)
+const LABEL_EDGE_PADDING := 8.0
 const CHARACTER_IDS: Array[String] = [
 	"capy_zoomer", "capy_chef", "capy_swamp", "capy_brown",
 	"capy_wizard", "capy_archer", "capy_assassin",
@@ -39,6 +41,7 @@ func setup(profile: Dictionary, username: String, resident_state: Dictionary = {
 	_username = username
 	_saved_residents = resident_state.duplicate(true)
 	custom_minimum_size = Vector2(0, CAMP_HEIGHT)
+	set_meta("accessibility_no_scale", true)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	clip_contents = true
 	_build_landmarks()
@@ -109,26 +112,28 @@ func _add_facility(id: String, label_text: String, anchor: Vector2, hotspot_size
 	hotspot.pressed.connect(func() -> void: section_selected.emit(captured_id))
 	hotspot.set_meta("anchor", anchor)
 	add_child(hotspot)
-	_add_building_label("FacilityLabel_%s" % id, label_text, anchor, hotspot_size.y - 2.0)
+	_add_building_label("FacilityLabel_%s" % id, label_text, anchor, hotspot_size.y - 2.0, hotspot_size.x * 0.5)
 
 func _alpha_click_mask(texture: Texture2D) -> BitMap:
 	var mask := BitMap.new()
 	mask.create_from_image_alpha(texture.get_image(), 0.12)
 	return mask
 
-func _add_building_label(node_name: String, text: String, anchor: Vector2, y_offset: float = 84.0) -> void:
+func _add_building_label(node_name: String, text: String, anchor: Vector2, y_offset: float = 84.0, center_offset: float = 84.0) -> void:
 	var label := Label.new()
 	label.name = node_name
 	label.text = text
-	label.position = Vector2(anchor.x * 720.0 - 5.0, anchor.y * CAMP_HEIGHT + y_offset)
-	label.size = Vector2(205, 76)
+	label.position = Vector2(clampf(anchor.x * 720.0 + center_offset - LABEL_SIZE.x * 0.5, LABEL_EDGE_PADDING, 720.0 - LABEL_SIZE.x - LABEL_EDGE_PADDING), anchor.y * CAMP_HEIGHT + y_offset)
+	label.size = LABEL_SIZE
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.add_theme_font_size_override("font_size", 22)
 	label.add_theme_color_override("font_color", Color(1.0, 0.90, 0.66))
 	label.add_theme_color_override("font_outline_color", Color(0.06, 0.03, 0.01))
 	label.add_theme_constant_override("outline_size", 5)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.set_meta("anchor", anchor)
+	label.set_meta("center_offset", center_offset)
 	add_child(label)
 
 func _building_details(level: int) -> String:
@@ -205,15 +210,14 @@ func _process(delta: float) -> void:
 		building_index = ids.find(id)
 		if building_index >= 0:
 			building.position.x = BUILDING_POSITIONS[building_index].x * width
-	for positioned_node in find_children("Facility*", "Control", false, false):
+	for positioned_node in find_children("Facility_*", "Control", false, false):
 		if positioned_node.has_meta("anchor"):
 			var anchor := positioned_node.get_meta("anchor") as Vector2
 			positioned_node.position.x = anchor.x * width
 	for label_node in find_children("Label_*", "Label", false, false):
-		var label_id := String(label_node.name).trim_prefix("Label_")
-		var label_index := ProgressionStore.UPGRADES.keys().find(label_id)
-		if label_index >= 0:
-			label_node.position.x = BUILDING_POSITIONS[label_index].x * width - 5.0
+		_position_camp_label(label_node as Label, width)
+	for label_node in find_children("FacilityLabel_*", "Label", false, false):
+		_position_camp_label(label_node as Label, width)
 	for decor_node in find_children("Decor_*", "Label", false, false):
 		var anchor := decor_node.get_meta("anchor") as Vector2
 		decor_node.position.x = anchor.x * width + 104.0
@@ -240,6 +244,11 @@ func _process(delta: float) -> void:
 		if node is AnimatedSprite2D:
 			(node as AnimatedSprite2D).speed_scale = clampf(float(resident["speed"]) / 18.0, 0.0, 1.4)
 	queue_redraw()
+
+func _position_camp_label(label: Label, width: float) -> void:
+	var anchor := label.get_meta("anchor") as Vector2
+	var center_offset := float(label.get_meta("center_offset", 84.0))
+	label.position.x = clampf(anchor.x * width + center_offset - label.size.x * 0.5, LABEL_EDGE_PADDING, width - label.size.x - LABEL_EDGE_PADDING)
 
 func _draw() -> void:
 	var width := maxf(size.x, 720.0)

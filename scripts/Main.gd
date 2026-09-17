@@ -12,6 +12,7 @@ const STORY_SCENE := preload("res://scenes/StorySelect.tscn")
 const STORY_INVENTORY_SCENE := preload("res://scenes/StoryInventory.tscn")
 const HISTORY_SCENE := preload("res://scenes/History.tscn")
 const COLLECTIBLES_SCENE := preload("res://scenes/Collectibles.tscn")
+const StoryBossPracticeClass := preload("res://scripts/story/StoryBossPractice.gd")
 const PROFILE_PATH := "user://profile.json"
 
 const HEALTHCHECK_URL: String = "https://capy-dungeon.onrender.com/health"
@@ -29,16 +30,19 @@ const BGM_LOBBY_VOLUME_DB: float = 0.0
 const BGM_DUNGEON_VOLUME_DB: float = -14.0
 const HISTORY_SYNC_COOLDOWN_MS: int = 45000
 const SESSION_CHECK_INTERVAL: float = 5.0
-const IOS_MAX_FPS: int = 60
 
 var _account: Dictionary = {}
 var _last_character: CharacterData = null
 var _story_stage: Dictionary = {}
 var _is_story_test_run: bool = false
+var _story_run_context: String = "story"
 var _story_test_stage_id: String = ""
 var _open_story_test_selector: bool = false
+var _open_boss_practice: bool = false
+var _boss_practice_return_config: Dictionary = {}
 var _dungeon_mode: String = ""
 var _loadout_snapshot: Dictionary = {}
+var _story_profile_before_run: Dictionary = {}
 
 var _startup_gate_passed: bool = false
 var _gate_mode: String = "none"
@@ -87,8 +91,8 @@ func _ready() -> void:
 		_runtime_net_timer.start()
 
 func _configure_mobile_performance() -> void:
-	if OS.get_name() == "iOS" and (Engine.max_fps <= 0 or Engine.max_fps > IOS_MAX_FPS):
-		Engine.max_fps = IOS_MAX_FPS
+	if OS.get_name() in ["Android", "iOS"]:
+		Engine.max_fps = SettingsStore.frame_rate_cap(SettingsStore.load_all())
 
 func _should_enforce_online_gate() -> bool:
 	# Enforce startup connectivity/update gate on mobile platforms.
@@ -862,8 +866,12 @@ func _on_logged_in(account: Dictionary) -> void:
 
 func _show_lobby(open_play_hub: bool = false) -> void:
 	_is_story_test_run = false
+	_story_run_context = "story"
 	_story_test_stage_id = ""
+	_story_profile_before_run.clear()
 	_open_story_test_selector = false
+	_open_boss_practice = false
+	_boss_practice_return_config.clear()
 	_sync_cloud_progress()
 	_clear_children()
 	_play_music(BGM_LOBBY_PATH, BGM_LOBBY_VOLUME_DB)
@@ -881,6 +889,9 @@ func _show_lobby(open_play_hub: bool = false) -> void:
 		_show_select()
 	)
 	lobby.story_requested.connect(_show_story)
+	lobby.continue_story_requested.connect(func(stage_index: int) -> void: _show_story(false, stage_index, true))
+	lobby.story_reward_requested.connect(func(chapter_number: int) -> void: _show_story(false, -1, false, chapter_number))
+	lobby.build_requested.connect(_show_home_build)
 	lobby.cloud_sync_requested.connect(_sync_cloud_progress)
 	lobby.history_requested.connect(_show_history)
 	lobby.collectibles_requested.connect(_show_collectibles)
@@ -890,40 +901,79 @@ func _show_lobby(open_play_hub: bool = false) -> void:
 	)
 	add_child(lobby)
 
-func _show_story(advance_after_completion: bool = false) -> void:
+func _show_story(advance_after_completion: bool = false, requested_stage_index: int = -1, open_stage_details: bool = false, open_mastery_chapter: int = 0) -> void:
 	if not _is_story_test_run:
 		_sync_cloud_progress()
 	elif not _story_test_stage_id.is_empty():
 		var exit_stage: Dictionary = StoryStore.stage(StoryStore.stage_index(_story_test_stage_id))
-		print("[Story][TEST][C%dS%d][0.00s] Test mode exited" % [int(exit_stage.chapter), int(exit_stage.chapter_stage)])
+		print("[Story][TEST][%s][C%dS%d][0.00s] Test mode exited" % [StoryStore.difficulty_name(str(_story_stage.get("difficulty", "normal"))).to_upper(), int(exit_stage.chapter), int(exit_stage.chapter_stage)])
 	var initial_stage_index := -1
-	if not _story_stage.is_empty() and not _is_story_test_run:
+	var recent_progress_event: Dictionary = {}
+	if not _story_stage.is_empty() and not _is_story_test_run and _story_run_context == "story":
 		var completed_index := StoryStore.stage_index(str(_story_stage.get("id", "")))
 		var profile := StoryStore.load_profile(str(_account.get("username", "")))
+		if advance_after_completion and not _story_profile_before_run.is_empty():
+			var completed_stage_id := str(_story_stage.get("id", ""))
+			var previous_mastery := StoryStore.stage_mastery(_story_profile_before_run, completed_stage_id)
+			var current_mastery := StoryStore.stage_mastery(profile, completed_stage_id)
+			var previous_difficulty := StoryStore.highest_cleared_difficulty(_story_profile_before_run, completed_stage_id)
+			var current_difficulty := StoryStore.highest_cleared_difficulty(profile, completed_stage_id)
+			var completed_chapter_number := int(_story_stage.get("chapter", 1))
+			var previous_chapter_mastery := StoryStore.chapter_mastery(_story_profile_before_run, completed_chapter_number)
+			var current_chapter_mastery := StoryStore.chapter_mastery(profile, completed_chapter_number)
+			var new_mastery_rewards := StoryStore.newly_available_mastery_rewards(profile, completed_chapter_number, previous_chapter_mastery)
+			recent_progress_event = {
+				"stage_id":completed_stage_id,
+				"chapter":completed_chapter_number,
+				"first_clear":completed_stage_id not in (_story_profile_before_run.get("cleared", []) as Array) and completed_stage_id in (profile.get("cleared", []) as Array),
+				"mastery_gained":maxi(0, current_mastery - previous_mastery),
+				"difficulty_improved":current_difficulty > previous_difficulty,
+				"difficulty":StoryStore.highest_cleared_difficulty_name(profile, completed_stage_id),
+				"chapter_complete":not StoryStore.is_chapter_complete(_story_profile_before_run, completed_chapter_number) and StoryStore.is_chapter_complete(profile, completed_chapter_number),
+				"story_complete":not bool(_story_profile_before_run.get("story_complete", false)) and bool(profile.get("story_complete", false)),
+				"chapter_mastery":current_chapter_mastery,
+				"chapter_mastered":previous_chapter_mastery < 15 and current_chapter_mastery >= 15,
+				"mastery_rewards_available":new_mastery_rewards.size(),
+				"mastery_reward_ids":new_mastery_rewards,
+			}
 		var completed_chapter := int(_story_stage.get("chapter", 1))
 		var completed_chapter_stage := int(_story_stage.get("chapter_stage", 1))
 		if not advance_after_completion or (completed_chapter_stage == 5 and not StoryStore.is_chapter_claimed(profile, completed_chapter)):
 			initial_stage_index = completed_index
 		else:
 			initial_stage_index = mini(completed_index + 1, StoryStore.stage_count() - 1)
+	if requested_stage_index >= 0:
+		initial_stage_index = clampi(requested_stage_index, 0, StoryStore.stage_count() - 1)
 	_story_stage = {}
 	_is_story_test_run = false
+	_story_run_context = "story"
 	_story_test_stage_id = ""
 	_dungeon_mode = ""
 	_clear_children()
 	var story := STORY_SCENE.instantiate()
 	story.account_username = String(_account.get("username", ""))
 	story.initial_stage_index = initial_stage_index
+	story.open_stage_details_on_ready = open_stage_details
+	story.initial_mastery_chapter = open_mastery_chapter
 	story.open_dev_test_selector_on_ready = _open_story_test_selector
+	story.open_boss_practice_on_ready = _open_boss_practice
+	story.initial_practice_config = _boss_practice_return_config.duplicate(true)
+	story.recent_progress_event = recent_progress_event
+	_story_profile_before_run.clear()
 	_open_story_test_selector = false
+	_open_boss_practice = false
+	_boss_practice_return_config.clear()
 	story.stage_selected.connect(func(stage: Dictionary) -> void:
 		_is_story_test_run = false
+		_story_run_context = "story"
 		_story_test_stage_id = ""
+		_story_profile_before_run = StoryStore.load_profile(str(_account.get("username", ""))).duplicate(true)
 		_story_stage = stage
 		_show_select()
 	)
 	story.test_stage_selected.connect(_launch_story_test_stage)
-	story.back_requested.connect(_show_lobby.bind(true))
+	story.practice_selected.connect(_launch_boss_practice)
+	story.back_requested.connect(_show_lobby)
 	story.cloud_sync_requested.connect(_sync_cloud_progress)
 	add_child(story)
 
@@ -935,9 +985,40 @@ func _launch_story_test_stage(stage: Dictionary) -> void:
 	if stage_id.is_empty():
 		push_warning("Story test launch rejected because the stage ID is missing.")
 		return
-	_story_stage = StoryStore.stage(StoryStore.stage_index(stage_id)).duplicate(true)
+	var difficulty_id := StoryStore.normalize_difficulty_id(str(stage.get("difficulty", "normal")))
+	_story_stage = StoryStore.configure_run(StoryStore.stage(StoryStore.stage_index(stage_id)), difficulty_id, stage.get("mutators", []) as Array, {}, true)
+	_story_stage["dev_build_profile"] = str(stage.get("dev_build_profile", "current"))
+	_story_profile_before_run.clear()
 	_is_story_test_run = true
+	_story_run_context = "story_dev_test"
 	_story_test_stage_id = stage_id
+	_dungeon_mode = ""
+	_show_select()
+
+func _launch_boss_practice(stage: Dictionary) -> void:
+	var stage_id := str(stage.get("id", ""))
+	if str(stage.get("run_context", "")) != StoryBossPracticeClass.RUN_CONTEXT or not StoryBossPracticeClass.is_boss_stage(stage_id):
+		push_warning("Boss Practice launch rejected because the configuration is invalid.")
+		return
+	var profile := StoryStore.load_profile(str(_account.get("username", "")))
+	var configured := StoryBossPracticeClass.configure(
+		StoryStore.stage(StoryStore.stage_index(stage_id)),
+		str(stage.get("difficulty", "normal")),
+		stage.get("mutators", []) as Array,
+		profile,
+		str(stage.get("practice_phase", "full")),
+		str(stage.get("practice_brew", "stable")),
+		OS.is_debug_build()
+	)
+	if configured.is_empty():
+		push_warning("Boss Practice launch rejected by Story clear requirements.")
+		return
+	_story_stage = configured
+	_story_profile_before_run.clear()
+	_story_run_context = StoryBossPracticeClass.RUN_CONTEXT
+	_is_story_test_run = false
+	_story_test_stage_id = ""
+	_boss_practice_return_config = _story_stage.duplicate(true)
 	_dungeon_mode = ""
 	_show_select()
 
@@ -1228,6 +1309,41 @@ func _show_inventory(data: CharacterData) -> void:
 	inv.equipment_requested.connect(_edit_equipment_from_survival.bind(data))
 	add_child(inv)
 
+func _show_home_build(character_id: String) -> void:
+	var selected: CharacterData = null
+	var characters := CharacterLoader.load_all()
+	for candidate in characters:
+		if String(candidate.id) == character_id:
+			selected = candidate
+			break
+	if selected == null and not characters.is_empty():
+		selected = characters[0]
+	if selected == null:
+		_show_lobby()
+		return
+	var username := str(_account.get("username", ""))
+	_loadout_snapshot = {
+		"ring_stash":RingStore.load_stash(username).duplicate(true),
+		"rings":RingStore.load_equipped(username).duplicate(true),
+		"artifact_stash":ArtifactStore.load_stash(username).duplicate(true),
+		"artifacts":ArtifactStore.load_equipped(username).duplicate(true),
+	}
+	_clear_children()
+	var inv := INVENTORY_SCENE.instantiate()
+	inv.selected_character = selected
+	inv.account_username = username
+	inv.accessory_edit_mode = true
+	inv.edit_cancelled.connect(func() -> void:
+		RingStore.replace_loadout(username, _loadout_snapshot.ring_stash, _loadout_snapshot.rings)
+		ArtifactStore.replace_loadout(username, _loadout_snapshot.artifact_stash, _loadout_snapshot.artifacts)
+		_show_lobby()
+	)
+	inv.edit_applied.connect(func() -> void:
+		_sync_cloud_progress()
+		_show_lobby()
+	)
+	add_child(inv)
+
 func _edit_accessories_from_story(data: CharacterData) -> void:
 	var username := str(_account.get("username", ""))
 	_loadout_snapshot = {"ring_stash":RingStore.load_stash(username).duplicate(true), "rings":RingStore.load_equipped(username).duplicate(true), "artifact_stash":ArtifactStore.load_stash(username).duplicate(true), "artifacts":ArtifactStore.load_equipped(username).duplicate(true)}
@@ -1256,13 +1372,14 @@ func _start_match(data: CharacterData) -> void:
 	m.account_display_name = _profile_display_name_for(_account)
 	m.story_stage = _story_stage.duplicate(true)
 	m.is_story_test_run = _is_story_test_run and OS.is_debug_build()
+	m.run_context = _story_run_context
 	m.dungeon_mode = _dungeon_mode
 	m.match_ended.connect(_on_match_ended)
 	add_child(m)
 
 func _on_match_ended(next_action: String) -> void:
 	var username := str(_account.get("username", ""))
-	if not _is_story_test_run:
+	if not _is_story_test_run and _story_run_context == "story":
 		ArtifactStore.reconcile_loadout(username)
 		_sync_cloud_progress()
 	match next_action:
@@ -1272,7 +1389,11 @@ func _on_match_ended(next_action: String) -> void:
 			_show_story(true)
 		"story_test_retry":
 			if OS.is_debug_build() and _is_story_test_run and not _story_test_stage_id.is_empty() and _last_character != null:
-				_story_stage = StoryStore.stage(StoryStore.stage_index(_story_test_stage_id)).duplicate(true)
+				var retry_difficulty := str(_story_stage.get("difficulty", "normal"))
+				var retry_mutators: Array = (_story_stage.get("mutators", []) as Array).duplicate()
+				var retry_build_profile := str(_story_stage.get("dev_build_profile", "current"))
+				_story_stage = StoryStore.configure_run(StoryStore.stage(StoryStore.stage_index(_story_test_stage_id)), retry_difficulty, retry_mutators, {}, true)
+				_story_stage["dev_build_profile"] = retry_build_profile
 				_start_match(_last_character)
 			else:
 				push_warning("Story test retry rejected outside an active debug test run.")
@@ -1282,8 +1403,23 @@ func _on_match_ended(next_action: String) -> void:
 			_show_story()
 		"story_test_exit":
 			_show_story()
+		"boss_practice_retry":
+			if _story_run_context == "boss_practice" and _last_character != null and not _story_stage.is_empty():
+				_start_match(_last_character)
+			else:
+				_show_story()
+		"boss_practice_phase":
+			_open_boss_practice = true
+			_boss_practice_return_config = _story_stage.duplicate(true)
+			_show_story()
+		"boss_practice_choose":
+			_open_boss_practice = true
+			_boss_practice_return_config.clear()
+			_show_story()
+		"boss_practice_exit":
+			_show_story()
 		"dungeon":
-			_show_lobby(true)
+			_show_lobby()
 		"rematch":
 			if _last_character != null:
 				_start_match(_last_character)

@@ -10,6 +10,7 @@ signal edit_cancelled
 
 const CAMP_COIN_ICON := preload("res://assets/camp/resources/camp_coin.png")
 const FORGECORE_MATERIAL_ICON := preload("res://assets/camp/resources/forgecore_material.png")
+const InventoryCardStyleClass := preload("res://scripts/ui/InventoryCardStyle.gd")
 
 var selected_character: CharacterData
 var account_username := ""
@@ -155,7 +156,7 @@ func _add_stash_card(parent: GridContainer, gear_id: String, profile: Dictionary
 	var icon := TextureRect.new(); icon.texture = load("res://assets/story/equipment/%s.png" % gear_id) as Texture2D; icon.custom_minimum_size = Vector2(0, 205); icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; icon.mouse_filter = Control.MOUSE_FILTER_IGNORE; box.add_child(icon)
 	var type := Label.new(); type.text = _slot_name(String(gear.slot)); type.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; type.add_theme_font_size_override("font_size", 26); type.add_theme_color_override("font_color", Color(0.94, 0.85, 0.68)); box.add_child(type)
 	if StoryStore.is_equipped(profile, gear_id):
-		var badge := Label.new(); badge.text = "E"; badge.position = Vector2(270, 248); badge.size = Vector2(34, 34); badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; badge.add_theme_font_size_override("font_size", 25); badge.add_theme_color_override("font_color", Color(0.05, 0.03, 0.0)); badge.add_theme_stylebox_override("normal", _badge_style()); badge.mouse_filter = Control.MOUSE_FILTER_IGNORE; button.add_child(badge)
+		var badge := Label.new(); badge.text = "✓"; badge.tooltip_text = "Equipped"; badge.position = Vector2(270, 248); badge.size = Vector2(34, 34); badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; badge.add_theme_font_size_override("font_size", 25); badge.add_theme_color_override("font_color", Color(0.05, 0.03, 0.0)); badge.add_theme_stylebox_override("normal", _badge_style()); badge.mouse_filter = Control.MOUSE_FILTER_IGNORE; button.add_child(badge)
 	button.pressed.connect(_show_item.bind(gear_id)); parent.add_child(button)
 
 func _show_item(gear_id: String) -> void:
@@ -231,21 +232,16 @@ func _close_popup() -> void:
 	_popup = null
 
 func _panel_style() -> StyleBoxFlat:
-	var style := StyleBoxFlat.new(); style.bg_color = Color(0.03, 0.06, 0.08, 0.98); style.border_color = Color(0.86, 0.66, 0.22); style.set_border_width_all(3); style.corner_radius_top_left = 22; style.corner_radius_top_right = 22; style.corner_radius_bottom_left = 22; style.corner_radius_bottom_right = 22; style.content_margin_left = 26; style.content_margin_right = 26; style.content_margin_top = 24; style.content_margin_bottom = 24; return style
+	return InventoryCardStyleClass.panel_style()
 
 func _style_card(button: Button) -> void:
-	var normal := _panel_style(); normal.bg_color = Color(0.035, 0.04, 0.07, 0.98); normal.border_color = Color(0.92, 0.67, 0.18); normal.set_border_width_all(3); normal.content_margin_left = 4; normal.content_margin_right = 4; normal.content_margin_top = 4; normal.content_margin_bottom = 4
-	var hover := normal.duplicate() as StyleBoxFlat; hover.bg_color = Color(0.08, 0.09, 0.14, 1.0)
-	button.add_theme_stylebox_override("normal", normal); button.add_theme_stylebox_override("hover", hover); button.add_theme_stylebox_override("pressed", normal); button.add_theme_color_override("font_color", Color(0.94, 0.85, 0.68))
+	InventoryCardStyleClass.apply_card(button)
 
 func _badge_style() -> StyleBoxFlat:
-	var style := StyleBoxFlat.new(); style.bg_color = Color(1.0, 0.76, 0.18); style.corner_radius_top_left = 8; style.corner_radius_top_right = 8; style.corner_radius_bottom_left = 8; style.corner_radius_bottom_right = 8; return style
+	return InventoryCardStyleClass.badge_style()
 
 func _style_button(button: Button, primary: bool = false) -> void:
-	var normal := _lobby_button_box(Color(0.98, 0.72, 0.08) if primary else Color(0.14, 0.14, 0.22, 0.92), Color(0.72, 0.42, 0.0) if primary else Color(0.55, 0.55, 0.75, 0.75), 3 if primary else 2, 12 if primary else 7)
-	var hover := _lobby_button_box(Color(1.0, 0.82, 0.25) if primary else Color(0.22, 0.22, 0.35, 0.95), Color(0.72, 0.42, 0.0) if primary else Color(0.65, 0.65, 0.88, 0.85), 3 if primary else 2, 12 if primary else 7)
-	var pressed := _lobby_button_box(Color(0.80, 0.56, 0.03) if primary else Color(0.08, 0.08, 0.16, 0.95), Color(0.58, 0.32, 0.0) if primary else Color(0.45, 0.45, 0.65, 0.70), 3 if primary else 2, 5 if primary else 3)
-	button.add_theme_stylebox_override("normal", normal); button.add_theme_stylebox_override("hover", hover); button.add_theme_stylebox_override("pressed", pressed); button.add_theme_color_override("font_color", Color(0.10, 0.05, 0.0) if primary else Color(0.90, 0.90, 1.0)); button.focus_mode = Control.FOCUS_NONE
+	InventoryCardStyleClass.apply_button(button, primary)
 
 func _lobby_button_box(background: Color, border: Color, width: int, shadow: int) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new(); style.bg_color = background; style.border_color = border; style.set_border_width_all(width); style.corner_radius_top_left = 28; style.corner_radius_top_right = 28; style.corner_radius_bottom_left = 28; style.corner_radius_bottom_right = 28; style.shadow_color = Color(0, 0, 0, 0.38); style.shadow_size = shadow; style.shadow_offset = Vector2(0, 3); return style
+	return InventoryCardStyleClass.button_box(background, border, width, shadow)

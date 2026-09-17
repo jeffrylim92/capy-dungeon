@@ -7,6 +7,21 @@ const ChapterTwoStageControllerClass = preload("res://scripts/story/ChapterTwoSt
 const ChapterThreeStageControllerClass = preload("res://scripts/story/ChapterThreeStageController.gd")
 const ChapterFourStageControllerClass = preload("res://scripts/story/ChapterFourStageController.gd")
 const ChapterFiveStageControllerClass = preload("res://scripts/story/ChapterFiveStageController.gd")
+const StoryBuildCapabilitiesClass = preload("res://scripts/story/StoryBuildCapabilities.gd")
+const StoryDamageProtectionClass = preload("res://scripts/story/StoryDamageProtection.gd")
+const StoryEnemyRolesClass = preload("res://scripts/story/StoryEnemyRoles.gd")
+const StoryBossPresentationClass = preload("res://scripts/story/StoryBossPresentation.gd")
+const StoryBossPracticeClass = preload("res://scripts/story/StoryBossPractice.gd")
+const StoryNarrativeClass = preload("res://scripts/story/StoryNarrative.gd")
+const StoryNarrativeRuntimeClass = preload("res://scripts/story/StoryNarrativeRuntime.gd")
+const StoryRunStatsClass = preload("res://scripts/story/StoryRunStats.gd")
+const StoryRunPresentationClass = preload("res://scripts/story/StoryRunPresentation.gd")
+const CombatFeedbackClass = preload("res://scripts/CombatFeedback.gd")
+const CombatReadabilityClass = preload("res://scripts/CombatReadability.gd")
+const SkillChoiceCardClass = preload("res://scripts/ui/SkillChoiceCard.gd")
+const SkillUIPresentationClass = preload("res://scripts/ui/SkillUIPresentation.gd")
+const RewardItemCardClass = preload("res://scripts/ui/RewardItemCard.gd")
+const RewardPresentationClass = preload("res://scripts/ui/RewardPresentation.gd")
 
 ## Vampire Survivors-style roguelite.
 ## Move to survive, skills auto-cast, kill monsters, level up, pick new skills.
@@ -19,6 +34,7 @@ var account_username: String = ""
 var account_cloud_id: String = ""
 var account_display_name: String = ""
 var is_story_test_run: bool = false
+var run_context: String = "story"
 
 # ─── Tuning constants ─────────────────────────────────────────────────────────
 const PLAYER_R:    float = 34.0
@@ -49,6 +65,8 @@ const HUD_UPDATE_INTERVAL: float = 0.10
 const ENEMY_HIT_IF: float = 0.28
 const ENEMY_SURVIVE_SPEEDUP_SEC: float = 5.0
 const ENEMY_SURVIVE_SPEEDUP_MULT: float = 1.10
+const ROLE_HAZARD_LIFE: float = 3.6
+const ROLE_PROJECTILE_MAX: int = 24
 const TARGET_SKILL_DAMAGE_MULT: float = 1.45
 const PROJECTILE_SKILL_DAMAGE_MULT: float = 1.25
 const SHOOTER_HOMING_LIFE: float = 4.2
@@ -61,6 +79,8 @@ const LAVA_LINE_ERUPT_TIME: float = 3.0
 const LAVA_CHARGE_TIME: float = 1.35
 const LAVA_CHARGE_TRAIL_LIFE: float = 5.0
 const BOSS_ARENA_HALF: Vector2 = Vector2(610.0, 424.0)
+const BOSS_TELEGRAPH_MAX: int = 36
+const BOSS_TRANSITION_FX_MAX: int = 10
 const ROOM_SPAN_WAVES: int = 4
 const STORY_KEY_DROP_START: float = 0.003
 const STORY_KEY_DROP_GROWTH_PER_SECOND: float = 0.0007
@@ -77,6 +97,19 @@ const OBJECTIVE_SAFE_PATH: String = "res://assets/story/objectives/coin_safe.png
 const OBJECTIVE_FORGE_PATH: String = "res://assets/story/objectives/forgecore_forge.png"
 const CHAPTER_ONE_EXTRACTION_PATH: String = "res://assets/story/objectives/chapter1_scout_extraction.png"
 const CHAPTER_ONE_ENERGY_SPORE_PATH: String = "res://assets/story/objectives/chapter1_energy_spore.png"
+const ENEMY_TEXTURE_PATHS := {
+	"normal":"res://assets/enemies/enemy_normal.png",
+	"normal_tank":"res://assets/enemies/enemy_tank.png",
+	"normal_fast":"res://assets/enemies/enemy_fast.png",
+	"teleporter_boss":"res://assets/bosses/boss_teleporter.png",
+	"shield_boss":"res://assets/bosses/boss_shield.png",
+	"shooter_boss":"res://assets/bosses/boss_shooter.png",
+	"lava_boss":"res://assets/bosses/boss_lava.png",
+	"abyss_gate_warden":"res://assets/bosses/boss_abyss_gate_warden.png",
+	"prism_triarch":"res://assets/bosses/boss_prism_triarch.png",
+	"blight_vine_tyrant":"res://assets/bosses/boss_blight_vine_tyrant.png",
+	"thunderforge_behemoth":"res://assets/bosses/boss_thunderforge_behemoth.png",
+}
 const CHAPTER_ONE_FEEDING_SAC_PATH: String = "res://assets/story/objectives/chapter1_feeding_sac.png"
 const CHAPTER_ONE_WATCHPATH_KEY_PATH: String = "res://assets/story/objectives/chapter1_watchpath_key.png"
 const CHAPTER_ONE_WATCHPATH_EXIT_PATH: String = "res://assets/story/objectives/chapter1_watchpath_exit.png"
@@ -810,11 +843,16 @@ var _skill_icon_cache: Dictionary = {}  # sid -> cropped Texture2D
 var _evolution_definition_cache: Dictionary = {}  # "skill:evolution" -> definition
 var _skill_greyscale_material: ShaderMaterial = null
 var _skill_hud_widgets: Dictionary = {}  # sid -> {reveal, cooldown_label, level_label, slot}
-const DAMAGE_POPUP_MAX: int = 120
+const DAMAGE_POPUP_MAX: int = 64
+const DAMAGE_POPUP_IOS_MAX: int = 42
 const DAMAGE_POPUP_LIFE: float = 0.62
 var _damage_popups: Array[Dictionary] = []
+var _damage_numbers_enabled: bool = true
+var _damage_number_mode: String = "all"
 var _hud_update_timer: float = 0.0
 var _draw_world_rect: Rect2 = Rect2()
+var _boss_telegraphs: Array[Dictionary] = []
+var _boss_transition_fx: Array[Dictionary] = []
 
 # ─── Progression ──────────────────────────────────────────────────────────────
 var _xp:      int   = 0
@@ -822,6 +860,8 @@ var _xp_next: int   = 50
 var _level:   int   = 1
 var _elapsed: float = 0.0
 var _kills:   int   = 0
+var _story_run_stats = StoryRunStatsClass.new()
+var _latest_story_run_record: Dictionary = {}
 
 # ─── Skills ───────────────────────────────────────────────────────────────────
 var _skills:    Array[Dictionary] = []
@@ -829,6 +869,12 @@ var _orb_angle: float             = 0.0
 
 # ─── Enemies  {pos,hp,max_hp,spd,r,dmg,col,iframes,kind} ────────────────────
 var _enemies:   Array[Dictionary] = []
+var _enemy_next_id: int = 1
+var _enemy_role_hazards: Array[Dictionary] = []
+var _enemy_role_projectiles: Array[Dictionary] = []
+var _enemy_role_composition_counter: int = 0
+var _enemy_role_control_immunity_t: float = 0.0
+var _enemy_role_slow_t: float = 0.0
 
 # ─── Wave system ─────────────────────────────────────────────────────────────
 var _wave:            int   = 0       # current wave number (1-indexed when active)
@@ -953,6 +999,22 @@ var _passive_list:     VBoxContainer
 var _passive_toggle_btn: Button
 var _passive_collapsed: bool = true
 var _passive_signature: String = ""
+var _story_boss_panel: Panel = null
+var _story_boss_fill: ColorRect = null
+var _story_boss_name_lbl: Label = null
+var _story_boss_status_lbl: Label = null
+var _hud_layer: CanvasLayer = null
+var _objective_hud_layer: CanvasLayer = null
+var _pause_layer: CanvasLayer = null
+var _ui_scale: float = 1.0
+var _objective_text_scale: float = 1.0
+var _hud_opacity: float = 1.0
+var _touch_control_scale: float = 1.0
+var _enhanced_hazard_patterns: bool = false
+var _color_independent_indicators: bool = true
+var _high_contrast_telegraphs: bool = false
+var _hud_safe_top: float = 0.0
+var _hud_safe_bottom: float = 0.0
 
 # ─── Touch input ──────────────────────────────────────────────────────────────
 var _touch_id:     int     = -1
@@ -980,6 +1042,9 @@ var _story_primary_complete: bool = false
 var _story_required_boss_defeated: bool = false
 var _story_required_target_survived: bool = false
 var _story_telemetry: StoryTelemetry = null
+var _story_narrative: StoryNarrativeRuntime = null
+var _story_narrative_started: bool = false
+var _story_narrative_semantic_timer: float = 0.0
 var _story_debug_overlay: PanelContainer = null
 var _story_debug_label: Label = null
 var _story_debug_toggle: Button = null
@@ -988,6 +1053,32 @@ var _story_debug_update_timer: float = 0.0
 var _story_debug_signature: String = ""
 var _story_last_victory_request: String = "none"
 var _story_last_victory_result: String = "No request yet"
+var _story_mastery_failed: Dictionary = {}
+var _story_mastery_result: Array[String] = []
+var _story_mastery_observe_timer: float = 0.0
+var _story_mastery_label: Label = null
+var _story_mastery_notice_label: Label = null
+var _story_mastery_notice_tween: Tween = null
+var _practice_started_elapsed: float = 0.0
+var _practice_damage_taken: float = 0.0
+var _practice_result_shown: bool = false
+var _story_difficulty_pressure_timer: float = -1.0
+var _story_difficulty_pressure_wave: int = 0
+var _story_mutator_ids: Array[String] = []
+var _story_mutator_config: Dictionary = {}
+var _story_mutator_scan_timer: float = 0.0
+var _story_mutator_hunter_timer: float = 12.0
+var _story_mutator_pressure_timer: float = 14.0
+var _story_mutator_pressure_wave: Dictionary = {}
+var _story_mutator_volatile_bursts: Array[Dictionary] = []
+var _story_mutator_ground_zones: Array[Dictionary] = []
+var _story_mutator_frostbite: float = 0.0
+var _story_mutator_chaos_buff: float = 0.0
+var _story_mutator_event_counter: int = 0
+var _story_mutator_hud_layer: CanvasLayer = null
+var _story_build_profile: Dictionary = {}
+var _story_build_signature: String = ""
+var _story_build_synergy_announced: Dictionary = {}
 var _adventure_state: String = ""
 var _adventure_props: Array[Dictionary] = []
 var _adventure_timer: float = 0.0
@@ -1072,7 +1163,12 @@ var _c1_milestones: int = 0
 var _ad_manager: AdManager = null
 var _sound: SoundManager = null
 var _combat_vfx: CombatVFX = null
+var _combat_feedback: CombatFeedback = null
+var _combat_readability: CombatReadability = null
+var _pending_story_mastery_notice: String = ""
 var _sfx_next_allowed: Dictionary = {}
+var _performance_guard_timer: float = 0.0
+var _performance_guards_enabled: bool = false
 
 # ─── Character / ulti tracking ────────────────────────────────────────────────
 var _char_id:       String = ""
@@ -1090,6 +1186,7 @@ var _artifact_wheel_move_mul: float = 0.0
 var _artifact_wheel_cd: float = 0.0
 var _artifact_blink_t: float = 0.0
 var _artifact_regen_pulse_t: float = 0.0
+var _artifact_run_effects: Dictionary = {}
 
 # ─── Combo visuals ───────────────────────────────────────────────────────────
 var _combo_arcs:    Array[Dictionary] = []
@@ -1136,17 +1233,31 @@ var _boss_wave_locked: bool = false
 # SETUP
 # ═════════════════════════════════════════════════════════════════════════════
 
+func _is_boss_practice() -> bool:
+	return run_context == StoryBossPracticeClass.RUN_CONTEXT and not story_stage.is_empty()
+
+func _is_non_persistent_story_run() -> bool:
+	return is_story_test_run or not StoryBossPracticeClass.progression_allowed(run_context)
+
 func _ready() -> void:
+	_performance_guards_enabled = OS.is_debug_build()
+	if run_context == StoryBossPracticeClass.RUN_CONTEXT and (story_stage.is_empty() or not StoryBossPracticeClass.is_boss_stage(str(story_stage.get("id", "")))):
+		push_warning("Invalid Boss Practice context rejected.")
+		run_context = "story"
+		story_stage.clear()
 	if is_story_test_run and not OS.is_debug_build():
 		push_warning("Story test run rejected in a release build.")
 		is_story_test_run = false
 		story_stage = {}
-	SettingsStore.apply(get_tree())
+	_story_run_stats.reset(run_context)
+	add_to_group("accessibility_settings")
+	SettingsStore.apply.call_deferred(get_tree())
 	_progression_profile = ProgressionStore.load_profile(account_username) if not account_username.is_empty() else {}
 	_run_difficulty = ProgressionStore.difficulty(_progression_profile) if not _progression_profile.is_empty() else {"name": "Cozy", "enemy_hp": 1.0, "enemy_damage": 1.0, "reward": 1.0}
 	_run_modifier = ProgressionStore.daily_modifier()
 	if not story_stage.is_empty():
-		_run_difficulty = {"name":"Story", "enemy_hp":1.0, "enemy_damage":1.0, "reward":1.0}
+		var story_difficulty_config: Dictionary = story_stage.get("difficulty_config", {}) as Dictionary
+		_run_difficulty = {"name":str(story_stage.get("difficulty_name", "Normal")), "enemy_hp":float(story_difficulty_config.get("enemy_hp", 1.0)), "enemy_damage":float(story_difficulty_config.get("enemy_damage", 1.0)), "reward":1.0}
 		_run_modifier = {}
 	elif not dungeon_mode.is_empty():
 		_run_difficulty = {"name":"Resource Dungeon", "enemy_hp":1.0 + float(_wave) * 0.08, "enemy_damage":1.0 + float(_wave) * 0.06, "reward":1.0}
@@ -1155,6 +1266,9 @@ func _ready() -> void:
 	add_child(_sound)
 	_combat_vfx = CombatVFX.new()
 	add_child(_combat_vfx)
+	var visual_settings := SettingsStore.load_all()
+	_damage_number_mode = CombatReadabilityClass.normalize_damage_number_mode(visual_settings.get("damage_numbers", true))
+	_damage_numbers_enabled = _damage_number_mode != "off"
 	var view: Vector2 = get_viewport_rect().size
 	_joy_zone = Rect2(0.0, view.y * (2.0 / 3.0), view.x, view.y / 3.0)
 
@@ -1165,7 +1279,7 @@ func _ready() -> void:
 		_player_speed  = 300.0 + float(selected_player_character.attack - 7) * 12.0
 		_player_tint   = selected_player_character.tint
 		_char_id = String(selected_player_character.id)
-		if not account_username.is_empty() and not is_story_test_run:
+		if not account_username.is_empty() and not _is_non_persistent_story_run():
 			ProgressionStore.record_mission_event(account_username, "characters", 1, _char_id)
 		# Auto-grant character's starting skill
 		var base_sid: String = selected_player_character.base_skill
@@ -1272,13 +1386,23 @@ func _ready() -> void:
 			_artifact_blink_t = float(bonuses["blink_interval"])
 		if bonuses.has("regen_pulse_interval"):
 			_artifact_regen_pulse_t = float(bonuses["regen_pulse_interval"])
+	_setup_story_mutators()
+	_refresh_story_build_profile()
 
 	_camera = Camera2D.new()
 	_camera.position = _player_pos
 	add_child(_camera)
+	_combat_feedback = CombatFeedbackClass.new()
+	add_child(_combat_feedback)
+	_combat_feedback.configure(_camera, _combat_vfx, _sound, Callable(self, "_combat_feedback_blocked"), visual_settings)
+	_combat_readability = CombatReadabilityClass.new()
+	add_child(_combat_readability)
+	_combat_readability.configure(visual_settings)
 
 	_build_hud()
 	_update_skill_icons()
+	_setup_story_narrative()
+	apply_accessibility_settings(visual_settings)
 	_show_skill_select(true)
 	# Kick off wave 1 after a short delay
 	_wave        = 0
@@ -1288,29 +1412,20 @@ func _ready() -> void:
 	_sync_room_state(true)
 	if not story_stage.is_empty():
 		_story_telemetry = StoryTelemetryClass.new()
-		_story_telemetry.start(story_stage, is_story_test_run)
+		_story_telemetry.start(story_stage, is_story_test_run, _story_build_profile, run_context)
+		if int(story_stage.get("difficulty_rank", 0)) > 0:
+			_story_telemetry.log_event("Mechanic modifier activated: %s" % str((story_stage.get("difficulty_config", {}) as Dictionary).get("summary", "stage pressure")))
 		if is_story_test_run:
 			_story_telemetry.log_event("Test stage started")
 	_setup_adventure_mode()
+	if _is_boss_practice():
+		_setup_boss_practice_phase()
+	_refresh_combat_readability()
 
-	# Load enemy textures
-	var _enemy_tex_map: Dictionary = {
-		"normal":      "res://assets/enemies/enemy_normal.png",
-		"normal_tank": "res://assets/enemies/enemy_tank.png",
-		"normal_fast": "res://assets/enemies/enemy_fast.png",
-		"teleporter_boss": "res://assets/bosses/boss_teleporter.png",
-		"shield_boss":     "res://assets/bosses/boss_shield.png",
-		"shooter_boss":    "res://assets/bosses/boss_shooter.png",
-		"lava_boss":       "res://assets/bosses/boss_lava.png",
-		"abyss_gate_warden": "res://assets/bosses/boss_abyss_gate_warden.png",
-		"prism_triarch":     "res://assets/bosses/boss_prism_triarch.png",
-		"blight_vine_tyrant":    "res://assets/bosses/boss_blight_vine_tyrant.png",
-		"thunderforge_behemoth":       "res://assets/bosses/boss_thunderforge_behemoth.png",
-	}
-	for ek in _enemy_tex_map:
-		var ep2: String = _enemy_tex_map[ek]
-		if ResourceLoader.exists(ep2):
-			_enemy_tex[ek] = load(ep2) as Texture2D
+	# Normal enemies are always present. Boss art is loaded only when that boss
+	# enters the run so unrelated multi-megabyte textures do not stay resident.
+	for enemy_kind in ["normal", "normal_tank", "normal_fast"]:
+		_ensure_enemy_texture(enemy_kind)
 	var enemy_walk_paths := {
 		"normal": "res://assets/animations/enemies/enemy_normal_walk.png",
 		"normal_fast": "res://assets/animations/enemies/enemy_fast_run.png",
@@ -1355,7 +1470,7 @@ func _input(event: InputEvent) -> void:
 			_touch_origin = te.position
 			_touch_cur = te.position
 			_joy_vis.origin = _touch_origin
-			_joy_vis.knob = _touch_origin + (_touch_cur - _touch_origin).limit_length(80.0)
+			_joy_vis.knob = _touch_origin + (_touch_cur - _touch_origin).limit_length(_joystick_travel_radius())
 			_joy_vis.visible_joy = true
 			_joy_vis.queue_redraw()
 		elif not te.pressed and te.index == _touch_id:
@@ -1365,13 +1480,25 @@ func _input(event: InputEvent) -> void:
 		if de.index == _touch_id:
 			_touch_cur = de.position
 			var diff: Vector2    = de.position - _touch_origin
-			var clamped: Vector2 = diff.limit_length(80.0)
+			var clamped: Vector2 = diff.limit_length(_joystick_travel_radius())
 			_joy_vis.knob = _touch_origin + clamped
 			_joy_vis.queue_redraw()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		_reset_touch_input()
+		if _combat_feedback != null:
+			_combat_feedback.cancel_transients()
+		_reset_boss_camera()
+
+func _combat_feedback_blocked() -> bool:
+	if _paused or _game_over or _adventure_choice_layer != null:
+		return true
+	if _objective_start_btn != null and is_instance_valid(_objective_start_btn) and _objective_start_btn.visible:
+		return true
+	if _adventure_state.ends_with("wait") or not _story_custom_touch_lock.is_empty():
+		return true
+	return false
 
 func _reset_touch_input() -> void:
 	_touch_id = -1
@@ -1382,6 +1509,584 @@ func _reset_touch_input() -> void:
 	if _joy_vis != null:
 		_joy_vis.visible_joy = false
 		_joy_vis.queue_redraw()
+
+func _joystick_travel_radius() -> float:
+	return _joy_vis.travel_radius() if _joy_vis != null else 80.0 * _touch_control_scale
+
+func apply_accessibility_settings(settings: Dictionary) -> void:
+	var data := SettingsStore.normalize(settings)
+	_ui_scale = float(data.get("ui_scale", 1.0))
+	_objective_text_scale = float(data.get("objective_text_scale", 1.0))
+	_hud_opacity = float(data.get("hud_opacity", 1.0))
+	_touch_control_scale = float(data.get("touch_control_scale", 1.0))
+	_enhanced_hazard_patterns = str(data.get("hazard_patterns", "standard")) == "enhanced"
+	_color_independent_indicators = bool(data.get("color_independent_indicators", true))
+	_high_contrast_telegraphs = bool(data.get("high_contrast_telegraphs", false))
+	_damage_number_mode = CombatReadabilityClass.normalize_damage_number_mode(data.get("damage_numbers", "all"))
+	_damage_numbers_enabled = _damage_number_mode != "off"
+	if _combat_vfx != null:
+		_combat_vfx.configure_quality(data)
+	if _combat_feedback != null:
+		_combat_feedback.configure(_camera, _combat_vfx, _sound, Callable(self, "_combat_feedback_blocked"), data)
+	if _combat_readability != null:
+		_combat_readability.configure(data)
+	if _hud_layer != null:
+		SettingsStore.apply_ui_scale(_hud_layer, _ui_scale)
+		_set_canvas_layer_opacity(_hud_layer, _hud_opacity)
+	if _objective_hud_layer != null:
+		SettingsStore.apply_ui_scale(_objective_hud_layer, _ui_scale)
+		_set_canvas_layer_opacity(_objective_hud_layer, _hud_opacity)
+	if _pause_layer != null and is_instance_valid(_pause_layer):
+		SettingsStore.apply_ui_scale(_pause_layer, _ui_scale)
+	if _enemy_mod_lbl != null:
+		_enemy_mod_lbl.add_theme_font_size_override("font_size", roundi(34.0 * _ui_scale * _objective_text_scale))
+	if _objective_start_btn != null:
+		_objective_start_btn.add_theme_font_size_override("font_size", roundi(28.0 * _ui_scale * _objective_text_scale))
+	if _joy_vis != null:
+		_joy_vis.configure(_touch_control_scale, float(data.get("touch_control_opacity", 0.7)))
+		if _touch_id >= 0:
+			_joy_vis.knob = _touch_origin + (_touch_cur - _touch_origin).limit_length(_joystick_travel_radius())
+	if _combat_readability != null:
+		_refresh_combat_readability()
+
+func _set_canvas_layer_opacity(canvas_layer: CanvasLayer, opacity: float) -> void:
+	for child in canvas_layer.get_children():
+		if child == _story_mastery_label or child == _story_mastery_notice_label:
+			continue
+		if child is CanvasItem:
+			(child as CanvasItem).modulate = Color(1.0, 1.0, 1.0, clampf(opacity, 0.8, 1.0))
+
+func _setup_story_narrative() -> void:
+	if story_stage.is_empty() or _is_boss_practice():
+		return
+	_story_narrative = StoryNarrativeRuntimeClass.new()
+	add_child(_story_narrative)
+	_story_narrative.configure(str(story_stage.get("id", "")), true)
+	_story_narrative_started = false
+	_story_narrative_semantic_timer = 0.0
+
+func _begin_story_narrative() -> void:
+	if _story_narrative == null or not is_instance_valid(_story_narrative) or _story_narrative_started:
+		return
+	_story_narrative_started = true
+	if _story_narrative.trigger_intro() and _story_telemetry != null:
+		_story_telemetry.log_event("[Narrative] Trigger: %s" % _story_narrative.active_event_id())
+
+func _cleanup_story_narrative() -> void:
+	if _story_narrative != null and is_instance_valid(_story_narrative):
+		_story_narrative.shutdown()
+		if not _story_narrative.is_queued_for_deletion():
+			_story_narrative.queue_free()
+	_story_narrative = null
+	_story_narrative_started = false
+
+func _update_story_narrative(delta: float) -> void:
+	if _story_narrative == null or not is_instance_valid(_story_narrative):
+		return
+	_story_narrative.advance(delta)
+	if not _story_narrative_started:
+		return
+	_story_narrative_semantic_timer -= delta
+	if _story_narrative_semantic_timer > 0.0:
+		return
+	_story_narrative_semantic_timer = 0.12
+	_sync_story_narrative_events()
+
+func _trigger_story_narrative(event_id: String) -> void:
+	if _story_narrative == null or event_id.is_empty():
+		return
+	var minimum_priority := StoryNarrativeClass.PRIORITY_FLAVOUR
+	if not _boss_transition_fx.is_empty() or not _story_mutator_pressure_wave.is_empty():
+		minimum_priority = StoryNarrativeClass.PRIORITY_MECHANIC
+	if _story_narrative.trigger(event_id, minimum_priority) and _story_telemetry != null:
+		_story_telemetry.log_event("[Narrative] Trigger: %s" % event_id)
+
+func _sync_story_narrative_events() -> void:
+	var stage_id := str(story_stage.get("id", ""))
+	match stage_id:
+		"ch1_1":
+			if _chapter_one != null:
+				if _chapter_one.flag("mission_started"): _trigger_story_narrative("c1s1_first_interception")
+				if _chapter_one.phase == "route_choice": _trigger_story_narrative("c1s1_route_choice")
+				if _chapter_one.phase == "barricade": _trigger_story_narrative("c1s1_barricade")
+				if _chapter_one.phase == "extraction": _trigger_story_narrative("c1s1_extraction")
+		"ch1_2":
+			if _chapter_one != null:
+				var shrine_index := _find_adventure_prop("shrine")
+				if shrine_index >= 0 and float(_adventure_props[shrine_index].get("energy", 100.0)) <= 15.0: _trigger_story_narrative("c1s2_energy_low")
+				if _chapter_one.flag("timer_complete"): _trigger_story_narrative("c1s2_shrine_powered")
+				if _chapter_one.phase == "cleansing_channel": _trigger_story_narrative("c1s2_final_cleansing")
+		"ch1_3":
+			if _chapter_one != null:
+				if _chapter_one.phase == "nest_1": _trigger_story_narrative("c1s3_first_nest")
+				if _chapter_one.phase == "nest_2": _trigger_story_narrative("c1s3_burrowing_nest")
+				if _chapter_one.phase == "nest_3": _trigger_story_narrative("c1s3_feeding_sacs")
+				if _chapter_one.phase == "foreman_finale": _trigger_story_narrative("c1s3_foreman")
+		"ch1_4":
+			if _chapter_one != null:
+				if _chapter_one.phase == "fleeing_key_carrier": _trigger_story_narrative("c1s4_fleeing_carrier")
+				if _chapter_one.phase == "protected_key_carrier": _trigger_story_narrative("c1s4_protected_carrier")
+				if _chapter_one.phase == "watchpath_captain": _trigger_story_narrative("c1s4_captain")
+				if _chapter_one.phase == "gate_window": _trigger_story_narrative("c1s4_gate_open")
+		"ch1_5":
+			if _chapter_one != null:
+				if _chapter_one.phase == "radial_barrage": _trigger_story_narrative("c1s5_emitter_active")
+				if _chapter_one.flag("timer_complete"): _trigger_story_narrative("c1s5_final_emitter")
+		"ch2_1":
+			if _chapter_two != null:
+				if _chapter_two.count("braziers_lit") >= 1: _trigger_story_narrative("c2s1_first_brazier")
+				if _chapter_two.count("braziers_lit") > _chapter_two.count("active_braziers"): _trigger_story_narrative("c2s1_brazier_suppressed")
+				if _chapter_two.flag("warmth_stabilized"): _trigger_story_narrative("c2s1_stabilized")
+		"ch2_2":
+			if _chapter_two != null:
+				if _chapter_two.count("captives_released") >= 1: _trigger_story_narrative("c2s2_first_captive")
+				if _chapter_two.count("captives_refrozen") >= 1: _trigger_story_narrative("c2s2_refreeze")
+				if _chapter_two.flag("boss_spawned"): _trigger_story_narrative("c2s2_final_blizzard")
+		"ch2_3":
+			if _chapter_two != null:
+				if _chapter_two.flag("final_rune_activated"): _trigger_story_narrative("c2s3_path_shifted")
+		"ch2_4":
+			if _chapter_two != null:
+				if _chapter_two.count("clues_found") >= 1: _trigger_story_narrative("c2s4_first_clue")
+				if _chapter_two.count("wrong_chests") >= 1: _trigger_story_narrative("c2s4_wrong_chest")
+				if _chapter_two.flag("mimic_spawned"): _trigger_story_narrative("c2s4_mimic_revealed")
+		"ch2_5":
+			if _chapter_two != null:
+				if _chapter_two.flag("all_armour_transitions_complete"): _trigger_story_narrative("c2s5_armour_broken")
+		"ch3_1":
+			if _chapter_three != null:
+				if _chapter_three.count("pools_purified") >= 1: _trigger_story_narrative("c3s1_first_pool")
+				if _chapter_three.flag("pool_reclaiming"): _trigger_story_narrative("c3s1_reclaiming")
+				if _chapter_three.flag("all_pools_stable"): _trigger_story_narrative("c3s1_final_surge")
+		"ch3_2":
+			if _chapter_three != null:
+				if _chapter_three.count("tracking_phases_complete") >= 1: _trigger_story_narrative("c3s2_fresh_tracks")
+				if _chapter_three.count("wrong_routes") >= 1: _trigger_story_narrative("c3s2_lost_time")
+				if _chapter_three.flag("final_phase_started"): _trigger_story_narrative("c3s2_boss_reveal")
+		"ch3_3":
+			if _chapter_three != null:
+				if _chapter_three.flag("spider_complete"): _trigger_story_narrative("c3s3_spider_complete")
+				if _chapter_three.flag("toad_complete"): _trigger_story_narrative("c3s3_toad_complete")
+				if _chapter_three.flag("wasp_complete"): _trigger_story_narrative("c3s3_wasp_complete")
+				if _chapter_three.flag("ingredient_case_assembled"): _trigger_story_narrative("c3s3_all_ingredients")
+		"ch3_4":
+			if _chapter_three != null:
+				if _chapter_three.counters.has("route"): _trigger_story_narrative("c3s4_route_selected")
+				if _chapter_three.meter("vial_integrity") < 99.0: _trigger_story_narrative("c3s4_vial_damaged")
+				if _chapter_three.flag("vial_at_altar"): _trigger_story_narrative("c3s4_final_transfer")
+		"ch3_5":
+			if _chapter_three != null:
+				if _chapter_three.meter("heat") >= 85.0: _trigger_story_narrative("c3s5_heat_critical")
+				if _chapter_three.meter("purity") <= 60.0: _trigger_story_narrative("c3s5_purity_falling")
+				if _chapter_three.flag("brew_complete"): _trigger_story_narrative("c3s5_brew_complete")
+				if _chapter_three.flag("boss_spawned"): _trigger_story_narrative("c3s5_boss_appears")
+		"ch4_1":
+			if _chapter_four != null:
+				if _chapter_four.flag("heat_critical_logged"): _trigger_story_narrative("c4s1_heat_high")
+				if _chapter_four.count("ore_stolen") >= 1: _trigger_story_narrative("c4s1_ore_stolen")
+				if _chapter_four.flag("cart_loaded"): _trigger_story_narrative("c4s1_cart_loaded")
+				if _chapter_four.flag("extraction_started"): _trigger_story_narrative("c4s1_extraction")
+		"ch4_2":
+			if _chapter_four != null:
+				if _chapter_four.count("mechanisms_powered") >= 1: _trigger_story_narrative("c4s2_flow_redirected")
+				if _chapter_four.flag("mandatory_jam_active"): _trigger_story_narrative("c4s2_jammer")
+				if _chapter_four.flag("stabilization_complete"): _trigger_story_narrative("c4s2_stable")
+		"ch4_3":
+			if _chapter_four != null:
+				if _chapter_four.count("golems_captured") >= 1: _trigger_story_narrative("c4s3_golem_one")
+				if _chapter_four.count("golems_captured") >= 2: _trigger_story_narrative("c4s3_golem_two")
+				if _chapter_four.count("golems_captured") >= 3: _trigger_story_narrative("c4s3_golem_three")
+				if _chapter_four.count("golems_captured") >= 4: _trigger_story_narrative("c4s3_all_golems")
+		"ch4_4":
+			if _chapter_four != null:
+				if _chapter_four.count("components_collected") >= 1: _trigger_story_narrative("c4s4_first_component")
+				if _chapter_four.flag("relic_assembled"): _trigger_story_narrative("c4s4_relic_assembled")
+				if _chapter_four.flag("relic_guardian_spawned"): _trigger_story_narrative("c4s4_guardian")
+		"ch4_5":
+			if _chapter_four != null:
+				if _chapter_four.flag("boss_spawned"): _trigger_story_narrative("c4s5_behemoth")
+				if _chapter_four.count("regulators_disabled") >= 1: _trigger_story_narrative("c4s5_regulator_disabled")
+				if _chapter_four.flag("regulator_transition_pending"): _trigger_story_narrative("c4s5_wrong_regulator")
+				if _chapter_four.flag("shutdown_complete"): _trigger_story_narrative("c4s5_final_regulator")
+		"ch5_1":
+			if _chapter_five != null:
+				if _chapter_five.meter("alert") >= 55.0: _trigger_story_narrative("c5s1_searching")
+				if _chapter_five.count("lockdowns") >= 1: _trigger_story_narrative("c5s1_alert")
+				if _chapter_five.flag("silent_finale_selected"): _trigger_story_narrative("c5s1_silent_gate")
+				if _chapter_five.flag("detected_finale_selected"): _trigger_story_narrative("c5s1_detected_gate")
+		"ch5_2":
+			if _chapter_five != null:
+				if _chapter_five.count("spirits_released") >= 1: _trigger_story_narrative("c5s2_first_rescue")
+				if _chapter_five.count("spirits_lost") >= 1: _trigger_story_narrative("c5s2_spirit_lost")
+				if _chapter_five.flag("portal_sealing_started"): _trigger_story_narrative("c5s2_final_seal")
+		"ch5_3":
+			if _chapter_five != null:
+				if _chapter_five.count("wrong_choices") >= 1: _trigger_story_narrative("c5s3_wrong_mirror")
+				if _chapter_five.count("rooms_completed") >= 3: _trigger_story_narrative("c5s3_final_room")
+				if _chapter_five.flag("guardian_spawned"): _trigger_story_narrative("c5s3_guardian")
+		"ch5_4":
+			if _chapter_five != null:
+				if _chapter_five.flag("route_prepared"): _trigger_story_narrative("c5s4_shortcut")
+				if _chapter_five.flag("sync_attempt_started"): _trigger_story_narrative("c5s4_sync_started")
+				if _chapter_five.count("sync_failures") >= 1: _trigger_story_narrative("c5s4_sync_failed")
+				if _chapter_five.flag("sync_succeeded"): _trigger_story_narrative("c5s4_sync_success")
+		"ch5_5":
+			if _chapter_five != null:
+				if _chapter_five.flag("anchor_dominion_destroyed"): _trigger_story_narrative("c5s5_dominion_broken")
+				if _chapter_five.flag("anchor_ruin_destroyed"): _trigger_story_narrative("c5s5_ruin_broken")
+				if _chapter_five.flag("anchor_reflection_destroyed"): _trigger_story_narrative("c5s5_reflection_broken")
+				if _chapter_five.count("anchors_destroyed") >= 3: _trigger_story_narrative("c5s5_final_anchor")
+				if _chapter_five.phase == "abyss_crown": _trigger_story_narrative("c5s5_crown_phase")
+				if _chapter_five.timer("crown_vulnerable") > 0.0: _trigger_story_narrative("c5s5_crown_vulnerable")
+				if _chapter_five.flag("crown_destroyed"): _trigger_story_narrative("c5s5_crown_shattered")
+				if _chapter_five.flag("final_phase_entered"): _trigger_story_narrative("c5s5_true_final")
+				if _chapter_five.flag("desperation_entered"): _trigger_story_narrative("c5s5_desperation")
+
+func _setup_story_mutators() -> void:
+	_story_mutator_ids.clear()
+	if story_stage.is_empty():
+		return
+	for mutator_id_variant in story_stage.get("mutators", []) as Array:
+		var mutator_id := str(mutator_id_variant)
+		if mutator_id not in _story_mutator_ids:
+			_story_mutator_ids.append(mutator_id)
+	_story_mutator_config = (story_stage.get("mutator_config", {}) as Dictionary).duplicate(true)
+	if _story_mutator_config.is_empty():
+		_story_mutator_config = StoryStore.apply_mutators(story_stage, _story_mutator_ids, {}, true).get("mutator_config", {}) as Dictionary
+	if _story_mutator_ids.is_empty():
+		return
+	var hp_multiplier := clampf(float(_story_mutator_config.get("player_max_hp", 1.0)), 0.25, 2.0)
+	_player_base_max_hp = maxf(1.0, _player_base_max_hp * hp_multiplier)
+	_player_max_hp = maxf(1.0, _player_max_hp * hp_multiplier)
+	_player_hp = minf(_player_hp, _player_max_hp)
+	_player_speed *= clampf(float(_story_mutator_config.get("player_speed", 1.0)), 0.50, 1.50)
+	_story_mutator_scan_timer = 0.0
+	_story_mutator_hunter_timer = 12.0
+	_story_mutator_pressure_timer = 14.0
+	_story_mutator_frostbite = 0.0
+	_story_mutator_chaos_buff = 0.0
+	_story_mutator_event_counter = 0
+	_story_mutator_volatile_bursts.clear()
+	_story_mutator_ground_zones.clear()
+	_story_mutator_pressure_wave.clear()
+
+func _refresh_story_build_profile() -> void:
+	if story_stage.is_empty():
+		_story_build_profile.clear()
+		_story_build_signature = ""
+		return
+	var character_defence := int(selected_player_character.defense) if selected_player_character != null else 0
+	var next_profile := StoryBuildCapabilitiesClass.calculate(_skills, _ring_bonuses, character_defence, _story_mutator_config)
+	var dev_profile_id := str(story_stage.get("dev_build_profile", "current"))
+	if is_story_test_run and dev_profile_id != "current":
+		next_profile = StoryBuildCapabilitiesClass.dev_profile(dev_profile_id)
+	var next_signature := StoryBuildCapabilitiesClass.telemetry_summary(next_profile)
+	var changed := next_signature != _story_build_signature
+	_story_build_profile = next_profile
+	_story_build_signature = next_signature
+	if changed and _story_telemetry != null:
+		_story_telemetry.build_updated(_story_build_profile)
+
+func _story_synergy_bonus(mechanic: String, announce: bool = true) -> float:
+	if story_stage.is_empty() or _story_build_profile.is_empty():
+		return 0.0
+	var synergy := StoryBuildCapabilitiesClass.synergy(str(story_stage.get("id", "")), mechanic, _story_build_profile)
+	var bonus := float(synergy.get("bonus", 0.0))
+	if bonus <= 0.001 or not announce or _story_build_synergy_announced.has(mechanic):
+		return bonus
+	_story_build_synergy_announced[mechanic] = true
+	var capability := str(synergy.get("capability", "build"))
+	_spawn_reaction_popup(_player_pos + Vector2(0.0, -82.0), "%s SYNERGY" % capability.to_upper(), _story_synergy_color(capability))
+	if _story_telemetry != null:
+		_story_telemetry.log_event("Build synergy: %s_bonus=%.2f cap=%.2f" % [mechanic, bonus, float(synergy.get("cap", 0.0))])
+	return bonus
+
+func _story_synergy_color(capability: String) -> Color:
+	return {
+		"fire":Color(1.0, 0.42, 0.12), "ice":Color(0.55, 0.90, 1.0),
+		"lightning":Color(1.0, 0.92, 0.22), "poison":Color(0.48, 0.90, 0.26),
+		"mobility":Color(0.42, 0.86, 1.0), "defence":Color(0.58, 0.74, 1.0),
+		"sustain":Color(0.42, 1.0, 0.58), "projectile":Color(0.94, 0.82, 0.40),
+	}.get(capability, Color.WHITE) as Color
+
+func _cleanup_story_mutator_runtime() -> void:
+	_story_mutator_volatile_bursts.clear()
+	_story_mutator_ground_zones.clear()
+	_story_mutator_pressure_wave.clear()
+	_story_mutator_frostbite = 0.0
+	_story_mutator_chaos_buff = 0.0
+	_story_build_profile.clear()
+	_story_build_signature = ""
+	_story_build_synergy_announced.clear()
+	_cleanup_enemy_role_runtime()
+	_cleanup_boss_presentation()
+	for enemy in _enemies:
+		enemy.erase("mutator_hunters_mark")
+		enemy.erase("mutator_volatile")
+
+func _exit_tree() -> void:
+	if _combat_feedback != null:
+		_combat_feedback.cancel_transients()
+	_damage_popups.clear()
+	_pending_story_mastery_notice = ""
+	_cleanup_story_narrative()
+	_cleanup_story_mutator_runtime()
+
+func _cleanup_boss_presentation() -> void:
+	_clear_boss_attack_runtime()
+	_boss_telegraphs.clear()
+	_boss_transition_fx.clear()
+	_reset_boss_camera()
+
+func _clear_boss_attack_runtime() -> void:
+	_boss_projs.clear()
+	_mortar_strikes.clear()
+	_lava_lines.clear()
+	_lava_pools.clear()
+	_boss_chains.clear()
+	_prism_zones.clear()
+	_venom_pods.clear()
+	_lightning_markers.clear()
+	_thorn_patches.clear()
+	_boss_summons.clear()
+	_enemy_role_projectiles.clear()
+	_enemy_role_hazards.clear()
+	_story_mutator_pressure_wave.clear()
+	_story_mutator_volatile_bursts.clear()
+	_story_mutator_ground_zones.clear()
+	_boss_telegraphs.clear()
+
+func _reset_boss_camera() -> void:
+	if _combat_feedback != null:
+		_combat_feedback.cancel_shake()
+	elif _camera != null:
+		_camera.offset = Vector2.ZERO
+
+func _update_boss_presentation(delta: float) -> void:
+	for telegraph_index in range(_boss_telegraphs.size() - 1, -1, -1):
+		_boss_telegraphs[telegraph_index]["life"] = float(_boss_telegraphs[telegraph_index].get("life", 0.0)) - delta
+		if float(_boss_telegraphs[telegraph_index]["life"]) <= 0.0:
+			_boss_telegraphs.remove_at(telegraph_index)
+	for effect_index in range(_boss_transition_fx.size() - 1, -1, -1):
+		_boss_transition_fx[effect_index]["life"] = float(_boss_transition_fx[effect_index].get("life", 0.0)) - delta
+		if float(_boss_transition_fx[effect_index]["life"]) <= 0.0:
+			_boss_transition_fx.remove_at(effect_index)
+
+func _add_boss_telegraph(data: Dictionary) -> void:
+	if _boss_telegraphs.size() >= BOSS_TELEGRAPH_MAX:
+		_boss_telegraphs.remove_at(0)
+	var telegraph := data.duplicate(true)
+	telegraph["max_life"] = float(telegraph.get("life", 0.6))
+	_boss_telegraphs.append(telegraph)
+
+func _present_boss_moment(title: String, detail: String, color: Color, world_pos: Vector2, shake: float = 7.0, cue: String = "boss_phase") -> void:
+	if _boss_transition_fx.size() >= BOSS_TRANSITION_FX_MAX:
+		_boss_transition_fx.remove_at(0)
+	_boss_transition_fx.append({"pos":world_pos, "life":1.15, "max_life":1.15, "color":color})
+	_spawn_reaction_popup(world_pos + Vector2(0.0, -110.0), title, color)
+	if not detail.is_empty():
+		_spawn_reaction_popup(world_pos + Vector2(0.0, -72.0), detail, Color.WHITE)
+	if _combat_feedback != null:
+		_combat_feedback.play_signature(shake)
+	if _sound != null:
+		_sound.play(cue, -6.0, 1.0)
+	if _story_telemetry != null:
+		_story_telemetry.boss_mechanic(_story_debug_phase(), cue, {"title":title, "detail":detail})
+
+func _story_mutator_has(mutator_id: String) -> bool:
+	return mutator_id in _story_mutator_ids
+
+func _story_mutator_interaction_paused() -> bool:
+	if _paused or _game_over or _adventure_choice_layer != null:
+		return true
+	if _objective_start_btn != null and is_instance_valid(_objective_start_btn) and _objective_start_btn.visible:
+		return true
+	if _adventure_state.ends_with("wait") or not _story_custom_touch_lock.is_empty():
+		return true
+	if _story_custom_interaction > 0.0 or _c1_interaction > 0.0 or _c2_interaction > 0.0 or _c3_action_timer > 0.0 or _c4_action_timer > 0.0:
+		return true
+	if _chapter_two != null and _chapter_two.stage_number == 3 and _chapter_two.phase == "sequence_reveal":
+		return true
+	if not _boss_transition_fx.is_empty():
+		return true
+	return false
+
+func _story_mutator_enemy_eligible(enemy: Dictionary) -> bool:
+	var kind := str(enemy.get("kind", "normal"))
+	if not StoryEnemyRolesClass.is_role_kind(kind):
+		return false
+	var tag := str(enemy.get("story_tag", ""))
+	if tag.is_empty():
+		return true
+	if tag in ["protected_key_carrier", "rogue_golem", "frost_colossus", "role_summon"]:
+		return false
+	for protected_prefix in ["c4_golem_", "c4_thunderforge_", "c5_ritual_", "c5_crown_", "c5_abyss_king"]:
+		if tag.begins_with(protected_prefix):
+			return false
+	return true
+
+func _update_story_mutators(delta: float) -> void:
+	if _story_mutator_ids.is_empty():
+		return
+	_story_mutator_chaos_buff = maxf(0.0, _story_mutator_chaos_buff - delta)
+	_update_story_mutator_frostbite(delta)
+	_update_story_mutator_hazards(delta)
+	if _story_mutator_interaction_paused():
+		return
+	_story_mutator_scan_timer -= delta
+	if _story_mutator_scan_timer <= 0.0:
+		_story_mutator_scan_timer = 0.25
+		_scan_story_mutator_enemies()
+	if _story_mutator_has("hunters_mark"):
+		_story_mutator_hunter_timer -= delta
+		if _story_mutator_hunter_timer <= 0.0:
+			_story_mutator_hunter_timer = 20.0
+			_assign_story_hunters_mark()
+	if _story_mutator_has("pressure_wave"):
+		_story_mutator_pressure_timer -= delta
+		if _story_mutator_pressure_timer <= 0.0 and _story_mutator_pressure_wave.is_empty():
+			_story_mutator_pressure_timer = 20.0
+			_start_story_pressure_wave()
+
+func _scan_story_mutator_enemies() -> void:
+	var active_elites := 0
+	for enemy in _enemies:
+		if bool(enemy.get("mutator_elite", false)):
+			active_elites += 1
+	for enemy in _enemies:
+		if not bool(enemy.get("mutator_checked", false)):
+			enemy["mutator_checked"] = true
+			if not _story_mutator_enemy_eligible(enemy):
+				continue
+			_story_mutator_event_counter += 1
+			if _story_mutator_has("empowered_enemies"):
+				enemy["hp"] = float(enemy.get("hp", 1.0)) * 1.10
+				enemy["max_hp"] = float(enemy.get("max_hp", 1.0)) * 1.10
+				enemy["dmg"] = float(enemy.get("dmg", 1.0)) * 1.15
+			if _story_mutator_has("aggressive_enemies"):
+				enemy["base_spd"] = float(enemy.get("base_spd", 1.0)) * 1.07
+				enemy["spd"] = float(enemy.get("spd", 1.0)) * 1.07
+				enemy["mutator_aggressive"] = true
+			if _story_mutator_has("elite_hunt") and active_elites < 2 and _story_mutator_event_counter % 5 == 0:
+				enemy["hp"] = float(enemy.get("hp", 1.0)) * 1.45
+				enemy["max_hp"] = float(enemy.get("max_hp", 1.0)) * 1.45
+				enemy["dmg"] = float(enemy.get("dmg", 1.0)) * 1.20
+				enemy["r"] = float(enemy.get("r", 20.0)) * 1.08
+				enemy["mutator_elite"] = true
+				active_elites += 1
+			if _story_mutator_has("volatile_enemies") and _story_mutator_event_counter % 4 == 0:
+				enemy["mutator_volatile"] = true
+		if _story_mutator_has("berserk_elites") and bool(enemy.get("mutator_elite", false)) and not bool(enemy.get("mutator_berserk", false)):
+			if float(enemy.get("hp", 1.0)) <= float(enemy.get("max_hp", 1.0)) * 0.30:
+				enemy["mutator_berserk"] = true
+				enemy["base_spd"] = float(enemy.get("base_spd", 1.0)) * 1.18
+				enemy["spd"] = float(enemy.get("spd", 1.0)) * 1.18
+
+func _assign_story_hunters_mark() -> void:
+	for enemy in _enemies:
+		if bool(enemy.get("mutator_hunters_mark", false)):
+			return
+	for enemy in _enemies:
+		if _story_mutator_enemy_eligible(enemy) and not bool(enemy.get("mutator_elite", false)):
+			enemy["mutator_hunters_mark"] = true
+			enemy["hp"] = float(enemy.get("hp", 1.0)) * 1.18
+			enemy["max_hp"] = float(enemy.get("max_hp", 1.0)) * 1.18
+			enemy["dmg"] = float(enemy.get("dmg", 1.0)) * 1.12
+			if _story_telemetry != null: _story_telemetry.mutator_triggered("hunters_mark")
+			return
+
+func _on_story_mutator_enemy_death(enemy: Dictionary, pos: Vector2, base_xp: int) -> int:
+	if _story_mutator_ids.is_empty() or not _story_mutator_enemy_eligible(enemy):
+		return base_xp
+	var xp_value := base_xp
+	if bool(enemy.get("mutator_elite", false)):
+		xp_value = roundi(float(xp_value) * 1.75)
+	if bool(enemy.get("mutator_hunters_mark", false)):
+		xp_value = roundi(float(xp_value) * 1.60)
+	if bool(enemy.get("mutator_volatile", false)) and _story_mutator_volatile_bursts.size() < 4:
+		_story_mutator_volatile_bursts.append({"pos":pos, "life":1.10, "max_life":1.10, "r":112.0, "dmg":_player_max_hp * 0.08})
+	if _story_mutator_has("corrupted_ground") and _story_mutator_ground_zones.size() < 6 and (_kills + _story_mutator_event_counter) % 3 == 0:
+		_story_mutator_ground_zones.append({"pos":pos, "life":6.0, "max_life":6.0, "r":82.0, "tick":0.0})
+	if _story_mutator_has("chaos_supply"):
+		match randi() % 4:
+			0: xp_value = roundi(float(xp_value) * 1.50)
+			1:
+				if _story_mutator_has("no_healing"):
+					xp_value = roundi(float(xp_value) * 1.25)
+				else:
+					xp_value = roundi(float(xp_value) * 0.80)
+					_restore_player_hp(_player_max_hp * 0.05)
+			2: _story_mutator_chaos_buff = 8.0
+			_: xp_value = roundi(float(xp_value) * 1.25)
+	return maxi(1, xp_value)
+
+func _update_story_mutator_frostbite(delta: float) -> void:
+	if not _story_mutator_has("frostbite") or _story_mutator_interaction_paused():
+		return
+	if _player_move_dir.length_squared() <= 0.0001:
+		_story_mutator_frostbite = minf(3.0, _story_mutator_frostbite + delta)
+	else:
+		_story_mutator_frostbite = maxf(0.0, _story_mutator_frostbite - delta * 2.5)
+
+func _story_mutator_movement_multiplier() -> float:
+	return 0.78 if _story_mutator_has("frostbite") and _story_mutator_frostbite >= 2.0 else 1.0
+
+func _start_story_pressure_wave() -> void:
+	var direction := Vector2.RIGHT.rotated(float(_story_mutator_event_counter % 8) * TAU / 8.0)
+	_story_mutator_pressure_wave = {"direction":direction, "center":_player_pos - direction * 620.0, "telegraph":1.6, "life":2.5, "hit":false}
+	if _story_telemetry != null: _story_telemetry.mutator_triggered("pressure_wave")
+
+func _update_story_mutator_hazards(delta: float) -> void:
+	for i in range(_story_mutator_volatile_bursts.size() - 1, -1, -1):
+		var burst := _story_mutator_volatile_bursts[i]
+		burst["life"] = float(burst.get("life", 0.0)) - delta
+		if float(burst["life"]) <= 0.0:
+			if _player_pos.distance_to(burst.get("pos", Vector2.ZERO) as Vector2) <= float(burst.get("r", 112.0)) + PLAYER_R:
+				_damage_player(float(burst.get("dmg", 1.0)), 0.45, true)
+			_story_mutator_volatile_bursts.remove_at(i)
+	for i in range(_story_mutator_ground_zones.size() - 1, -1, -1):
+		var zone := _story_mutator_ground_zones[i]
+		zone["life"] = float(zone.get("life", 0.0)) - delta
+		zone["tick"] = float(zone.get("tick", 0.0)) - delta
+		if float(zone["life"]) <= 0.0:
+			_story_mutator_ground_zones.remove_at(i)
+			continue
+		if float(zone["tick"]) <= 0.0 and _player_pos.distance_to(zone.get("pos", Vector2.ZERO) as Vector2) <= float(zone.get("r", 82.0)) + PLAYER_R:
+			zone["tick"] = 0.9
+			_damage_player(_player_max_hp * 0.035, 0.32, true)
+	if not _story_mutator_pressure_wave.is_empty() and not _story_mutator_interaction_paused():
+		var wave := _story_mutator_pressure_wave
+		if float(wave.get("telegraph", 0.0)) > 0.0:
+			wave["telegraph"] = float(wave["telegraph"]) - delta
+		else:
+			wave["life"] = float(wave.get("life", 0.0)) - delta
+			wave["center"] = (wave.get("center", Vector2.ZERO) as Vector2) + (wave.get("direction", Vector2.RIGHT) as Vector2) * 500.0 * delta
+			var direction := wave.get("direction", Vector2.RIGHT) as Vector2
+			var offset := _player_pos - (wave.get("center", Vector2.ZERO) as Vector2)
+			if not bool(wave.get("hit", false)) and absf(offset.dot(direction)) < 62.0:
+				wave["hit"] = true
+				_damage_player(_player_max_hp * 0.07, 0.45, true)
+			if float(wave["life"]) <= 0.0:
+				_story_mutator_pressure_wave.clear()
+
+func _story_mutator_spawn_delta(delta: float) -> float:
+	if _story_mutator_has("relentless") and not _story_mutator_interaction_paused():
+		return delta * 1.20
+	return delta
+
+func _restore_player_hp(amount: float, story_required: bool = false, feedback_kind: String = "") -> void:
+	if amount <= 0.0:
+		return
+	if not story_required and _story_mutator_has("no_healing"):
+		return
+	var hp_before := _player_hp
+	_player_hp = minf(_player_max_hp, _player_hp + amount)
+	var restored := _player_hp - hp_before
+	_story_run_stats.record_healing(restored)
+	if restored > 0.0 and not feedback_kind.is_empty():
+		_spawn_status_popup(_player_pos, "+%d" % roundi(restored), Color(0.34, 1.0, 0.54), 3)
+		if _combat_feedback != null:
+			_combat_feedback.play_heal(_player_pos, feedback_kind in ["potion", "major"])
 
 func _get_move_dir() -> Vector2:
 	var kd: Vector2 = Vector2.ZERO
@@ -1404,15 +2109,19 @@ func _get_move_dir() -> Vector2:
 func _process(delta: float) -> void:
 	if _game_over or _paused:
 		return
+	_update_story_narrative(delta)
 	_elapsed           += delta
 	_room_elapsed      += delta
 	_ice_patch_slow_t = max(_ice_patch_slow_t - delta, 0.0)
+	_enemy_role_control_immunity_t = maxf(0.0, _enemy_role_control_immunity_t - delta)
+	_enemy_role_slow_t = maxf(0.0, _enemy_role_slow_t - delta)
 	_sync_room_state()
 	_update_boss_intermission(delta)
 	_update_artifact_runtime(delta)
 	_player_iframes    = max(0.0, _player_iframes - delta)
 	var _pmove: Vector2 = _get_move_dir()
 	_player_move_dir    = _pmove
+	_update_story_mutators(delta)
 	_update_idle_enemy_boost(delta, _pmove)
 	_apply_room_movement(delta, _pmove)
 	_apply_story_hazard_arena_bounds()
@@ -1426,12 +2135,15 @@ func _process(delta: float) -> void:
 	if _pmove.x > 0.01:    _player_facing_x = 1
 	elif _pmove.x < -0.01: _player_facing_x = -1
 	_camera.position = _story_hazard_arena_center if _is_story_hazard_arena_active() else _player_pos
+	_update_boss_presentation(delta)
 	_update_ring_shield(delta)
 	_apply_room_hazards(delta)
 	_update_enemy_trails(delta)
 	_update_skills(delta)
 	_check_orb_hits()
 	_update_enemies(delta)
+	_update_enemy_role_projectiles(delta)
+	_update_enemy_role_hazards(delta)
 	_update_bolts(delta)
 	_update_ice_orbs(delta)
 	_update_fireballs(delta)
@@ -1470,16 +2182,191 @@ func _process(delta: float) -> void:
 	_update_lava_lines(delta)
 	_update_lava_pools(delta)
 	_update_adventure_mode(delta)
+	_update_boss_practice_completion()
+	_update_story_mastery_observation(delta)
 	_update_story_debug_overlay(delta)
 	_lock_story_hazard_camera()
 	if story_stage.is_empty() and dungeon_mode.is_empty():
 		_update_spawner(delta)
 	_update_damage_popups(delta)
+	if _performance_guards_enabled:
+		_update_performance_guards(delta)
 	queue_redraw()
+	if _combat_readability != null:
+		var view_size := get_viewport_rect().size
+		var draw_center := _camera.position if _camera != null else _player_pos
+		_combat_readability.update_motion(_player_pos, _elapsed, Rect2(draw_center - view_size * 0.5, view_size))
 	_hud_update_timer -= delta
 	if _hud_update_timer <= 0.0:
 		_hud_update_timer = HUD_UPDATE_INTERVAL
+		_refresh_combat_readability()
 		_update_hud()
+
+func _refresh_combat_readability() -> void:
+	if _combat_readability == null:
+		return
+	var objective := _readability_primary_objective()
+	var threat := _readability_primary_threat()
+	var logical_load := _readability_logical_effect_load()
+	_combat_readability.update_snapshot({
+		"boss_telegraphs":_boss_telegraphs,
+		"boss_projectiles":_boss_projs,
+		"role_projectiles":_enemy_role_projectiles,
+		"role_hazards":_enemy_role_hazards,
+		"enemies":_enemies,
+		"ground_zones":_story_mutator_ground_zones,
+		"volatile_bursts":_story_mutator_volatile_bursts,
+		"pressure_wave":_story_mutator_pressure_wave,
+		"critical_objectives":_readability_critical_objectives(),
+		"mortar_strikes":_mortar_strikes,
+		"lava_lines":_lava_lines,
+		"lava_pools":_lava_pools,
+		"thorn_patches":_thorn_patches,
+		"lightning_markers":_lightning_markers,
+		"venom_pods":_venom_pods,
+		"prism_zones":_prism_zones,
+		"boss_chains":_boss_chains,
+		"objective":objective,
+		"threat":threat,
+	}, logical_load, _readability_boss_mode())
+	if _combat_vfx != null:
+		_combat_vfx.set_effect_intensity(_combat_readability.player_effect_scale())
+	var critical := _combat_readability.critical_visual_active()
+	if _story_narrative != null and is_instance_valid(_story_narrative):
+		_story_narrative.set_combat_suppressed(critical)
+	if _story_mastery_label != null and is_instance_valid(_story_mastery_label):
+		_story_mastery_label.modulate.a = _hud_opacity * (0.56 if critical else 1.0)
+	if not critical and not _pending_story_mastery_notice.is_empty():
+		var pending_notice := _pending_story_mastery_notice
+		_pending_story_mastery_notice = ""
+		_show_story_mastery_notice(pending_notice)
+
+func _readability_logical_effect_load() -> int:
+	var projectile_count := _bolts.size() + _fireballs.size() + _ice_orbs.size() + _pierce_arrows.size() + _boomerangs.size()
+	var persistent_count := _fire_trails.size() + _venom_pools.size() + _bog_pools.size() + _corruption_pools.size() + _time_warp_zones.size() + _smoke_clouds.size()
+	var companion_count := _hawk_companions.size() + _shadow_clones.size() + _toxic_mushrooms.size()
+	var burst_count := _waves.size() + _aoe_flashes.size() + _combo_arcs.size() + _arc_zaps.size()
+	var feedback_count := _damage_popups.size() + (_combat_vfx.active_effect_count() if _combat_vfx != null else 0)
+	return projectile_count + persistent_count * 3 + companion_count * 2 + burst_count * 2 + feedback_count
+
+func debug_performance_snapshot() -> Dictionary:
+	var player_projectiles := _bolts.size() + _fireballs.size() + _ice_orbs.size() + _pierce_arrows.size() + _boomerangs.size()
+	return {
+		"fps":Engine.get_frames_per_second(),
+		"process_ms":float(Performance.get_monitor(Performance.TIME_PROCESS)) * 1000.0,
+		"physics_ms":float(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)) * 1000.0,
+		"draw_calls":int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)),
+		"objects":int(Performance.get_monitor(Performance.OBJECT_COUNT)),
+		"nodes":int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
+		"static_memory_bytes":int(Performance.get_monitor(Performance.MEMORY_STATIC)),
+		"enemies":_enemies.size(),
+		"player_projectiles":player_projectiles,
+		"boss_projectiles":_boss_projs.size() + _enemy_role_projectiles.size(),
+		"vfx":_combat_vfx.active_effect_count() if _combat_vfx != null else 0,
+		"damage_labels":_damage_popups.size(),
+	}
+
+func _update_performance_guards(delta: float) -> void:
+	_performance_guard_timer -= delta
+	if _performance_guard_timer > 0.0:
+		return
+	_performance_guard_timer = 8.0
+	var snapshot := debug_performance_snapshot()
+	if int(snapshot["enemies"]) > MAX_ENEMIES:
+		push_warning("[Perf] Active hostile count exceeded expected budget: %d" % int(snapshot["enemies"]))
+	if int(snapshot["player_projectiles"]) > 320:
+		push_warning("[Perf] Active player projectiles exceeded expected budget: %d" % int(snapshot["player_projectiles"]))
+	if int(snapshot["boss_projectiles"]) > 96:
+		push_warning("[Perf] Active boss projectiles exceeded expected budget: %d" % int(snapshot["boss_projectiles"]))
+	if int(snapshot["vfx"]) > 348:
+		push_warning("[Perf] Active decorative VFX exceeded expected budget: %d" % int(snapshot["vfx"]))
+
+func _readability_boss_mode() -> String:
+	if int(story_stage.get("chapter_stage", 0)) != 5:
+		return ""
+	var stage_id := str(story_stage.get("id", ""))
+	if stage_id == "ch1_5" and _chapter_one != null and _chapter_one.phase in ["radial_barrage", "aimed_barrage", "rotating_barrage"]:
+		return "c1s5_lanes"
+	if stage_id == "ch2_5":
+		return "c2s5_frost_crystal"
+	if stage_id == "ch3_5":
+		return "c3s5_corruption"
+	if stage_id == "ch4_5":
+		return "c4s5_regulators"
+	if stage_id == "ch5_5":
+		if _find_adventure_prop("abyss_crown") >= 0 or _find_adventure_prop("crown_seal") >= 0:
+			return "c5s5_crown"
+		return "c5s5_desperation" if _objective_boss_active else "c5s5_anchors"
+	return stage_id if _objective_boss_active else ""
+
+func _readability_primary_objective() -> Dictionary:
+	if story_stage.is_empty() and dungeon_mode.is_empty():
+		return {}
+	var candidates: Array = []
+	for prop in _adventure_props:
+		var kind := str(prop.get("kind", ""))
+		if kind not in ["scout", "shrine", "nest", "key", "hazard_emitter", "c1_extraction", "c1_energy_spore", "c1_track_marker", "c1_gate", "safe", "forge"] and not _should_indicate_custom_prop(prop):
+			continue
+		if kind == "forge" and bool(prop.get("active", false)):
+			continue
+		candidates.append(prop)
+	var selected := CombatReadabilityClass.select_objective(candidates, _player_pos)
+	if selected.is_empty():
+		return {}
+	var result := selected.duplicate(false)
+	var kind := str(result.get("kind", ""))
+	result["label"] = _ingredient_name(str(result.get("ingredient", 0))) if kind == "c3_brew_ingredient" else _story_objective_indicator_label(kind).to_upper()
+	result["color"] = _story_objective_indicator_color(kind)
+	result["radius"] = 68.0 if kind in ["ritual_anchor", "abyss_crown", "regulator", "shrine", "released_soul"] else 56.0
+	result["urgent"] = CombatReadabilityClass.objective_urgency(result, _player_pos) >= 75.0
+	return result
+
+func _readability_critical_objectives() -> Array:
+	var highlights: Array = []
+	var critical_kinds := [
+		"scout", "shrine", "brazier", "released_soul", "ice_prison", "armour_crystal",
+		"c3_vial", "antidote_vial", "infected_altar", "cauldron", "c4_mining_cart",
+		"c4_ore_bag", "regulator", "c4_forge_mechanism", "soul_chain", "eclipse_obelisk",
+		"ritual_anchor", "abyss_crown", "crown_seal", "hazard_emitter",
+	]
+	for prop in _adventure_props:
+		var kind := str(prop.get("kind", ""))
+		if kind not in critical_kinds or bool(prop.get("completed", false)) or bool(prop.get("disabled", false)):
+			continue
+		var item := prop.duplicate(false)
+		item["color"] = _story_objective_indicator_color(kind)
+		item["radius"] = 68.0 if kind in ["ritual_anchor", "abyss_crown", "regulator", "shrine", "released_soul"] else 56.0
+		item["urgent"] = CombatReadabilityClass.objective_urgency(item, _player_pos) >= 75.0
+		highlights.append(item)
+	return highlights
+
+func _readability_primary_threat() -> Dictionary:
+	var best: Dictionary = {}
+	var best_score := -INF
+	for enemy in _enemies:
+		var role := str(enemy.get("primary_role", ""))
+		var state := str(enemy.get("role_state", "idle"))
+		var resource := ""
+		var tag := str(enemy.get("story_tag", ""))
+		if int(enemy.get("stolen_ore", 0)) > 0: resource = "ORE THIEF"
+		elif int(enemy.get("stolen_key", enemy.get("stolen_keys", 0))) > 0: resource = "KEY THIEF"
+		elif int(enemy.get("stolen_supply", enemy.get("stolen_supplies", 0))) > 0: resource = "SUPPLY THIEF"
+		elif tag in ["fleeing_key_carrier", "protected_key_carrier", "watchpath_captain"]: resource = "KEY CARRIER"
+		elif tag == "supply_thief": resource = "SUPPLY THIEF"
+		var score := -INF
+		var label := ""
+		if role == "sniper" and state == "aiming": score = 220.0; label = "SNIPER AIMING"
+		elif role == "charger" and state == "windup": score = 205.0; label = "CHARGER"
+		elif not resource.is_empty(): score = 190.0; label = resource
+		elif role == "disruptor" and enemy.has("role_target"): score = 175.0; label = "OBJECTIVE DISRUPTOR"
+		elif role == "summoner" and state == "casting": score = 135.0; label = "SUMMONER CAST"
+		if score == -INF:
+			continue
+		score -= minf(_player_pos.distance_to(enemy.get("pos", _player_pos) as Vector2) / 300.0, 12.0)
+		if score > best_score:
+			best_score = score
+			best = {"pos":enemy.get("pos", Vector2.ZERO), "label":label, "color":Color(1.0, 0.28, 0.14, 0.98), "radius":58.0, "urgent":true}
+	return best
 
 func _update_ring_shield(delta: float) -> void:
 	if _ring_bonus("timed_shield") <= 0.0:
@@ -1541,8 +2428,11 @@ func _current_room() -> Dictionary:
 func _apply_room_movement(delta: float, move_dir: Vector2) -> void:
 	var room_type: String = _current_room().get("id", "lava") as String
 	var move_mul: float = 1.0 + _artifact_wheel_move_mul
+	move_mul *= _story_mutator_movement_multiplier()
 	if _ice_patch_slow_t > 0.0:
 		move_mul *= ICE_PATCH_SLOW_MULT
+	if _enemy_role_slow_t > 0.0:
+		move_mul *= 0.68
 	if _chapter_two != null and int(story_stage.get("chapter", 0)) == 2:
 		if _chapter_two.cold_exposure >= 100.0:
 			move_mul *= 0.85
@@ -1620,7 +2510,7 @@ func _room_skill_dmg_multiplier() -> float:
 func _room_vision_radius() -> float:
 	return 290.0 if (_current_room().get("id", "lava") as String) == "darkness" else 520.0
 
-func _damage_player(amount: float, iframe_time: float) -> bool:
+func _damage_player(amount: float, iframe_time: float, story_safe_damage: bool = false) -> bool:
 	if _is_inside_vulnerable_crown_window():
 		_player_iframes = maxf(_player_iframes, minf(iframe_time, 0.2))
 		return false
@@ -1629,20 +2519,28 @@ func _damage_player(amount: float, iframe_time: float) -> bool:
 		return false
 	var story_damage: float = float(story_stage.get("enemy_damage", 1.0)) if not story_stage.is_empty() else 1.0
 	var final_amount := amount * (1.0 + _ring_bonus("damage_taken_mul")) * float(_run_difficulty.get("enemy_damage", 1.0)) * float(_run_modifier.get("damage_taken", 1.0)) * story_damage
+	final_amount *= float(_story_mutator_config.get("damage_taken", 1.0))
+	if str(story_stage.get("id", "")) == "ch1_5" and _chapter_one != null:
+		if _chapter_one.phase in ["radial_barrage", "aimed_barrage"]: _fail_story_mastery(0, "emitter_barrage_hit")
+		elif _chapter_one.phase == "rotating_barrage": _fail_story_mastery(1, "safe_lane_barrage_hit")
+	var hp_before := maxf(_player_hp, 0.0)
 	_player_hp -= final_amount
-	if _chapter_two != null and _chapter_two.stage_number == 1 and _story_custom_carried == "flame_charge" and final_amount >= _player_max_hp * 0.08:
+	_story_run_stats.record_damage_taken(minf(final_amount, hp_before))
+	_spawn_status_popup(_player_pos, "-%d" % roundi(final_amount), Color(1.0, 0.32, 0.26), 5)
+	if _combat_feedback != null:
+		_combat_feedback.play_player_damage(_player_pos, final_amount / maxf(_player_max_hp, 1.0))
+	if _is_boss_practice():
+		_practice_damage_taken += final_amount
+	if not story_safe_damage and _chapter_two != null and _chapter_two.stage_number == 1 and _story_custom_carried == "flame_charge" and final_amount >= _player_max_hp * 0.08:
 		_chapter_two.cold_exposure = minf(100.0, _chapter_two.cold_exposure + 6.0)
 		_story_log("Flame charge weakened by heavy frost damage")
-	if _chapter_three != null and _chapter_three.stage_number == 4 and _story_custom_carried == "antidote_vial" and final_amount >= _player_max_hp * 0.04:
-		var vial_damage: float = clampf(final_amount / maxf(_player_max_hp, 1.0) * 70.0, 6.0, 14.0)
+	if not story_safe_damage and _chapter_three != null and _chapter_three.stage_number == 4 and _story_custom_carried == "antidote_vial" and final_amount >= _player_max_hp * 0.04:
+		var vial_damage: float = clampf(final_amount / maxf(_player_max_hp, 1.0) * 70.0, 6.0, 14.0) * _story_diff_float("vial_damage_mul", 1.0)
 		_chapter_three.adjust_meter("vial_integrity", -vial_damage)
 		_story_log("Vial damaged: integrity %d%%" % roundi(_chapter_three.meter("vial_integrity")))
 		if _chapter_three.meter("vial_integrity") <= 0.0:
-			_story_custom_failure = "The antidote vial shattered."
-			_player_hp = 0.0
-			_handle_player_death()
-			return true
-	elif _story_custom_id == "cleanse_mire" and final_amount >= _player_max_hp * 0.05:
+			_recover_shattered_antidote_vial()
+	elif not story_safe_damage and _story_custom_id == "cleanse_mire" and final_amount >= _player_max_hp * 0.05:
 		_story_custom_progress["energy"] = maxi(0, int(_story_custom_progress.get("energy", 0)) - 1)
 	_player_iframes = iframe_time
 	if _player_hp <= 0.0:
@@ -1724,7 +2622,7 @@ func _update_skills(delta: float) -> void:
 			for i in range(_enemies.size() - 1, -1, -1):
 				var ep: Vector2 = _enemies[i]["pos"] as Vector2
 				if ep.distance_to(_player_pos) <= ar + (_enemies[i]["r"] as float):
-					_hit_enemy(i, tick)
+					_hit_enemy(i, tick, {"dot":true, "aoe":true, "source":"aura"})
 
 	# ── Regen ─────────────────────────────────────────────────────────────
 	var regen_rate: float = _ring_bonus("regen")
@@ -1742,7 +2640,7 @@ func _update_skills(delta: float) -> void:
 		regen_rate *= _room_heal_multiplier()
 		if _player_hp < _player_max_hp:
 			_play_skill_sfx("skill_regen", -16.0, 1.0, 1.2)
-		_player_hp = min(_player_max_hp, _player_hp + regen_rate * delta)
+		_restore_player_hp(regen_rate * delta)
 	# ── Ice Orb: fire on cooldown ─────────────────────────────────────
 	if _has_skill("ice_orb"):
 		var is_: Dictionary = _get_skill("ice_orb")
@@ -1813,7 +2711,7 @@ func _update_skills(delta: float) -> void:
 			for i in range(_enemies.size() - 1, -1, -1):
 				var ep: Vector2 = _enemies[i]["pos"] as Vector2
 				if ep.distance_to(_player_pos) <= hr + (_enemies[i]["r"] as float):
-					_hit_enemy(i, htick)
+					_hit_enemy(i, htick, {"dot":true, "aoe":true, "source":"hurricane"})
 
 	# ── Knife Storm (aura-type) ─────────────────────────────────────────────
 	if _has_skill("knife_storm"):
@@ -1829,7 +2727,7 @@ func _update_skills(delta: float) -> void:
 			for i in range(_enemies.size() - 1, -1, -1):
 				var ep: Vector2 = _enemies[i]["pos"] as Vector2
 				if ep.distance_to(_player_pos) <= kr + (_enemies[i]["r"] as float):
-					_hit_enemy(i, ktick)
+					_hit_enemy(i, ktick, {"dot":true, "aoe":true, "source":"knife_storm"})
 
 	# ── Electric Wave ─────────────────────────────────────────────────────
 	if _has_skill("elec_wave"):
@@ -1921,7 +2819,7 @@ func _update_skills(delta: float) -> void:
 				var ep: Vector2 = _enemies[i]["pos"] as Vector2
 				if ep.distance_to(_player_pos) <= aura_r + (_enemies[i]["r"] as float):
 					_apply_poison_to_enemy_idx(i, 3.0, tldef["poison_dps"] as float)
-					_hit_enemy(i, aura_tick)
+					_hit_enemy(i, aura_tick, {"dot":true, "aoe":true, "element":"poison", "source":"toxic_lightning"})
 		tls["pulse_t"] = (tls["pulse_t"] as float) - delta
 		if (tls["pulse_t"] as float) <= 0.0:
 			tls["pulse_t"] = tldef["cd"] as float
@@ -1959,7 +2857,7 @@ func _update_skills(delta: float) -> void:
 				for _i in range(_enemies.size() - 1, -1, -1):
 					var _ep: Vector2 = _enemies[_i]["pos"] as Vector2
 					if _ep.distance_to(_player_pos) <= _na_r + (_enemies[_i]["r"] as float):
-						_hit_enemy(_i, _na_tick)
+						_hit_enemy(_i, _na_tick, {"dot":true, "aoe":true, "source":_na_sid})
 				_aoe_flashes.append({"life": 0.7, "max_life": 0.7, "kind": _na_sid, "pos": _player_pos})
 
 	# ── Shadow Clone: spawn a persistent ghost clone entity ─────────────────────
@@ -1991,6 +2889,7 @@ func _update_skills(delta: float) -> void:
 		if (tm_s["timer"] as float) <= 0.0:
 			var tm_def: Dictionary = _slvl("toxic_mushroom", tm_s["level"] as int)
 			tm_s["timer"] = tm_def["cd"] as float
+			_play_ultimate_feedback("toxic_mushroom")
 			_spawn_toxic_mushroom(tm_def)
 
 	# ── Bog Trap: muddy pool slow only ────────────────────────────────────────
@@ -2036,6 +2935,7 @@ func _update_skills(delta: float) -> void:
 		if (ce_s["timer"] as float) <= 0.0:
 			var ce_def: Dictionary = _slvl("chili_explosion", ce_s["level"] as int)
 			ce_s["timer"] = ce_def["cd"] as float
+			_play_ultimate_feedback("chili_explosion")
 			_fire_chili_explosion(ce_def)
 
 	# ── Master Kitchen: short-range utensil bursts at staggered timings ───────
@@ -2191,7 +3091,7 @@ func _check_orb_hits() -> void:
 					continue
 				if op.distance_to(_enemies[j]["pos"] as Vector2) < hit_r + (_enemies[j]["r"] as float):
 					_play_skill_sfx("skill_orb", -12.0, 1.0, 0.18)
-					_hit_enemy(j, dmg)
+					_hit_enemy(j, dmg, {"source":"orb"})
 					break
 
 func _fire_bolts(n: int, dmg: float, spd: float, kind: String = "bolt") -> void:
@@ -2231,7 +3131,7 @@ func _trigger_wave_kind(r: float, dmg: float, kind: String = "wave") -> void:
 		var sp: Vector2 = ep - _camera.position + vp.size * 0.5
 		if not vp.grow(60.0).has_point(sp): continue
 		if ep.distance_to(_player_pos) <= r:
-			_hit_enemy(i, dmg)
+			_hit_enemy(i, dmg, {"aoe":true, "element":"lightning" if kind == "elec_wave" else "", "source":kind})
 	_waves.append({"pos": _player_pos, "r": 0.0, "max_r": r, "life": 0.55, "max_life": 0.55, "kind": kind})
 
 func _do_capy_charge_shadow(dmg: float) -> void:
@@ -2283,7 +3183,7 @@ func _update_capy_charge_rushes(delta: float) -> void:
 			var enemy_id: int = e.get("id", -1) as int
 			var hit_list: Array = rush.get("hit_enemies", []) as Array
 			if ep.distance_to(rush_pos) < 80.0 and enemy_id not in hit_list:
-				_hit_enemy(j, rush["dmg"] as float)
+				_hit_enemy(j, rush["dmg"] as float, {"source":"capy_charge"})
 				hit_list.append(enemy_id)
 				rush["hit_enemies"] = hit_list
 		if (rush["life"] as float) <= 0.0:
@@ -2369,12 +3269,12 @@ func _update_stampedes(delta: float) -> void:
 			
 			# Hit detected - damage and disappear
 			if dist < 60.0:
-				_hit_enemy(j, centipede["dmg"] as float * 1.0)
+				_hit_enemy(j, centipede["dmg"] as float * 1.0, {"source":"stampede"})
 				centipede["has_hit"] = true
 				hit_this_frame = true
 				break  # Only hit first enemy, then disappear
 			elif dist < 100.0:
-				_hit_enemy(j, centipede["dmg"] as float * 0.75)
+				_hit_enemy(j, centipede["dmg"] as float * 0.75, {"source":"stampede"})
 				centipede["has_hit"] = true
 				hit_this_frame = true
 				break  # Only hit first enemy, then disappear
@@ -2395,17 +3295,26 @@ func _trigger_aoe(kind: String, dmg: float, slow: float) -> void:
 			print("[Match] ✗ Failed to trigger skill: %s (ID: %s)" % [skill_name, kind])
 	
 	_play_skill_sfx("skill_" + kind, -3.0, 1.0, 0.5)
+	var is_ultimate := String(ULTI_SKILLS.get(_char_id, "")) == kind
+	if is_ultimate:
+		_play_ultimate_feedback(kind)
 	var vp: Rect2 = get_viewport_rect()
 	for i in range(_enemies.size() - 1, -1, -1):
 		var ep: Vector2 = (_enemies[i]["pos"] as Vector2)
 		var sp: Vector2 = ep - _camera.position + vp.size * 0.5
 		if not vp.grow(40.0).has_point(sp): continue
-		_hit_enemy(i, dmg)
+		_hit_enemy(i, dmg, {"aoe":true, "ultimate":is_ultimate, "source":kind})
 		if slow > 0.0 and i < _enemies.size():
 			var aoe_base_s: float = (_enemies[i]["base_spd"] as float)
 			var aoe_min_s: float  = max(aoe_base_s * max(0.50 - float(_level) * 0.012, 0.20), 30.0)
 			_enemies[i]["spd"] = max((_enemies[i]["spd"] as float) * (1.0 - slow), aoe_min_s)
 	_aoe_flashes.append({"life": 1.4, "max_life": 1.4, "kind": kind})
+
+func _play_ultimate_feedback(skill_id: String) -> void:
+	if String(ULTI_SKILLS.get(_char_id, "")) != skill_id:
+		return
+	if _combat_feedback != null:
+		_combat_feedback.play_ultimate_activation(_player_pos)
 
 ## Convert old internal skill ID to new JSON skill name
 ## Maps old skill slots (e.g., "blizzard", "orb") to new proper names (e.g., "Blizzard", "Capy Orb")
@@ -2592,6 +3501,8 @@ func _reflect_lava_shield(boss: Dictionary) -> void:
 # ═════════════════════════════════════════════════════════════════════════════
 
 func _update_abyss_warden_special(boss: Dictionary, delta: float) -> void:
+	if str(boss.get("story_tag", "")) == "abyss_king" and _chapter_five != null and _chapter_five.flag("boss_transition_pending"):
+		return
 	if not boss.has("warden_state"):
 		boss["warden_state"] = "idle"
 		boss["warden_state_t"] = 0.0
@@ -2635,6 +3546,7 @@ func _fire_abyss_chain(boss: Dictionary, phase: int) -> void:
 	for i in num_chains:
 		var angle: float = float(i) / float(num_chains) * TAU
 		var chain_dir: Vector2 = Vector2(cos(angle), sin(angle))
+		_add_boss_telegraph({"kind":"line", "pos":boss_pos, "dir":chain_dir, "length":190.0, "width":30.0, "life":0.55, "color":Color(0.78, 0.30, 0.92)})
 		_boss_chains.append({
 			"boss_pos": boss_pos,
 			"direction": chain_dir,
@@ -2643,6 +3555,7 @@ func _fire_abyss_chain(boss: Dictionary, phase: int) -> void:
 			"state_t": 0.0,
 			"retract_t": 0.8,
 			"total_t": 0.0,
+			"warning": 0.55,
 			"dmg": base_dmg * 1.2,
 			"corrupted": phase >= 2,
 		})
@@ -2666,25 +3579,40 @@ func _fire_abyss_pulse(boss: Dictionary, phase: int) -> void:
 
 func _fire_abyss_summon(boss: Dictionary) -> void:
 	# Summon 2-3 corrupted enemies, max 6 total
-	if (_enemies.size() as int) > 10:
+	var active_corrupted := 0
+	for enemy in _enemies:
+		if bool(enemy.get("corrupted", false)):
+			active_corrupted += 1
+	if (_enemies.size() as int) > 10 or active_corrupted >= 6:
 		return
 	# Calculate wave scaling from boss's hp_mult (back out from hp_mult = 32.0 * ws)
 	var ws: float = (boss.get("hp_mult", 32.0) as float) / 32.0
-	var num_spawn: int = 2 + randi() % 2
-	for _i in num_spawn:
+	var num_spawn: int = mini(2 + randi() % 2, 6 - active_corrupted)
+	var story_king := str(boss.get("story_tag", "")) == "abyss_king"
+	var composition: Array[String] = StoryEnemyRolesClass.composition("ch5_5", _story_difficulty_rank(), num_spawn, _enemy_role_composition_counter) if story_king else []
+	if story_king:
+		_enemy_role_composition_counter += 1
+	for summon_index in num_spawn:
 		var spawn_angle: float = randf() * TAU
 		var spawn_dist: float = 200.0
 		var spawn_pos: Vector2 = (boss["pos"] as Vector2) + Vector2(cos(spawn_angle), sin(spawn_angle)) * spawn_dist
-		var summon_kind: String = ["normal", "normal_tank", "normal_fast"][randi() % 3]
+		var summon_kind: String = composition[summon_index] if story_king and summon_index < composition.size() else ["normal", "normal_tank", "normal_fast"][randi() % 3]
 		_spawn_enemy_from(_make_enemy_data(summon_kind, ws))
 		_enemies[-1]["pos"] = spawn_pos
 		_enemies[-1]["corrupted"] = true
+		if story_king:
+			_enemies[-1]["story_tag"] = "abyss_summon"
+			_assign_story_enemy_roles(_enemies[-1])
+	if story_king:
+		_story_log_role_composition(composition)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # PRISM TRIARCH SKILLS
 # ═════════════════════════════════════════════════════════════════════════════
 
 func _update_prism_triarch_special(boss: Dictionary, delta: float) -> void:
+	if str(boss.get("story_tag", "")) == "abyss_king" and _chapter_five != null and _chapter_five.flag("boss_transition_pending"):
+		return
 	if not boss.has("prism_state"):
 		boss["prism_state"] = "idle"
 		boss["prism_angle"] = 0.0
@@ -2779,11 +3707,26 @@ func _fire_prism_collapse(boss: Dictionary) -> void:
 # ═════════════════════════════════════════════════════════════════════════════
 
 func _update_blight_tyrant_special(boss: Dictionary, delta: float) -> void:
+	if str(boss.get("story_tag", "")) == "crestkeeper":
+		_update_crestkeeper_special(boss, delta)
+		return
 	if not boss.has("blight_state"):
 		boss["blight_state"] = "idle"
 		boss["special_timer"] = 0.0
 	
 	boss["special_timer"] = (boss["special_timer"] as float) + delta
+	var story_tyrant := str(boss.get("story_tag", "")) == "c3_blight_tyrant" and _chapter_three != null
+	if story_tyrant:
+		boss["signature_transition_t"] = maxf(0.0, float(boss.get("signature_transition_t", 0.0)) - delta)
+		if float(boss["signature_transition_t"]) > 0.0:
+			return
+		var hp_ratio := float(boss.get("hp", 1.0)) / maxf(float(boss.get("objective_max_hp", boss.get("max_hp", 1.0))), 1.0)
+		if hp_ratio <= 0.55 and not bool(boss.get("arena_rooted", false)):
+			boss["arena_rooted"] = true
+			boss["signature_transition_t"] = 0.65
+			_fire_corrupted_bloom(boss)
+			_present_boss_moment("THE MIRE TAKES ROOT", "ANTIDOTE BURNS OPEN SAFE GROUND", Color(0.42, 0.94, 0.30), boss.get("pos", _story_stage_origin) as Vector2, 9.0, "boss_phase")
+			_story_log("Boss signature transition: Tyrant rooted arena · purity=%d" % roundi(_chapter_three.meter("purity")))
 	
 	var st: float = boss["special_timer"] as float
 	var cycle_num: int = int(st / 6.75)
@@ -2809,6 +3752,16 @@ func _update_blight_tyrant_special(boss: Dictionary, delta: float) -> void:
 		_fire_corrupted_bloom(boss)
 		boss["bloom_fired"] = true
 
+func _update_crestkeeper_special(boss: Dictionary, delta: float) -> void:
+	boss["special_timer"] = float(boss.get("special_timer", 0.0)) + delta
+	if float(boss["special_timer"]) < 1.35 * _story_diff_float("shot_interval_mul", 1.0) or _boss_projs.size() >= 64:
+		return
+	boss["special_timer"] = 0.0
+	_story_hazard_pattern += 1
+	var hp_ratio := float(boss.get("hp", 1.0)) / maxf(float(boss.get("objective_max_hp", boss.get("max_hp", 1.0))), 1.0)
+	var pattern := "radial_barrage" if hp_ratio > 0.66 else ("aimed_barrage" if hp_ratio > 0.33 else "rotating_barrage")
+	_fire_c1_arena_pattern(pattern)
+
 func _fire_thorn_lash(boss: Dictionary) -> void:
 	var boss_pos: Vector2 = boss["pos"] as Vector2
 	var base_dmg: float = boss["dmg"] as float
@@ -2819,27 +3772,33 @@ func _fire_thorn_lash(boss: Dictionary) -> void:
 	# 3 cone directions: left, center, right
 	for cone_offset in [-0.5, 0.0, 0.5]:
 		var dir: Vector2 = aim.rotated(float(cone_offset))
+		var patch_pos := boss_pos + dir * 150.0
+		_add_boss_telegraph({"kind":"line", "pos":boss_pos, "dir":dir, "length":300.0, "width":38.0, "life":0.60, "color":Color(0.72, 0.24, 0.18)})
+		_add_boss_telegraph({"kind":"circle", "pos":patch_pos, "radius":35.0, "life":0.60, "color":Color(0.72, 0.24, 0.18)})
 		_boss_projs.append({
 			"kind": "thorn",
 			"pos": boss_pos,
 			"vel": dir * 240.0,
 			"dmg": base_dmg * 0.9,
 			"life": 2.5,
+			"delay": 0.60,
 		})
 		
 		# Create thorn patch where it lands
 		_thorn_patches.append({
-			"pos": boss_pos + dir * 150.0,
+			"pos": patch_pos,
 			"r": 35.0,
 			"life": 3.0,
 			"max_life": 3.0,
 			"dmg_per_tick": base_dmg * 0.4,
 			"tick_t": 0.0,
+			"arming": 0.60,
 		})
 
 func _fire_venom_pods(boss: Dictionary) -> void:
 	var boss_pos: Vector2 = boss["pos"] as Vector2
-	var num_pods: int = 4 + randi() % 3
+	var purity := float(boss.get("brew_purity", 50.0))
+	var num_pods: int = (4 if purity >= 80.0 else 5) + randi() % 2
 	
 	for _i in num_pods:
 		var angle: float = randf() * TAU
@@ -2858,7 +3817,8 @@ func _fire_corrupted_bloom(boss: Dictionary) -> void:
 	var base_dmg: float = boss["dmg"] as float
 	
 	# Create expanding root eruptions
-	var num_roots: int = 8
+	var purity := float(boss.get("brew_purity", 50.0))
+	var num_roots: int = 6 if purity >= 80.0 else (8 if purity >= 55.0 else 9)
 	for i in num_roots:
 		var angle: float = float(i) / float(num_roots) * TAU
 		var root_pos: Vector2 = boss_pos + Vector2(cos(angle), sin(angle)) * 200.0
@@ -2877,6 +3837,8 @@ func _fire_corrupted_bloom(boss: Dictionary) -> void:
 # ═════════════════════════════════════════════════════════════════════════════
 
 func _update_thunderforge_special(boss: Dictionary, delta: float) -> void:
+	if str(boss.get("story_tag", "")) == "c4_thunderforge_behemoth" and _chapter_four != null and _chapter_four.flag("boss_transition_pending"):
+		return
 	if not boss.has("storm_state"):
 		boss["storm_state"] = "idle"
 		boss["special_timer"] = 0.0
@@ -2923,11 +3885,11 @@ func _fire_thunder_hammer(boss: Dictionary) -> void:
 			_mortar_strikes.append({
 				"pos": fissure_pos,
 				"r": 60.0,
-				"life": 0.8,
-				"max_life": 0.8,
+				"life": 1.0,
+				"max_life": 1.0,
 				"dmg": base_dmg * 1.5,
 				"kind": "lightning_strike",
-				"warning_life": 0.4,
+				"warning_life": 0.65,
 			})
 
 func _fire_arc_coil(boss: Dictionary) -> void:
@@ -2972,6 +3934,9 @@ func _fire_storm_cataclysm(boss: Dictionary) -> void:
 func _update_boss_chains(delta: float) -> void:
 	for i in range(_boss_chains.size() - 1, -1, -1):
 		var chain: Dictionary = _boss_chains[i]
+		chain["warning"] = maxf(0.0, float(chain.get("warning", 0.0)) - delta)
+		if float(chain["warning"]) > 0.0:
+			continue
 		chain["total_t"] = (chain["total_t"] as float) + delta
 		var state: String = chain.get("state", "extend") as String
 		
@@ -3088,9 +4053,10 @@ func _update_thorn_patches(delta: float) -> void:
 	for i in range(_thorn_patches.size() - 1, -1, -1):
 		var patch: Dictionary = _thorn_patches[i]
 		patch["life"] = (patch["life"] as float) - delta
+		patch["arming"] = maxf(0.0, float(patch.get("arming", 0.0)) - delta)
 		patch["tick_t"] = (patch.get("tick_t", 0.0) as float) + delta
 		
-		if (patch["tick_t"] as float) >= 0.4:
+		if float(patch["arming"]) <= 0.0 and (patch["tick_t"] as float) >= 0.4:
 			if _player_iframes <= 0.0 and _player_pos.distance_to(patch["pos"] as Vector2) < PLAYER_R + (patch["r"] as float):
 				_damage_player(patch["dmg_per_tick"] as float, 0.2)
 			patch["tick_t"] = 0.0
@@ -3102,11 +4068,371 @@ func _update_thorn_patches(delta: float) -> void:
 # ENTITY UPDATES
 # ═════════════════════════════════════════════════════════════════════════════
 
+func _cleanup_enemy_role_runtime() -> void:
+	_enemy_role_hazards.clear()
+	_enemy_role_projectiles.clear()
+	_enemy_role_control_immunity_t = 0.0
+	_enemy_role_slow_t = 0.0
+	_enemy_role_composition_counter = 0
+	for enemy in _enemies:
+		enemy.erase("role_state")
+		enemy.erase("role_state_t")
+		enemy.erase("role_target")
+		enemy.erase("role_charge_dir")
+		enemy.erase("role_motion")
+
+func _assign_story_enemy_roles(enemy: Dictionary) -> void:
+	var kind := str(enemy.get("kind", "normal"))
+	var tag := str(enemy.get("story_tag", ""))
+	var roles := StoryEnemyRolesClass.roles_for(kind, tag)
+	enemy["enemy_roles"] = roles
+	enemy["primary_role"] = roles[0] if not roles.is_empty() else ""
+	var protected_story_target := tag.begins_with("c4_golem_")
+	enemy["role_enabled"] = not roles.is_empty() and not _is_boss_kind(kind) and not protected_story_target
+	enemy["role_state"] = "idle"
+	enemy["role_state_t"] = 0.0
+	enemy["role_cooldown"] = randf_range(0.8, 2.2)
+	enemy["role_leash_center"] = enemy.get("pos", Vector2.ZERO)
+	enemy["role_motion"] = {"dir":Vector2.ZERO, "speed_mul":1.0, "hold":false}
+	if str(enemy.get("primary_role", "")) in ["disruptor", "thief"]:
+		var story_target := _story_role_target_position(enemy)
+		if story_target != Vector2.INF:
+			enemy["role_target"] = story_target
+
+func _story_role_target_position(enemy: Dictionary) -> Vector2:
+	var stage_id := str(story_stage.get("id", ""))
+	var role := str(enemy.get("primary_role", ""))
+	var enemy_pos := enemy.get("pos", Vector2.ZERO) as Vector2
+	var best_position := Vector2.INF
+	var best_distance := INF
+	for prop in _adventure_props:
+		var prop_kind := str(prop.get("kind", ""))
+		if not StoryEnemyRolesClass.can_target_story_prop(stage_id, role, prop_kind):
+			continue
+		var prop_position := prop.get("pos", Vector2.ZERO) as Vector2
+		var distance := enemy_pos.distance_squared_to(prop_position)
+		if distance < best_distance:
+			best_distance = distance
+			best_position = prop_position
+	return best_position
+
+func _update_enemy_role(enemy: Dictionary, delta: float, default_target: Vector2) -> Dictionary:
+	var motion: Dictionary = enemy.get("role_motion", {}) as Dictionary
+	if motion.is_empty():
+		motion = {"dir":Vector2.ZERO, "speed_mul":1.0, "hold":false}
+		enemy["role_motion"] = motion
+	motion["dir"] = (default_target - (enemy.get("pos", Vector2.ZERO) as Vector2)).normalized()
+	motion["speed_mul"] = 1.0
+	motion["hold"] = false
+	motion.erase("speed_override")
+	var role := str(enemy.get("primary_role", ""))
+	if role.is_empty() or role == "disruptor":
+		return motion
+	var pos := enemy.get("pos", Vector2.ZERO) as Vector2
+	var to_player := _player_pos - pos
+	var player_distance := to_player.length()
+	var toward_player := to_player.normalized() if not to_player.is_zero_approx() else Vector2.RIGHT
+	var cadence := 1.18 if bool(enemy.get("mutator_aggressive", false)) else 1.0
+	enemy["role_cooldown"] = maxf(0.0, float(enemy.get("role_cooldown", 0.0)) - delta * cadence)
+	enemy["role_state_t"] = maxf(0.0, float(enemy.get("role_state_t", 0.0)) - delta)
+	var state := str(enemy.get("role_state", "idle"))
+	match role:
+		"thief":
+			var thief_tag := str(enemy.get("story_tag", ""))
+			if thief_tag in ["fleeing_key_carrier", "protected_key_carrier"]:
+				var leash_center := enemy.get("role_leash_center", pos) as Vector2
+				if pos.distance_to(leash_center) > 760.0:
+					motion["dir"] = pos.direction_to(leash_center)
+				elif player_distance < 540.0:
+					motion["dir"] = -toward_player
+					motion["speed_mul"] = 1.12
+				else:
+					motion["dir"] = toward_player.rotated(PI * 0.5)
+					motion["speed_mul"] = 0.22
+		"chaser":
+			if bool(enemy.get("mutator_elite", false)):
+				if state == "burst":
+					motion["speed_mul"] = 1.35
+					if float(enemy["role_state_t"]) <= 0.0:
+						enemy["role_state"] = "idle"
+						enemy["role_cooldown"] = 4.5
+				elif float(enemy["role_cooldown"]) <= 0.0 and player_distance > 150.0:
+					enemy["role_state"] = "burst"
+					enemy["role_state_t"] = 0.65
+		"tank":
+			if state == "guard":
+				motion["speed_mul"] = 0.28
+				if float(enemy["role_state_t"]) <= 0.0:
+					enemy["role_state"] = "idle"
+					enemy["role_cooldown"] = 4.8
+			elif float(enemy["role_cooldown"]) <= 0.0 and player_distance < 430.0:
+				enemy["role_state"] = "guard"
+				enemy["role_state_t"] = 1.5 if bool(enemy.get("mutator_elite", false)) else 1.15
+		"charger":
+			if state == "windup":
+				motion["hold"] = true
+				if float(enemy["role_state_t"]) <= 0.0:
+					enemy["role_state"] = "charge"
+					enemy["role_state_t"] = 0.55
+			elif state == "charge":
+				motion["dir"] = enemy.get("role_charge_dir", toward_player) as Vector2
+				motion["speed_override"] = StoryEnemyRolesClass.charger_speed(float(enemy.get("spd", 0.0)))
+				if float(enemy["role_state_t"]) <= 0.0:
+					enemy["role_state"] = "recovery"
+					enemy["role_state_t"] = 0.9
+			elif state == "recovery":
+				motion["hold"] = true
+				if float(enemy["role_state_t"]) <= 0.0:
+					enemy["role_state"] = "idle"
+					enemy["role_cooldown"] = 3.8
+			elif float(enemy["role_cooldown"]) <= 0.0 and player_distance > 170.0 and player_distance < 650.0:
+				enemy["role_state"] = "windup"
+				enemy["role_state_t"] = 0.62 if bool(enemy.get("mutator_elite", false)) else 0.78
+				enemy["role_charge_dir"] = toward_player
+		"zoner":
+			_apply_role_ranged_motion(motion, toward_player, player_distance, 300.0, 520.0)
+			if state == "casting":
+				motion["hold"] = true
+				if float(enemy["role_state_t"]) <= 0.0:
+					_spawn_role_hazard(enemy)
+					enemy["role_state"] = "idle"
+					enemy["role_cooldown"] = 5.2 if bool(enemy.get("mutator_elite", false)) else 4.2
+			elif float(enemy["role_cooldown"]) <= 0.0:
+				var predicted := _player_pos + _player_move_dir * 90.0
+				var safe_target := _role_safe_hazard_position(predicted)
+				if safe_target != Vector2.INF:
+					enemy["role_target"] = safe_target
+					enemy["role_state"] = "casting"
+					enemy["role_state_t"] = 0.9
+		"sniper":
+			_apply_role_ranged_motion(motion, toward_player, player_distance, 390.0, 620.0)
+			if state == "aiming":
+				motion["hold"] = true
+				if float(enemy["role_state_t"]) <= 0.0:
+					_fire_role_sniper(enemy)
+					enemy["role_state"] = "recovery"
+					enemy["role_state_t"] = 1.15
+			elif state == "recovery":
+				motion["speed_mul"] = 0.45
+				if float(enemy["role_state_t"]) <= 0.0:
+					enemy["role_state"] = "idle"
+					enemy["role_cooldown"] = 4.2
+			elif float(enemy["role_cooldown"]) <= 0.0 and player_distance < 760.0 and _is_world_pos_visible(pos, 100.0):
+				enemy["role_state"] = "aiming"
+				enemy["role_state_t"] = 1.05
+				enemy["role_target"] = _player_pos
+		"support":
+			_apply_role_ranged_motion(motion, toward_player, player_distance, 250.0, 440.0)
+			if state == "casting":
+				motion["hold"] = true
+				if float(enemy["role_state_t"]) <= 0.0:
+					_role_support_cast(enemy)
+					enemy.erase("role_target")
+					enemy.erase("role_target_id")
+					enemy["role_state"] = "idle"
+					enemy["role_cooldown"] = 5.5
+			elif float(enemy["role_cooldown"]) <= 0.0:
+				var support_target_index := _role_support_target_index(enemy)
+				if support_target_index >= 0:
+					var support_target := _enemies[support_target_index] as Dictionary
+					enemy["role_target"] = support_target.get("pos", pos)
+					enemy["role_target_id"] = int(support_target.get("id", -1))
+					enemy["role_state"] = "casting"
+					enemy["role_state_t"] = 1.0 if bool(enemy.get("mutator_elite", false)) else 0.75
+				else:
+					enemy["role_cooldown"] = 0.8
+		"controller":
+			_apply_role_ranged_motion(motion, toward_player, player_distance, 280.0, 500.0)
+			if state == "casting":
+				motion["hold"] = true
+				if float(enemy["role_state_t"]) <= 0.0:
+					_fire_role_controller(enemy)
+					enemy["role_state"] = "idle"
+					enemy["role_cooldown"] = 5.0
+			elif float(enemy["role_cooldown"]) <= 0.0 and player_distance < 620.0:
+				enemy["role_state"] = "casting"
+				enemy["role_state_t"] = 0.8
+				enemy["role_target"] = _player_pos
+		"summoner":
+			_apply_role_ranged_motion(motion, toward_player, player_distance, 330.0, 560.0)
+			if state == "casting":
+				motion["hold"] = true
+				if float(enemy["role_state_t"]) <= 0.0:
+					_role_summoner_cast(enemy)
+					enemy["role_state"] = "idle"
+					enemy["role_cooldown"] = 8.0
+			elif float(enemy["role_cooldown"]) <= 0.0:
+				if _can_role_summon(enemy):
+					enemy["role_state"] = "casting"
+					enemy["role_state_t"] = 1.15
+				else:
+					enemy["role_cooldown"] = 1.0
+	return motion
+
+func _apply_role_ranged_motion(motion: Dictionary, toward_player: Vector2, distance: float, near_distance: float, far_distance: float) -> void:
+	if distance < near_distance:
+		motion["dir"] = -toward_player
+		motion["speed_mul"] = 0.75
+	elif distance > far_distance:
+		motion["dir"] = toward_player
+		motion["speed_mul"] = 0.72
+	else:
+		motion["dir"] = toward_player.rotated(PI * 0.5)
+		motion["speed_mul"] = 0.28
+
+func _role_safe_hazard_position(candidate: Vector2) -> Vector2:
+	for attempt in 7:
+		var checked := candidate if attempt == 0 else candidate + Vector2.from_angle(float(attempt) * TAU / 6.0) * 250.0
+		var valid := true
+		for prop in _adventure_props:
+			if (prop.get("pos", Vector2.INF) as Vector2).distance_to(checked) < 230.0:
+				valid = false
+				break
+		if valid:
+			return checked
+	return Vector2.INF
+
+func _spawn_role_hazard(enemy: Dictionary) -> void:
+	var hazard_cap := StoryEnemyRolesClass.max_hazards(_story_difficulty_rank())
+	if _enemy_role_hazards.size() >= hazard_cap:
+		if _story_telemetry != null:
+			_story_telemetry.log_once("role_hazard_cap", "[Combat] Zoner hazard cap reached: %d" % hazard_cap)
+		return
+	var radius := 108.0 * (1.18 if bool(enemy.get("mutator_elite", false)) else 1.0)
+	_enemy_role_hazards.append({
+		"pos":enemy.get("role_target", _player_pos), "r":radius,
+		"life":ROLE_HAZARD_LIFE, "max_life":ROLE_HAZARD_LIFE,
+		"tick_t":0.0, "dmg":float(enemy.get("dmg", 6.0)) * 0.42,
+		"owner_id":int(enemy.get("id", -1)),
+	})
+
+func _fire_role_sniper(enemy: Dictionary) -> void:
+	if _enemy_role_projectiles.size() >= ROLE_PROJECTILE_MAX:
+		return
+	var origin := enemy.get("pos", Vector2.ZERO) as Vector2
+	var target := enemy.get("role_target", _player_pos) as Vector2
+	var direction := origin.direction_to(target)
+	var shots := 2 if bool(enemy.get("mutator_elite", false)) else 1
+	for shot_index in shots:
+		if _enemy_role_projectiles.size() >= ROLE_PROJECTILE_MAX:
+			break
+		var spread := (float(shot_index) - float(shots - 1) * 0.5) * 0.16
+		_enemy_role_projectiles.append({"pos":origin, "vel":direction.rotated(spread) * 520.0, "life":2.1, "dmg":float(enemy.get("dmg", 6.0)) * 1.35, "kind":"sniper"})
+
+func _fire_role_controller(enemy: Dictionary) -> void:
+	if _enemy_role_projectiles.size() >= ROLE_PROJECTILE_MAX:
+		return
+	var origin := enemy.get("pos", Vector2.ZERO) as Vector2
+	var target := enemy.get("role_target", _player_pos) as Vector2
+	_enemy_role_projectiles.append({"pos":origin, "vel":origin.direction_to(target) * 360.0, "life":2.0, "dmg":float(enemy.get("dmg", 6.0)) * 0.45, "kind":"controller"})
+
+func _role_support_target_index(support: Dictionary) -> int:
+	var support_pos := support.get("pos", Vector2.ZERO) as Vector2
+	var support_id := int(support.get("id", -1))
+	var best_index := -1
+	var best_ratio := 0.85
+	for index in _enemies.size():
+		var ally := _enemies[index] as Dictionary
+		if int(ally.get("id", -2)) == support_id or _is_boss_kind(str(ally.get("kind", ""))):
+			continue
+		if str(ally.get("primary_role", "")) == "support" or str(ally.get("story_tag", "")).begins_with("c4_golem_"):
+			continue
+		if support_pos.distance_to(ally.get("pos", Vector2.ZERO) as Vector2) > 350.0:
+			continue
+		var ratio := float(ally.get("hp", 1.0)) / maxf(float(ally.get("max_hp", 1.0)), 1.0)
+		if ratio < best_ratio:
+			best_ratio = ratio
+			best_index = index
+	return best_index
+
+func _role_support_cast(support: Dictionary) -> void:
+	var target_index := -1
+	var target_id := int(support.get("role_target_id", -1))
+	if target_id >= 0:
+		for index in _enemies.size():
+			if int(_enemies[index].get("id", -2)) == target_id:
+				target_index = index
+				break
+	if target_index < 0:
+		target_index = _role_support_target_index(support)
+	if target_index < 0:
+		return
+	var ally := _enemies[target_index] as Dictionary
+	var max_hp := float(ally.get("max_hp", 1.0))
+	var heal_ratio := 0.14 if bool(support.get("mutator_elite", false)) else 0.10
+	ally["hp"] = StoryEnemyRolesClass.support_healed_hp(float(ally.get("hp", 1.0)), max_hp, heal_ratio)
+	_spawn_reaction_popup(ally.get("pos", Vector2.ZERO) as Vector2, "SUPPORTED", Color(0.46, 1.0, 0.58))
+	if _story_telemetry != null:
+		_story_telemetry.role_event("support", "heal_cast")
+
+func _role_summon_count(owner_id: int = -1) -> int:
+	var count := 0
+	for enemy in _enemies:
+		if not bool(enemy.get("role_summon", false)):
+			continue
+		if owner_id < 0 or int(enemy.get("summon_owner_id", -2)) == owner_id:
+			count += 1
+	return count
+
+func _can_role_summon(summoner: Dictionary) -> bool:
+	var owner_id := int(summoner.get("id", -1))
+	return StoryEnemyRolesClass.can_add_summon(_role_summon_count(owner_id), _role_summon_count(), _story_difficulty_rank(), _active_normal_enemy_count(), _objective_boss_active)
+
+func _role_summoner_cast(summoner: Dictionary) -> void:
+	if not _can_role_summon(summoner):
+		return
+	var owner_id := int(summoner.get("id", -1))
+	var summon_data := _make_enemy_data("normal", 0.55)
+	summon_data["spawn_pos"] = (summoner.get("pos", Vector2.ZERO) as Vector2) + Vector2.from_angle(randf() * TAU) * 72.0
+	_spawn_enemy_from(summon_data)
+	var spawned := _enemies[-1] as Dictionary
+	spawned["story_tag"] = "role_summon"
+	spawned["role_summon"] = true
+	spawned["summon_owner_id"] = owner_id
+	_assign_story_enemy_roles(spawned)
+	if _story_telemetry != null:
+		_story_telemetry.role_event("summoner", "summon_cast")
+
+func _update_enemy_role_projectiles(delta: float) -> void:
+	var hit_radius_squared := (PLAYER_R + 10.0) * (PLAYER_R + 10.0)
+	for index in range(_enemy_role_projectiles.size() - 1, -1, -1):
+		var projectile := _enemy_role_projectiles[index] as Dictionary
+		projectile["pos"] = (projectile.get("pos", Vector2.ZERO) as Vector2) + (projectile.get("vel", Vector2.ZERO) as Vector2) * delta
+		projectile["life"] = float(projectile.get("life", 0.0)) - delta
+		if (projectile.get("pos", Vector2.ZERO) as Vector2).distance_squared_to(_player_pos) <= hit_radius_squared:
+			if str(projectile.get("kind", "")) == "controller" and _enemy_role_control_immunity_t <= 0.0:
+				_enemy_role_slow_t = StoryEnemyRolesClass.controller_slow_duration(0.85)
+				_enemy_role_control_immunity_t = 2.0
+				_spawn_reaction_popup(_player_pos, "SLOWED", Color(0.48, 0.78, 1.0))
+			_damage_player(float(projectile.get("dmg", 1.0)), 0.35)
+			_enemy_role_projectiles.remove_at(index)
+		elif float(projectile["life"]) <= 0.0:
+			_enemy_role_projectiles.remove_at(index)
+
+func _update_enemy_role_hazards(delta: float) -> void:
+	for index in range(_enemy_role_hazards.size() - 1, -1, -1):
+		var hazard := _enemy_role_hazards[index] as Dictionary
+		hazard["life"] = float(hazard.get("life", 0.0)) - delta
+		hazard["tick_t"] = float(hazard.get("tick_t", 0.0)) - delta
+		if float(hazard["tick_t"]) <= 0.0:
+			hazard["tick_t"] = 0.45
+			if (hazard.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) <= float(hazard.get("r", 100.0)):
+				_damage_player(float(hazard.get("dmg", 1.0)), 0.25)
+		if float(hazard["life"]) <= 0.0:
+			_enemy_role_hazards.remove_at(index)
+
 func _update_enemies(delta: float) -> void:
+	var shared_objective_target_index := _shared_enemy_objective_target_index()
+	var visible_world_rect := Rect2()
+	if _idle_enemy_speed_boost_active:
+		var view_size := get_viewport_rect().size
+		var camera_position := _camera.position if _camera != null else _player_pos
+		visible_world_rect = Rect2(camera_position - view_size * 0.5, view_size).grow(40.0)
 	for i in range(_enemies.size() - 1, -1, -1):
 		var e: Dictionary = _enemies[i]
 		if (e["iframes"] as float) > 0.0:
 			e["iframes"] = (e["iframes"] as float) - delta
+		e["hit_flash_t"] = maxf(float(e.get("hit_flash_t", 0.0)) - delta, 0.0)
 		e["tg_mark_t"] = max((e.get("tg_mark_t", 0.0) as float) - delta, 0.0)
 		e["poison_t"]  = max((e.get("poison_t",  0.0) as float) - delta, 0.0)
 		e["chilled_t"] = max((e.get("chilled_t", 0.0) as float) - delta, 0.0)
@@ -3117,6 +4443,7 @@ func _update_enemies(delta: float) -> void:
 		e["trap_t"]    = max((e.get("trap_t",    0.0) as float) - delta, 0.0)
 		e["trap_vine_t"] = max((e.get("trap_vine_t", 0.0) as float) - delta, 0.0)
 		e["beetle_t"]  = max((e.get("beetle_t",  0.0) as float) - delta, 0.0)
+		e["boss_feedback_t"] = maxf(float(e.get("boss_feedback_t", 0.0)) - delta, 0.0)
 		# Speed recovery when no longer slowed by time warp
 		if (e["tw_slow_t"] as float) <= 0.0:
 			var base_s: float = e["base_spd"] as float
@@ -3127,7 +4454,7 @@ func _update_enemies(delta: float) -> void:
 			if (e["poison_tick_t"] as float) <= 0.0:
 				e["poison_tick_t"] = 0.5
 				if i < _enemies.size():
-					_hit_enemy(i, (e.get("poison_dps", 0.0) as float) * 0.5)
+					_hit_enemy(i, (e.get("poison_dps", 0.0) as float) * 0.5, {"dot":true, "element":"poison", "source":"poison"})
 					if i >= _enemies.size():
 						continue
 		if (e["beetle_t"] as float) > 0.0:
@@ -3135,7 +4462,7 @@ func _update_enemies(delta: float) -> void:
 			if (e["beetle_tick_t"] as float) <= 0.0:
 				e["beetle_tick_t"] = 0.5
 				if i < _enemies.size():
-					_hit_enemy(i, (e.get("beetle_dps", 0.0) as float) * 0.5)
+					_hit_enemy(i, (e.get("beetle_dps", 0.0) as float) * 0.5, {"dot":true, "companion":true, "source":"beetle"})
 					if i >= _enemies.size():
 						continue
 		e["alive_t"] = (e.get("alive_t", 0.0) as float) + delta
@@ -3145,17 +4472,25 @@ func _update_enemies(delta: float) -> void:
 			e["spd"] = (e["spd"] as float) * ENEMY_SURVIVE_SPEEDUP_MULT
 		var ep: Vector2 = e["pos"] as Vector2
 		var ekind: String = e.get("kind", "normal") as String
-		var objective_target_index := _enemy_objective_target_index()
+		var objective_target_index := shared_objective_target_index if _enemy_can_target_shared_objective(e) else -1
 		var enemy_target := _player_pos
 		if e.has("objective_target_pos") and e["objective_target_pos"] is Vector2:
 			enemy_target = e["objective_target_pos"] as Vector2
 		elif objective_target_index >= 0:
 			enemy_target = _adventure_props[objective_target_index].pos as Vector2
+			e["role_target"] = enemy_target
 		var _emove_dir: Vector2 = (enemy_target - ep).normalized()
 		var move_speed: float = e["spd"] as float
+		if bool(e.get("role_enabled", false)):
+			var role_motion := _update_enemy_role(e, delta, enemy_target)
+			_emove_dir = role_motion.get("dir", _emove_dir) as Vector2
+			move_speed *= float(role_motion.get("speed_mul", 1.0))
+			if role_motion.has("speed_override"):
+				move_speed = float(role_motion["speed_override"])
+			if bool(role_motion.get("hold", false)):
+				move_speed = 0.0
 		if _idle_enemy_speed_boost_active:
-			var ep_screen: Vector2 = ep - _camera.position + get_viewport_rect().size * 0.5
-			if get_viewport_rect().grow(40.0).has_point(ep_screen):
+			if visible_world_rect.has_point(ep):
 				move_speed *= _idle_enemy_speed_boost_multiplier()
 		if (e.get("trap_t", 0.0) as float) > 0.0:
 			move_speed = 0.0
@@ -3173,7 +4508,7 @@ func _update_enemies(delta: float) -> void:
 		if objective_target_index >= 0:
 			e["objective_hit_t"] = maxf(float(e.get("objective_hit_t", 0.0)) - delta, 0.0)
 			if (_enemies[i]["pos"] as Vector2).distance_to(enemy_target) < 72.0 + (e["r"] as float) and float(e.objective_hit_t) <= 0.0:
-				e.objective_hit_t = 0.75
+				e.objective_hit_t = 0.65 if bool(e.get("mutator_aggressive", false)) else 0.75
 				_damage_adventure_prop(objective_target_index, float(e.dmg) * 0.34)
 		var damages_player_while_targeting: bool = _adventure_state == "story_chapter_one" and _chapter_one != null and _chapter_one.stage_number == 1
 		if (objective_target_index < 0 or damages_player_while_targeting) and _player_iframes <= 0.0:
@@ -3181,7 +4516,7 @@ func _update_enemies(delta: float) -> void:
 				if _has_skill("meatball_barrage"):
 					var mb_lvl: int = _get_skill("meatball_barrage").get("level", 1) as int
 					var mb_def: Dictionary = _slvl("meatball_barrage", mb_lvl)
-					_hit_enemy(i, (e["dmg"] as float) * (mb_def.get("reflect", 0.05) as float))
+					_hit_enemy(i, (e["dmg"] as float) * (mb_def.get("reflect", 0.05) as float), {"source":"meatball_barrage"})
 					if i >= _enemies.size():
 						continue
 					_aoe_flashes.append({"life": 0.55, "max_life": 0.55, "kind": "meatball_barrage", "pos": _player_pos})
@@ -3200,7 +4535,8 @@ func _update_enemies(delta: float) -> void:
 		elif ekind == "shield_boss":
 			e["special_timer"] = (e["special_timer"] as float) + delta
 			var cycle: float = fmod(e["special_timer"] as float, 8.5)
-			e["shield_active"] = cycle >= 6.0
+			var colossus_exposed: bool = str(e.get("story_tag", "")) == "frost_colossus" and _chapter_two != null and _chapter_two.phase == "final_vulnerable"
+			e["shield_active"] = cycle >= 6.0 and not colossus_exposed
 		elif ekind == "shooter_boss":
 			e["special_timer"] = (e["special_timer"] as float) + delta
 			if (e["special_timer"] as float) >= 1.3:
@@ -3231,7 +4567,7 @@ func _update_enemies(delta: float) -> void:
 			else:
 				_update_abyss_warden_special(e, delta)
 
-func _enemy_objective_target_index() -> int:
+func _shared_enemy_objective_target_index() -> int:
 	if _adventure_state == "story_escort":
 		return _find_adventure_prop("scout")
 	if _adventure_state == "story_defend":
@@ -3243,10 +4579,28 @@ func _enemy_objective_target_index() -> int:
 			return _find_adventure_prop("shrine")
 	return -1
 
+func _enemy_can_target_shared_objective(enemy: Dictionary) -> bool:
+	if _adventure_state in ["story_escort", "story_defend"]:
+		return true
+	if _adventure_state != "story_chapter_one" or _chapter_one == null:
+		return false
+	var role := str(enemy.get("primary_role", ""))
+	if _chapter_one.stage_number == 1:
+		return role in ["chaser", "charger", "tank"]
+	if _chapter_one.stage_number == 2:
+		return StoryEnemyRolesClass.can_target_story_prop("ch1_2", role, "shrine")
+	return false
+
 func _damage_adventure_prop(index: int, damage: float) -> void:
 	if index < 0 or index >= _adventure_props.size():
 		return
 	var prop := _adventure_props[index]
+	if _adventure_state == "story_chapter_one" and (prop.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) <= 260.0:
+		var prop_kind := str(prop.get("kind", ""))
+		if prop_kind == "scout":
+			damage *= 1.0 - _story_synergy_bonus("scout_protection")
+		elif prop_kind == "shrine":
+			damage *= 1.0 - _story_synergy_bonus("shrine_protection")
 	prop.hp = float(prop.get("hp", 1.0)) - damage
 	_adventure_props[index] = prop
 	if _adventure_state == "story_chapter_one" and _chapter_one != null:
@@ -3296,7 +4650,7 @@ func _update_bolts(delta: float) -> void:
 					break
 			if hit_index >= 0:
 				var source_pos: Vector2 = _enemies[hit_index]["pos"] as Vector2
-				_hit_enemy(hit_index, b["dmg"] as float)
+				_hit_enemy(hit_index, b["dmg"] as float, {"projectile":true, "piercing":true, "source":"divine_volley"})
 				var splits_left: int = b.get("splits_left", 0) as int
 				var pierce_left: int = b.get("pierce_left", 1) as int
 				var speed: float = (b["vel"] as Vector2).length()
@@ -3339,7 +4693,7 @@ func _update_bolts(delta: float) -> void:
 						next_target_pos = cand_pos
 						has_next_target = true
 						break
-				_hit_enemy(rj, b["dmg"] as float)
+				_hit_enemy(rj, b["dmg"] as float, {"projectile":true, "chain":true, "source":"ricochet_arrow"})
 				if bounces_left > 0 and has_next_target:
 					var dir_r: Vector2 = (next_target_pos - hit_pos).normalized()
 					if dir_r.length_squared() > 0.001:
@@ -3367,7 +4721,7 @@ func _update_bolts(delta: float) -> void:
 				var split_n: int = b.get("spawn_n", 3) as int
 				var split_pct: float = b.get("spawn_pct", 0.10) as float
 				var pbase: float = b.get("base_dmg", b["dmg"] as float) as float
-				var died: bool = _hit_enemy_with_result(pj, b["dmg"] as float)
+				var died: bool = _hit_enemy_with_result(pj, b["dmg"] as float, {"projectile":true, "source":"phantom_hunt"})
 				if died:
 					for _k in maxi(split_n, 3):
 						var tidx: int = _nearest_enemy_index(ppos, 3200.0)
@@ -3396,7 +4750,7 @@ func _update_bolts(delta: float) -> void:
 				var bolt_element := "physical"
 				if bkind == "bolt": bolt_element = "lightning"
 				elif bkind == "chili_explosion": bolt_element = "fire"
-				_hit_enemy_element(j, b["dmg"] as float, bolt_element)
+				_hit_enemy_element(j, b["dmg"] as float, bolt_element, {"projectile":true, "ultimate":bkind == "chili_explosion", "source":bkind})
 				hit = true
 				hit_j = j
 				break
@@ -3422,7 +4776,7 @@ func _update_bolts(delta: float) -> void:
 				var lv_lvl: int = _get_skill("leech_vine").get("level", 1) as int
 				var lv_def2: Dictionary = _slvl("leech_vine", lv_lvl)
 				var steal: float = lv_def2.get("steal", 0.01) as float
-				_player_hp = min(_player_max_hp, _player_hp + (b["dmg"] as float) * steal)
+				_restore_player_hp((b["dmg"] as float) * steal)
 			if bkind == "bleed_mark" and hit_j >= 0 and hit_j < _enemies.size():
 				var bm_lvl: int = 1
 				if _has_skill("bleed_mark"):
@@ -3453,11 +4807,11 @@ func _fire_trap_arrow(def: Dictionary) -> void:
 		"trap_hold": def.get("hold", 3.0) as float,
 	})
 
-func _hit_enemy_with_result(idx: int, dmg: float) -> bool:
+func _hit_enemy_with_result(idx: int, dmg: float, feedback: Dictionary = {}) -> bool:
 	if idx < 0 or idx >= _enemies.size():
 		return false
 	var hp_before: float = _enemies[idx]["hp"] as float
-	_hit_enemy(idx, dmg)
+	_hit_enemy(idx, dmg, feedback)
 	if idx >= _enemies.size():
 		return true
 	return (_enemies[idx]["hp"] as float) < hp_before and (_enemies[idx]["hp"] as float) <= 0.0
@@ -3572,7 +4926,7 @@ func _do_blink_strike(dash_r: float, dmg: float) -> void:
 	for i in range(_enemies.size() - 1, -1, -1):
 		var ep: Vector2 = _enemies[i]["pos"] as Vector2
 		if _point_to_segment_dist(ep, start_pos, end_pos) < 64.0 + (_enemies[i]["r"] as float):
-			_hit_enemy(i, blink_dmg)
+			_hit_enemy(i, blink_dmg, {"source":"blink_strike"})
 	# New behavior: keep player position, create a long slash and leave a short-lived shadow clone at slash end.
 	_shadow_clones.append({
 		"pos": end_pos,
@@ -3629,7 +4983,7 @@ func _update_smoke_clouds(delta: float) -> void:
 				if j >= _enemies.size():
 					continue
 				if (_enemies[j]["pos"] as Vector2).distance_to(cpos) < cr + (_enemies[j]["r"] as float):
-					_hit_enemy(j, c["dmg"] as float)
+					_hit_enemy(j, c["dmg"] as float, {"dot":true, "aoe":true, "source":"smoke_bomb"})
 
 func _queue_thousand_blades(n: int, dmg: float, spd: float) -> void:
 	_play_skill_sfx("skill_knife_storm", -6.0, 1.0, 0.1)
@@ -3704,7 +5058,7 @@ func _cast_arc_lightning(cast_r: float, dmg: float, chains: int, chain_r: float)
 		return
 	var used: Array[int] = [start_idx]
 	var last_pos: Vector2 = _enemies[start_idx]["pos"] as Vector2
-	_hit_enemy(start_idx, dmg)
+	_hit_enemy(start_idx, dmg, {"chain":true, "element":"lightning", "source":"arc_lightning"})
 	_arc_zaps.append({"a": _player_pos, "b": last_pos, "life": 0.17, "max_life": 0.17})
 	for _c in chains:
 		var next_idx: int = -1
@@ -3720,7 +5074,7 @@ func _cast_arc_lightning(cast_r: float, dmg: float, chains: int, chain_r: float)
 			break
 		var next_pos: Vector2 = _enemies[next_idx]["pos"] as Vector2
 		_arc_zaps.append({"a": last_pos, "b": next_pos, "life": 0.17, "max_life": 0.17})
-		_hit_enemy(next_idx, dmg * 0.86)
+		_hit_enemy(next_idx, dmg * 0.86, {"chain":true, "element":"lightning", "source":"arc_lightning"})
 		used.append(next_idx)
 		last_pos = next_pos
 
@@ -3765,7 +5119,7 @@ func _update_prism_traps(delta: float) -> void:
 					hit = true
 					break
 			if hit:
-				_hit_enemy(ei, p["dmg"] as float)
+				_hit_enemy(ei, p["dmg"] as float, {"dot":true, "aoe":true, "source":"crystal_prism"})
 
 func _spawn_ground_trap(trap_len: float, dmg: float, hold_t: float, max_targets: int, life: float) -> void:
 	_play_skill_sfx("skill_trap_arrow", -4.0, 0.95, 0.14)
@@ -3810,7 +5164,7 @@ func _update_ground_traps(delta: float) -> void:
 				armed[key] = t["hold"] as float
 				_enemies[ei]["trap_t"] = max((_enemies[ei].get("trap_t", 0.0) as float), t["hold"] as float)
 				_enemies[ei]["trap_vine_t"] = max((_enemies[ei].get("trap_vine_t", 0.0) as float), t["hold"] as float)
-				_hit_enemy(ei, t["dmg"] as float)
+				_hit_enemy(ei, t["dmg"] as float, {"source":"trap_arrow"})
 				if armed.size() >= (t["max_targets"] as int):
 					break
 
@@ -3900,7 +5254,7 @@ func _update_venom_pools(delta: float) -> void:
 		p["tick_t"] = 0.0
 		for ei in range(_enemies.size() - 1, -1, -1):
 			if (_enemies[ei]["pos"] as Vector2).distance_to(p["pos"] as Vector2) <= (p["r"] as float) + (_enemies[ei]["r"] as float):
-				_hit_enemy(ei, (p.get("dps", 0.0) as float) * 0.5)
+				_hit_enemy(ei, (p.get("dps", 0.0) as float) * 0.5, {"dot":true, "aoe":true, "element":"poison", "source":"venom_pool"})
 
 func _spawn_toxic_mushroom(def: Dictionary) -> void:
 	var ang: float = randf() * TAU
@@ -3926,7 +5280,7 @@ func _update_toxic_mushrooms(delta: float) -> void:
 			m["pulse_t"] = 0.0
 			for ei in range(_enemies.size() - 1, -1, -1):
 				if (_enemies[ei]["pos"] as Vector2).distance_to(m["pos"] as Vector2) <= (m["r"] as float) + (_enemies[ei]["r"] as float):
-					_hit_enemy(ei, (m.get("dps", 0.0) as float) * 0.7)
+					_hit_enemy(ei, (m.get("dps", 0.0) as float) * 0.7, {"dot":true, "aoe":true, "ultimate":true, "element":"poison", "source":"toxic_mushroom"})
 
 func _spawn_bog_pool(def: Dictionary) -> void:
 	var ang: float = randf() * TAU
@@ -3961,7 +5315,7 @@ func _update_bog_pools(delta: float) -> void:
 				_enemies[ei]["mud_t"] = max(float(_enemies[ei].get("mud_t", 0.0)), 1.0)
 				_enemies[ei]["spd"] = max((_enemies[ei]["base_spd"] as float) * (1.0 - (p["slow"] as float)), 8.0)
 				if should_damage:
-					_hit_enemy_element(ei, float(p.get("dps", 10.0)) * 0.5, "poison")
+					_hit_enemy_element(ei, float(p.get("dps", 10.0)) * 0.5, "poison", {"dot":true, "aoe":true, "source":"bog_pool"})
 
 func _spawn_corruption_pools(def: Dictionary) -> void:
 	var n: int = def.get("n", 2) as int
@@ -4016,7 +5370,7 @@ func _update_corruption_pools(delta: float) -> void:
 			for ti in range(trapped.size() - 1, -1, -1):
 				var idx2: int = trapped[ti] as int
 				if idx2 >= 0 and idx2 < _enemies.size():
-					_hit_enemy(idx2, (p.get("dps", 0.0) as float) * 0.5)
+					_hit_enemy(idx2, (p.get("dps", 0.0) as float) * 0.5, {"dot":true, "aoe":true, "element":"poison", "source":"corruption_pool"})
 
 func _attach_plague_beetles(def: Dictionary) -> void:
 	if _enemies.is_empty():
@@ -4042,7 +5396,7 @@ func _cast_soup_cone(def: Dictionary) -> void:
 		if to_e.length() > cone_r + (_enemies[ei]["r"] as float):
 			continue
 		if abs(wrapf(to_e.angle() - fwd.angle(), -PI, PI)) <= cone_angle * 0.5:
-			_hit_enemy(ei, def.get("dmg", 52.0) as float)
+			_hit_enemy(ei, def.get("dmg", 52.0) as float, {"aoe":true, "source":"soup_splash"})
 	_aoe_flashes.append({"life": 0.55, "max_life": 0.55, "kind": "soup_splash", "pos": _player_pos, "dir": fwd, "cone_angle": cone_angle, "cone_r": cone_r})
 
 func _fire_chili_explosion(def: Dictionary) -> void:
@@ -4118,7 +5472,7 @@ func _update_kitchen_queue(delta: float) -> void:
 				continue
 			var enemy: Dictionary = _enemies[ei]
 			if _point_to_segment_dist(enemy.get("pos", Vector2.ZERO) as Vector2, start, tip) <= width + (enemy.get("r", 24.0) as float):
-				_hit_enemy(ei, q["dmg"] as float)
+				_hit_enemy(ei, q["dmg"] as float, {"aoe":true, "source":"master_kitchen"})
 		_aoe_flashes.append({"life": 0.30, "max_life": 0.30, "kind": "master_kitchen", "pos": start, "from_pos": start, "to_pos": tip, "dir": dir, "r": radius, "utensil": q.get("utensil", "knife") as String})
 		_kitchen_queue.remove_at(i)
 
@@ -4319,8 +5673,8 @@ func _show_boss_portal_confirm() -> void:
 			_boss_portal_confirm_layer = null
 	)
 	use_btn.pressed.connect(func() -> void:
-		if is_story_test_run:
-			push_warning("Permanent key use is disabled during a Story test run.")
+		if _is_non_persistent_story_run():
+			push_warning("Permanent key use is disabled during a non-persistent Story run.")
 			return
 		if PurchaseStore.consume_key(account_username):
 			_boss_key_spent_this_run += 1
@@ -4364,7 +5718,7 @@ func _on_arena_boss_cleared() -> void:
 		"arena_half": BOSS_ARENA_HALF,
 		"last_boss_wave": _wave,
 	}
-	var reward: Dictionary = {} if is_story_test_run else _award_random_artifact()
+	var reward: Dictionary = {} if _is_non_persistent_story_run() else _award_random_artifact()
 	if not reward.is_empty():
 		_boss_artifact_results.append(reward)
 	if reward.get("duplicated", false) as bool and _boss_key_spent_this_run > 0:
@@ -4491,7 +5845,7 @@ func _inferno_chain(start_pos: Vector2, start_idx: int, chain_dmg: float, chains
 			break
 		var target_pos: Vector2 = _enemies[best_idx]["pos"] as Vector2
 		_spawn_combo_arc(last_pos, target_pos, Color(1.0, 0.95, 0.52, 0.95), 0.16, 2.2)
-		_hit_enemy(best_idx, chain_dmg)
+		_hit_enemy(best_idx, chain_dmg, {"chain":true, "element":"lightning", "source":"inferno_chain"})
 		used.append(best_idx)
 		last_pos = target_pos
 
@@ -4501,7 +5855,7 @@ func _inferno_emp(center: Vector2, radius: float, dmg: float) -> void:
 		var ep: Vector2 = _enemies[i]["pos"] as Vector2
 		if ep.distance_to(center) <= radius + (_enemies[i]["r"] as float):
 			var falloff: float = clamp(1.0 - ep.distance_to(center) / max(radius, 1.0), 0.35, 1.0)
-			_hit_enemy(i, dmg * falloff)
+			_hit_enemy(i, dmg * falloff, {"aoe":true, "element":"lightning", "source":"inferno_emp"})
 
 func _fire_frozen_lances(n: int, dmg: float, spd: float, freeze_r: float, slow: float, explode_r: float, explode_dmg: float) -> void:
 	_play_skill_sfx("skill_pierce_arrow", -6.0, 0.95, 0.10)
@@ -4553,7 +5907,7 @@ func _trigger_frozen_lance_explosion(center: Vector2, radius: float, dmg: float,
 	for i in range(_enemies.size() - 1, -1, -1):
 		var ep: Vector2 = _enemies[i]["pos"] as Vector2
 		if ep.distance_to(center) <= radius + (_enemies[i]["r"] as float):
-			_hit_enemy(i, dmg)
+			_hit_enemy(i, dmg, {"aoe":true, "element":"ice", "source":"frozen_lance_shatter"})
 			if i < _enemies.size():
 				var base_s: float = _enemies[i]["base_spd"] as float
 				var min_s: float = max(base_s * max(0.50 - float(_level) * 0.012, 0.20), 30.0)
@@ -4607,7 +5961,7 @@ func _trigger_thunder_god_pulse(radius: float, dmg: float, mark_t: float, chain_
 		if ep.distance_to(_player_pos) <= radius + (_enemies[i]["r"] as float):
 			_enemies[i]["tg_mark_t"] = mark_t
 			marked.append(i)
-			_hit_enemy(i, dmg)
+			_hit_enemy(i, dmg, {"aoe":true, "element":"lightning", "source":"thunder_god"})
 	if marked.is_empty():
 		return
 	var used: Array[int] = []
@@ -4643,7 +5997,7 @@ func _trigger_thunder_god_pulse(radius: float, dmg: float, mark_t: float, chain_
 			break
 		var target_pos: Vector2 = _enemies[best_idx]["pos"] as Vector2
 		_spawn_combo_arc(last_pos, target_pos, Color(1.0, 1.0, 0.60, 0.98), 0.18, 2.6)
-		_hit_enemy(best_idx, chain_dmg)
+		_hit_enemy(best_idx, chain_dmg, {"chain":true, "element":"lightning", "source":"thunder_god"})
 		used.append(best_idx)
 		last_pos = target_pos
 
@@ -4667,7 +6021,7 @@ func _trigger_toxic_lightning_pulse(radius: float, dmg: float, spread_r: float, 
 		var ep: Vector2 = _enemies[i]["pos"] as Vector2
 		if ep.distance_to(_player_pos) <= radius + (_enemies[i]["r"] as float):
 			var poisoned: bool = (_enemies[i].get("poison_t", 0.0) as float) > 0.0
-			_hit_enemy(i, dmg)
+			_hit_enemy(i, dmg, {"aoe":true, "element":"lightning", "source":"toxic_lightning"})
 			if poisoned:
 				_spawn_combo_arc(ep, ep + Vector2.RIGHT * 0.1, Color(0.70, 1.0, 0.36, 0.9), 0.10, 2.8)
 				_spread_poison(ep, spread_r, 2.8, poison_dps * 0.85)
@@ -4716,7 +6070,7 @@ func _update_ice_orbs(delta: float) -> void:
 		var dmg: float  = b["dmg"] as float
 		for j in range(_enemies.size() - 1, -1, -1):
 			if (_enemies[j]["pos"] as Vector2).distance_to(bp) < fr:
-				_hit_enemy_element(j, dmg * delta, "ice")
+				_hit_enemy_element(j, dmg * delta, "ice", {"dot":true, "source":"ice_orb"})
 				if j < _enemies.size():
 					var base_s: float = (_enemies[j]["base_spd"] as float)
 					var min_s: float = max(base_s * max(0.50 - float(_level) * 0.012, 0.20), 30.0)
@@ -4850,7 +6204,8 @@ func _update_fireballs(delta: float) -> void:
 				"life": trail_life, "max_life": trail_life,
 				"dmg_per_tick": fb["trail_dmg"] as float,
 				"tick_t": 0.0,
-				"r": 16.0
+				"r": 16.0,
+				"source": fb_kind,
 			})
 		# Direct hit check
 		for j in range(_enemies.size() - 1, -1, -1):
@@ -4858,11 +6213,11 @@ func _update_fireballs(delta: float) -> void:
 			if fbp.distance_to(_enemies[j]["pos"] as Vector2) < 10.0 + (_enemies[j]["r"] as float):
 				if fb_kind == "inferno_plasma":
 					var hit_pos: Vector2 = _enemies[j]["pos"] as Vector2
-					_hit_enemy(j, fb["dmg"] as float)
+					_hit_enemy(j, fb["dmg"] as float, {"projectile":true, "source":"inferno_thunder"})
 					_inferno_chain(hit_pos, j, fb.get("chain_dmg", 0.0) as float, fb.get("chains", 0) as int)
 					_inferno_emp(hit_pos, fb.get("emp_r", 100.0) as float, fb.get("emp_dmg", 18.0) as float)
 				else:
-					_hit_enemy_element(j, fb["dmg"] as float, "fire")
+					_hit_enemy_element(j, fb["dmg"] as float, "fire", {"projectile":true, "source":"fireball"})
 				_fireballs.remove_at(i)
 				break
 
@@ -4882,7 +6237,7 @@ func _update_fire_trails(delta: float) -> void:
 			for j in range(_enemies.size() - 1, -1, -1):
 				if (_enemies[j]["iframes"] as float) > 0.0: continue
 				if ftp.distance_to(_enemies[j]["pos"] as Vector2) < ftr + (_enemies[j]["r"] as float):
-					_hit_enemy_element(j, ft["dmg_per_tick"] as float, "fire")
+					_hit_enemy_element(j, ft["dmg_per_tick"] as float, "fire", {"dot":true, "aoe":true, "source":str(ft.get("source", "fireball"))})
 
 func _update_pierce_arrows(delta: float) -> void:
 	var vp: Rect2 = get_viewport_rect()
@@ -4907,7 +6262,7 @@ func _update_pierce_arrows(delta: float) -> void:
 			if (_enemies[j]["iframes"] as float) > 0.0: continue
 			if bp.distance_to(_enemies[j]["pos"] as Vector2) < BOLT_R + (_enemies[j]["r"] as float):
 				var element := "lightning" if bkind == "bolt" else "physical"
-				_hit_enemy_element(j, b["dmg"] as float, element)
+				_hit_enemy_element(j, b["dmg"] as float, element, {"projectile":true, "piercing":true, "source":bkind})
 				if bkind == "frozen_lance" and j < _enemies.size():
 					var base_s: float = _enemies[j]["base_spd"] as float
 					var min_s: float = max(base_s * max(0.50 - float(_level) * 0.012, 0.20), 30.0)
@@ -4928,7 +6283,7 @@ func _update_boomerangs(delta: float) -> void:
 		for j in range(_enemies.size() - 1, -1, -1):
 			if (_enemies[j]["iframes"] as float) > 0.0: continue
 			if bp.distance_to(_enemies[j]["pos"] as Vector2) < BOLT_R + (_enemies[j]["r"] as float):
-				_hit_enemy(j, b["dmg"] as float)
+				_hit_enemy(j, b["dmg"] as float, {"projectile":true, "source":"boomerang"})
 
 func _update_aoe_flashes(delta: float) -> void:
 	for i in range(_aoe_flashes.size() - 1, -1, -1):
@@ -4977,6 +6332,9 @@ func _setup_adventure_mode() -> void:
 	_story_primary_complete = false
 	_story_required_boss_defeated = false
 	_story_required_target_survived = false
+	_story_mastery_failed.clear()
+	_story_mastery_result.clear()
+	_story_mastery_observe_timer = 0.0
 	_objective_boss_active = false
 	if not story_stage.is_empty():
 		var objective := str(story_stage.get("objective", "escort"))
@@ -4990,7 +6348,146 @@ func _setup_adventure_mode() -> void:
 	elif dungeon_mode == "forgecore":
 		_begin_forge_depth(_next_dungeon_depth())
 
+func _setup_boss_practice_phase() -> void:
+	var stage_id := str(story_stage.get("id", ""))
+	var phase_id := str(story_stage.get("practice_phase", "full"))
+	_cleanup_boss_presentation()
+	_player_hp = _player_max_hp
+	_player_iframes = 1.0
+	_player_pos = _story_stage_origin + Vector2(0.0, 300.0)
+	_touch_id = -1
+	_touch_origin = Vector2.ZERO
+	_touch_cur = Vector2.ZERO
+	_practice_damage_taken = 0.0
+	_practice_result_shown = false
+	match stage_id:
+		"ch1_5": _setup_c1_practice_snapshot(phase_id)
+		"ch2_5": _setup_c2_practice_snapshot(phase_id)
+		"ch3_5": _setup_c3_practice_snapshot(phase_id)
+		"ch4_5": _setup_c4_practice_snapshot(phase_id)
+		"ch5_5": _setup_c5_practice_snapshot(phase_id)
+	_practice_started_elapsed = _elapsed
+	if _story_telemetry != null:
+		_story_telemetry.log_event("Started: %s · Mutators: %s" % [phase_id, "none" if _story_mutator_ids.is_empty() else ", ".join(_story_mutator_ids)])
+
+func _setup_c1_practice_snapshot(phase_id: String) -> void:
+	if phase_id in ["full", "emitter_barrage"]:
+		return
+	_adventure_props.clear()
+	_enemies.clear()
+	_adventure_progress = 3
+	_chapter_one.set_flag("mission_started")
+	_chapter_one.set_flag("timer_complete")
+	_chapter_one.set_flag("boss_spawned")
+	_chapter_one.enter("crestkeeper_boss")
+	_story_hazard_arena_center = _story_stage_origin
+	_adventure_props.append({"kind":"hazard_emitter", "pos":_story_hazard_arena_center, "hp":1.0, "max_hp":1.0})
+	_objective_boss_active = true
+	_spawn_story_objective_enemy("blight_vine_tyrant", "crestkeeper", 1.55 * _story_stage_strength(), _story_hazard_arena_center + Vector2(0.0, -280.0))
+
+func _setup_c2_practice_snapshot(phase_id: String) -> void:
+	if phase_id in ["full", "armour_systems"]:
+		return
+	_adventure_props.clear()
+	_chapter_two.set_count("crystals_broken", 3)
+	_chapter_two.set_count("armour_transitions", 3)
+	_chapter_two.set_flag("all_armour_transitions_complete")
+	_chapter_two.set_flag("final_vulnerable_phase")
+	_chapter_two.enter("final_vulnerable")
+	_adventure_progress = 3
+	var boss_index := _find_story_enemy("frost_colossus")
+	if boss_index >= 0:
+		_enemies[boss_index]["shield_active"] = false
+		_enemies[boss_index]["special_timer"] = 0.0
+
+func _setup_c3_practice_snapshot(phase_id: String) -> void:
+	_adventure_props.clear()
+	_enemies.clear()
+	var purity := float(story_stage.get("practice_brew_purity", 65.0))
+	var quality := StoryBossPresentationClass.brew_quality(purity)
+	_chapter_three.recipe.assign([0, 1, 2])
+	_chapter_three.set_count("ingredients_acquired", 3)
+	_chapter_three.set_count("ingredients_submitted", 3)
+	_chapter_three.set_meter("purity", purity)
+	_chapter_three.set_meter("brew_progress", 100.0)
+	_chapter_three.set_flag("brew_complete")
+	_chapter_three.set_flag("brew_quality_%s" % quality.to_lower())
+	_chapter_three.set_flag("boss_spawned")
+	_chapter_three.enter("blight_tyrant")
+	_spawn_story_objective_enemy("blight_vine_tyrant", "c3_blight_tyrant", 4.4 - purity * 0.012, _story_stage_origin + Vector2(0.0, -360.0))
+	var boss_index := _find_story_enemy("c3_blight_tyrant")
+	if boss_index >= 0:
+		_enemies[boss_index]["brew_purity"] = purity
+		_enemies[boss_index]["brew_quality"] = quality
+		if phase_id == "final_growth":
+			var max_hp := float(_enemies[boss_index].get("objective_max_hp", _enemies[boss_index].get("hp", 1.0)))
+			_enemies[boss_index]["hp"] = max_hp * 0.55
+			_enemies[boss_index]["arena_rooted"] = true
+			_enemies[boss_index]["signature_transition_t"] = 0.75
+
+func _setup_c4_practice_snapshot(phase_id: String) -> void:
+	var disabled_count := 0
+	if phase_id == "shutdown_pressure": disabled_count = 2
+	elif phase_id == "final_combat": disabled_count = 4
+	for sequence_index in disabled_count:
+		var regulator_id: int = int(_chapter_four.sequence[sequence_index])
+		_chapter_four.set_flag("boss_system_%d_disabled" % regulator_id)
+		for prop_index in _adventure_props.size():
+			if str(_adventure_props[prop_index].get("kind", "")) == "regulator" and int(_adventure_props[prop_index].get("regulator", -1)) == regulator_id:
+				_adventure_props[prop_index]["disabled"] = true
+	_chapter_four.set_count("regulators_disabled", disabled_count)
+	_chapter_four.set_count("boss_regulator_phases_completed", disabled_count)
+	if _find_story_enemy("c4_thunderforge_behemoth") < 0:
+		_spawn_story_objective_enemy("thunderforge_behemoth", "c4_thunderforge_behemoth", 4.8, _story_stage_origin + Vector2(0.0, -520.0))
+	_chapter_four.set_flag("boss_spawned")
+	var boss_index := _find_story_enemy("c4_thunderforge_behemoth")
+	if boss_index >= 0:
+		_enemies[boss_index]["forge_systems_active"] = 4 - disabled_count
+		_enemies[boss_index]["dmg"] = float(_enemies[boss_index].get("dmg", 1.0)) * pow(0.88, disabled_count)
+		for system_index in 4:
+			_enemies[boss_index]["system_%d_disabled" % system_index] = _chapter_four.flag("boss_system_%d_disabled" % system_index)
+	if disabled_count <= 2:
+		_chapter_four.enter("overlapping_shutdown")
+	elif disabled_count == 4:
+		_chapter_four.set_flag("shutdown_complete")
+		_chapter_four.set_flag("shutdown_committed")
+		_chapter_four.set_flag("final_phase_entered")
+		_chapter_four.enter("behemoth_final")
+		_chapter_four.set_meter("heat", 46.0)
+
+func _setup_c5_practice_snapshot(phase_id: String) -> void:
+	if phase_id in ["full", "ritual_anchors"]:
+		return
+	_adventure_props.clear()
+	_chapter_five.set_count("anchors_destroyed", 3)
+	for anchor_type in ["dominion", "ruin", "reflection"]:
+		_chapter_five.set_flag("anchor_%s_destroyed" % anchor_type)
+	_chapter_five.set_flag("anchor_transitions_complete")
+	_chapter_five.set_flag("crown_spawned")
+	var boss_index := _find_story_enemy("abyss_king")
+	if phase_id == "abyss_crown":
+		_chapter_five.enter("abyss_crown")
+		_spawn_custom_prop("abyss_crown", _story_stage_origin + Vector2(0.0, -260.0), {"hp":520.0, "max_hp":520.0, "sections":4})
+		_spawn_custom_prop("crown_seal", _story_stage_origin + Vector2(-330.0, 180.0), {"seal":0})
+		_spawn_custom_prop("crown_seal", _story_stage_origin + Vector2(330.0, 180.0), {"seal":1})
+		_chapter_five.set_timer("crown_cycle", 3.0 * _story_diff_float("crown_window_mul", 1.0))
+		return
+	_chapter_five.set_count("crown_sections_broken", 4)
+	_chapter_five.set_flag("crown_destroyed")
+	_chapter_five.set_flag("crown_transition_complete")
+	_chapter_five.set_flag("final_phase_entered")
+	if boss_index >= 0:
+		_enemies[boss_index]["shield_active"] = false
+		var max_hp := float(_enemies[boss_index].get("objective_max_hp", _enemies[boss_index].get("hp", 1.0)))
+		if phase_id == "desperation":
+			_chapter_five.set_flag("desperation_entered")
+			_chapter_five.enter("desperation")
+			_enemies[boss_index]["hp"] = max_hp * 0.22
+		else:
+			_chapter_five.enter("final_boss_a")
+
 func _setup_custom_story_objective(objective: String, config: Dictionary) -> void:
+	_cleanup_boss_presentation()
 	_story_custom_id = objective
 	_story_custom_data = config.duplicate(true)
 	_story_custom_progress = {}
@@ -5043,7 +6540,7 @@ func _setup_custom_story_objective(objective: String, config: Dictionary) -> voi
 		"thaw_runes":
 			_story_custom_sequence = [0, 1, 2, 3]
 			_story_custom_sequence.shuffle()
-			_story_custom_timer = 5.0
+			_story_custom_timer = _story_diff_float("reveal_time", 5.0)
 			_story_custom_progress["entered"] = 0
 			for i in 4:
 				_spawn_custom_prop("thaw_rune", _story_objective_zone_position(i, 620.0), {"rune":i})
@@ -5189,9 +6686,11 @@ func _complete_staged_objective_instance() -> void:
 
 func _spawn_story_gate_ambush(count: int) -> void:
 	_story_gate_remaining = maxi(0, count)
+	var composition := _story_role_composition(count)
 	for enemy_index in count:
-		var kind := "normal_tank" if enemy_index % 5 == 4 else ("normal_fast" if enemy_index % 3 == 2 else "normal")
+		var kind := composition[enemy_index] if enemy_index < composition.size() else "normal"
 		_spawn_story_objective_enemy(kind, "objective_gate", 1.0 + float(_staged_objective_completed) * 0.22, _player_pos + Vector2.RIGHT.rotated(float(enemy_index) * TAU / float(maxi(count, 1))) * randf_range(330.0, 470.0))
+	_story_log_role_composition(composition)
 
 func _retry_staged_objective_instance() -> void:
 	if not _staged_objective_enabled:
@@ -5230,18 +6729,100 @@ func _spawn_custom_prop(kind: String, pos: Vector2, extra: Dictionary) -> void:
 		_story_telemetry.objective_spawned(kind)
 
 func _spawn_story_objective_enemy(kind: String, tag: String, strength: float, pos: Vector2) -> void:
+	if not _story_enemy_cap_exempt(kind, tag) and _active_normal_enemy_count() >= StoryEnemyRolesClass.max_active_normal(_story_difficulty_rank(), _objective_boss_active):
+		if _story_telemetry != null:
+			_story_telemetry.log_once("normal_enemy_cap", "[Combat] Active normal enemy cap reached")
+		return
 	_spawn_enemy_from(_make_enemy_data(kind, strength * _story_stage_strength()))
 	if _enemies.is_empty(): return
 	var index := _enemies.size() - 1
 	_enemies[index]["story_tag"] = tag
 	_enemies[index]["pos"] = pos
 	_enemies[index]["objective_max_hp"] = float(_enemies[index].get("hp", 1.0))
+	_assign_story_enemy_roles(_enemies[index])
 	_story_custom_target_enemy = index
 	if _story_telemetry != null:
 		var required_remaining: int = _story_final_remaining if tag == "story_final" else 0
-		_story_telemetry.story_enemy_spawned(tag, _enemies.size(), required_remaining, 0)
+		_story_telemetry.story_enemy_spawned(tag, _enemies.size(), required_remaining, 0, str(_enemies[index].get("primary_role", "")))
 		if _is_boss_kind(kind):
-			_story_telemetry.log_event("Boss spawned: %s · objective=%s" % [kind, tag])
+			_story_telemetry.boss_spawned(tag if not tag.is_empty() else kind)
+
+func _active_normal_enemy_count() -> int:
+	var count := 0
+	for enemy in _enemies:
+		if not _is_boss_kind(str(enemy.get("kind", ""))):
+			count += 1
+	return count
+
+func _story_enemy_cap_exempt(kind: String, tag: String) -> bool:
+	if _is_boss_kind(kind) or tag in ["objective_gate", "story_final", "supply_foreman", "fleeing_key_carrier", "protected_key_carrier", "watchpath_captain", "plaguebeast", "c3_plaguebeast_final", "c4_relic_guardian", "c4_thunderforge_behemoth", "c5_portal_keeper", "c5_mirror_guardian", "c5_eclipse_elite", "abyss_king"]:
+		return true
+	return tag.begins_with("c2_jailer") or tag.begins_with("c3_marked_") or tag.begins_with("c4_golem_") or tag.begins_with("c4_chamber_guardian_")
+
+func _story_role_composition(count: int) -> Array[String]:
+	var result := StoryEnemyRolesClass.composition(str(story_stage.get("id", "")), _story_difficulty_rank(), count, _enemy_role_composition_counter)
+	_enemy_role_composition_counter += 1
+	return result
+
+func _story_log_role_composition(kinds: Array) -> void:
+	if _story_telemetry == null or kinds.is_empty():
+		return
+	var roles: Array[String] = []
+	for kind_variant in kinds:
+		var role := StoryEnemyRolesClass.primary_role(str(kind_variant))
+		if not role.is_empty() and role not in roles:
+			roles.append(role)
+	if roles.is_empty():
+		return
+	var signature := ",".join(roles)
+	_story_telemetry.log_once("composition_%s" % signature, "[Combat] Composition: %s" % ", ".join(roles))
+
+func _story_difficulty_config() -> Dictionary:
+	return story_stage.get("difficulty_config", {}) as Dictionary
+
+func _story_difficulty_rank() -> int:
+	return int(story_stage.get("difficulty_rank", 0))
+
+func _story_diff_float(key: String, fallback: float) -> float:
+	return float(_story_difficulty_config().get(key, fallback))
+
+func _story_diff_int(key: String, fallback: int) -> int:
+	return int(_story_difficulty_config().get(key, fallback))
+
+func _update_story_difficulty_pressure(delta: float) -> void:
+	if story_stage.is_empty() or _story_difficulty_rank() <= 0 or _story_victory_started or _game_over:
+		return
+	if _adventure_state.ends_with("wait") or (_chapter_one != null and not _chapter_one.flag("mission_started")):
+		return
+	if _chapter_two != null and _chapter_two.stage_number == 3 and _chapter_two.phase == "sequence_reveal":
+		return
+	var interval := _story_diff_float("reinforcement_interval", 0.0)
+	if interval <= 0.0:
+		return
+	if _story_difficulty_pressure_timer < 0.0:
+		_story_difficulty_pressure_timer = interval * 0.65
+	_story_difficulty_pressure_timer -= delta
+	if _story_difficulty_pressure_timer > 0.0 or _enemies.size() >= 44:
+		return
+	_story_difficulty_pressure_timer = interval
+	_story_difficulty_pressure_wave += 1
+	var count := _story_diff_int("reinforcement_count", 1)
+	if str(story_stage.get("id", "")) == "ch5_5" and _chapter_five != null and (_chapter_five.phase.begins_with("final_boss") or _chapter_five.phase == "desperation"):
+		var king_index := _find_story_enemy("abyss_king")
+		if king_index >= 0:
+			var king_pos: Vector2 = _enemies[king_index].get("pos", _story_stage_origin) as Vector2
+			var king_aim := king_pos.direction_to(_player_pos)
+			for projectile_index in range(-count, count + 1):
+				_boss_projs.append({"kind":"straight", "pos":king_pos, "vel":king_aim.rotated(float(projectile_index) * 0.16) * 335.0, "dmg":float(_enemies[king_index].get("dmg", 10.0)) * 0.42, "life":4.0})
+			if _story_telemetry != null: _story_telemetry.log_event("Difficulty final pattern: readable reflection fan")
+			return
+	for pressure_index in count:
+		var role_index := (_story_difficulty_pressure_wave + pressure_index) % 3
+		var kind := "normal_fast" if role_index == 0 else ("normal_tank" if role_index == 1 and _story_difficulty_rank() >= 2 else "normal")
+		var direction := Vector2.RIGHT.rotated(TAU * float(pressure_index) / float(maxi(count, 1)) + float(_story_difficulty_pressure_wave) * 0.73)
+		_spawn_story_objective_enemy(kind, "difficulty_pressure", 0.72 + float(_story_difficulty_rank()) * 0.08, _player_pos + direction * 620.0)
+	if _story_telemetry != null:
+		_story_telemetry.log_event("Difficulty pressure wave: %d · enemies=%d" % [_story_difficulty_pressure_wave, count])
 
 func _spawn_soul_chain() -> void:
 	if _adventure_progress >= _adventure_target: return
@@ -5309,7 +6890,7 @@ func _spawn_forge() -> void:
 func _update_adventure_mode(delta: float) -> void:
 	if _adventure_state.is_empty() or _adventure_state.ends_with("choice") or _objective_boss_active:
 		return
-	_adventure_spawn_timer -= delta
+	_adventure_spawn_timer -= _story_mutator_spawn_delta(delta)
 	var is_c3_venom_harvest: bool = _adventure_state == "story_custom" and _chapter_three != null and _chapter_three.stage_number == 3
 	var is_story_ambient: bool = _adventure_state == "story_custom" and not story_stage.is_empty()
 	var is_silent_descent: bool = _adventure_state == "story_custom" and _story_custom_id == "silent_descent"
@@ -5337,6 +6918,7 @@ func _update_adventure_mode(delta: float) -> void:
 				kind = "normal_fast" if venom_phase == 0 else ("normal_tank" if venom_phase == 1 else "normal")
 			var story_strength := _story_stage_strength() if not story_stage.is_empty() else 1.0
 			_spawn_enemy_from(_make_enemy_data(kind, (0.82 + float(max(_wave, 1)) * 0.12) * story_defend_strength * story_strength))
+	_update_story_difficulty_pressure(delta)
 	match _adventure_state:
 		"story_chapter_one": _update_chapter_one_stage(delta)
 		"story_escort_wait": pass
@@ -5416,6 +6998,7 @@ func _setup_chapter_five_stage(objective: String) -> void:
 			_chapter_five.set_flag("boss_spawned")
 			_spawn_story_objective_enemy("abyss_king_boss", "abyss_king", 2.4, _story_stage_origin + Vector2(0.0, -430.0))
 			_spawn_c5_anchors()
+			_present_boss_moment("CHAPTER BOSS", "ABYSS KING · BREAK THE THREE RITUAL ANCHORS", Color(0.78, 0.42, 1.0), _story_stage_origin + Vector2(0.0, -430.0), 8.0, "boss_intro")
 	_story_log_phase("setup", _chapter_five.phase)
 
 func _c5_enter_phase(next_phase: String) -> void:
@@ -5499,7 +7082,7 @@ func _update_c5_silent_descent(delta: float) -> void:
 			pos = pos.move_toward(target, float(prop.get("patrol_speed", 78.0)) * delta)
 			prop["pos"] = pos
 			var in_cone: bool = pos.distance_to(_player_pos) < 410.0 and absf(move_direction.angle_to(pos.direction_to(_player_pos))) < 0.58 and not hidden
-			var suspicion: float = clampf(float(prop.get("suspicion", 0.0)) + (38.0 if in_cone else -24.0) * delta, 0.0, 100.0)
+			var suspicion: float = clampf(float(prop.get("suspicion", 0.0)) + (38.0 * _story_diff_float("alert_gain_mul", 1.0) if in_cone else -24.0) * delta, 0.0, 100.0)
 			prop["suspicion"] = suspicion
 			prop["state"] = "alerted" if suspicion >= 100.0 else ("searching" if suspicion >= 65.0 else ("suspicious" if suspicion > 0.0 else "unaware"))
 			detected = detected or in_cone
@@ -5511,8 +7094,9 @@ func _update_c5_silent_descent(delta: float) -> void:
 		elif kind == "citadel_gate" and current_checkpoint >= 3:
 			if pos.distance_to(_player_pos) < 180.0:
 				if _chapter_five.count("lockdowns") == 0:
-					prop["unlock"] = minf(8.0, float(prop.get("unlock", 0.0)) + delta)
-					if float(prop["unlock"]) >= 8.0:
+					var gate_time := 8.0 * _story_diff_float("gate_time_mul", 1.0)
+					prop["unlock"] = minf(gate_time, float(prop.get("unlock", 0.0)) + delta)
+					if float(prop["unlock"]) >= gate_time:
 						prop["opened"] = true
 						_chapter_five.set_flag("gate_opened")
 						_chapter_five.set_flag("silent_finale_selected")
@@ -5537,7 +7121,7 @@ func _update_c5_silent_descent(delta: float) -> void:
 		_chapter_five.set_flag("primary_complete")
 		_story_primary_complete = true
 		_request_story_victory("chapter_five_infiltration_complete")
-	var alert_rate: float = -18.0 if hidden else (13.0 if detected else -7.0)
+	var alert_rate: float = -18.0 if hidden else (13.0 * _story_diff_float("alert_gain_mul", 1.0) if detected else -7.0)
 	_chapter_five.adjust_meter("alert", alert_rate * delta)
 	_story_custom_alert = _chapter_five.meter("alert")
 	if _story_custom_alert >= 100.0:
@@ -5580,8 +7164,10 @@ func _update_c5_soul_liberation(delta: float) -> void:
 			var portal_pos: Vector2 = _adventure_props[portal_index].pos as Vector2
 			var safe_pos: Vector2 = _adventure_props[safe_index].pos as Vector2
 			var binder_near: bool = false
+			var spirit_protection := _story_synergy_bonus("spirit_protection") if pos.distance_to(_player_pos) < 260.0 else 0.0
+			var binder_reach := 220.0 * (1.0 - spirit_protection)
 			for enemy in _enemies:
-				if str(enemy.get("story_tag", "")) == "c5_soul_binder" and (enemy.pos as Vector2).distance_to(pos) < 220.0:
+				if str(enemy.get("story_tag", "")) == "c5_soul_binder" and (enemy.pos as Vector2).distance_to(pos) < binder_reach:
 					binder_near = true
 					break
 			var was_captured: bool = bool(prop.get("captured", false))
@@ -5592,17 +7178,20 @@ func _update_c5_soul_liberation(delta: float) -> void:
 				var guided: bool = pos.distance_to(_player_pos) < 230.0
 				var target: Vector2 = safe_pos if guided else portal_pos
 				var speed: float = [62.0, 88.0, 52.0][int(prop.get("spirit_type", 0))]
+				if not guided: speed *= _story_diff_float("spirit_pressure_mul", 1.0)
 				pos = pos.move_toward(target, speed * delta)
 				prop["pos"] = pos
 			if pos.distance_to(safe_pos) < 105.0:
 				_adventure_props.remove_at(prop_index)
 				var saved: int = _chapter_five.add_count("spirits_saved")
-				_player_hp = minf(_player_max_hp, _player_hp + _player_max_hp * 0.08)
+				_restore_player_hp(_player_max_hp * 0.08)
 				_story_log("Spirit saved: %d/6" % saved)
 				continue
 			if pos.distance_to(portal_pos) < 90.0:
 				_adventure_props.remove_at(prop_index)
 				_chapter_five.add_count("spirits_lost")
+				if _story_telemetry != null:
+					_story_telemetry.mistake("spirit_lost", {"spirits_lost":_chapter_five.count("spirits_lost")})
 				_chapter_five.adjust_meter("abyss_pressure", 18.0)
 				var recovery_id: int = _chapter_five.count("chains_generated")
 				_spawn_c5_soul_chain(recovery_id)
@@ -5631,9 +7220,10 @@ func _update_c5_portal_seal(delta: float) -> void:
 	for prop_index in _adventure_props.size():
 		var prop: Dictionary = _adventure_props[prop_index]
 		if str(prop.get("kind", "")) != "portal_seal": continue
+		var seal_time := 6.0 * _story_diff_float("seal_time_mul", 1.0)
 		if (prop.pos as Vector2).distance_to(_player_pos) < 175.0:
-			prop["progress"] = minf(6.0, float(prop.get("progress", 0.0)) + delta)
-		if float(prop.get("progress", 0.0)) >= 6.0:
+			prop["progress"] = minf(seal_time, float(prop.get("progress", 0.0)) + delta)
+		if float(prop.get("progress", 0.0)) >= seal_time:
 			prop["stable"] = true
 		if bool(prop.get("stable", false)): stable_count += 1
 		_adventure_props[prop_index] = prop
@@ -5687,8 +7277,10 @@ func _update_c5_mirror_labyrinth() -> void:
 				else: _spawn_c5_mirror_room()
 			else:
 				_chapter_five.add_count("wrong_choices")
-				_chapter_five.adjust_meter("abyss_pressure", 12.0)
-				_spawn_silent_descent_ambush(3)
+				if _story_telemetry != null:
+					_story_telemetry.mistake("wrong_mirror", {"room":_chapter_five.count("rooms_completed"), "wrong_choices":_chapter_five.count("wrong_choices")})
+				_chapter_five.adjust_meter("abyss_pressure", 12.0 * _story_diff_float("wrong_penalty_mul", 1.0))
+				_spawn_silent_descent_ambush(3 + _story_diff_int("wrong_pressure_bonus", 0))
 				_story_log("Wrong mirror: recoverable reflection room")
 				_spawn_c5_mirror_room()
 			return
@@ -5733,6 +7325,8 @@ func _update_c5_twin_eclipse(delta: float) -> void:
 		if _chapter_five.tick_timer("sync", delta) <= 0.0:
 			_chapter_five.adjust_meter("eclipse_pressure", 12.0)
 			_chapter_five.add_count("sync_failures")
+			if _story_telemetry != null:
+				_story_telemetry.mistake("eclipse_sync_failed", {"sync_failures":_chapter_five.count("sync_failures")})
 			_c5_enter_phase("obelisk_preparation")
 			_story_log("Synchronization failed: attempt reset")
 			return
@@ -5753,7 +7347,7 @@ func _update_c5_twin_eclipse(delta: float) -> void:
 			_chapter_five.set_flag("elite_disruption_active")
 		elif _chapter_five.flag("elite_disruption_active"):
 			_chapter_five.set_flag("elite_disruption_active", false)
-			_chapter_five.set_timer("elite_disrupt", 5.0)
+			_chapter_five.set_timer("elite_disrupt", 5.0 * _story_diff_float("spawn_interval_mul", 1.0))
 			_story_log("Eclipse Elite disruption interrupted")
 		elif not _chapter_five.flag("boss_defeated") and _chapter_five.tick_timer("elite_disrupt", delta) <= 0.0 and not _chapter_five.flag("sync_hold_complete"):
 			var target_obelisk: int = _chapter_five.count("elite_disruptions") % 2
@@ -5780,7 +7374,7 @@ func _begin_c5_eclipse_sync() -> void:
 		_story_log("Synchronization start rejected: return to Obelisk A")
 		return
 	_chapter_five.set_flag("sync_attempt_started")
-	_chapter_five.set_timer("sync", 14.0 if _chapter_five.flag("route_prepared") else 18.0)
+	_chapter_five.set_timer("sync", _story_diff_float("sync_window", 14.0) if _chapter_five.flag("route_prepared") else 18.0)
 	_c5_enter_phase("sync_attempt")
 	_story_log("Synchronization attempt started")
 
@@ -5789,16 +7383,54 @@ func _spawn_c5_anchors() -> void:
 	for anchor_index in 3:
 		_spawn_custom_prop("ritual_anchor", _story_stage_origin + Vector2.from_angle(-PI * 0.5 + float(anchor_index) * TAU / 3.0) * 620.0, {"anchor":anchor_index, "anchor_type":anchor_types[anchor_index], "hp":330.0, "max_hp":330.0, "progress":0.0})
 
+func _is_c5_anchor_vulnerable(anchor: Dictionary) -> bool:
+	if _chapter_five == null or _chapter_five.phase != "ritual_anchors":
+		return false
+	var anchor_type := str(anchor.get("anchor_type", ""))
+	var distance := (anchor.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos)
+	if anchor_type == "dominion":
+		return distance < 210.0
+	if anchor_type == "ruin":
+		var corrupted_add_count := 0
+		for enemy in _enemies:
+			if bool((enemy as Dictionary).get("corrupted", false)):
+				corrupted_add_count += 1
+		return corrupted_add_count <= 8
+	if anchor_type == "reflection":
+		return fmod(_elapsed, 7.0) < 3.0
+	return false
+
 func _update_c5_abyss_king(delta: float) -> void:
 	var boss_index: int = _find_story_enemy("abyss_king")
+	if _chapter_five.flag("boss_transition_pending"):
+		if _chapter_five.tick_timer("boss_transition", delta) <= 0.0:
+			_chapter_five.set_flag("boss_transition_pending", false)
+			_story_log("Boss transition complete: %s" % _chapter_five.phase)
 	if _chapter_five.phase == "ritual_anchors":
 		if _chapter_five.tick_timer("ritual", delta) <= 0.0:
 			_fail_custom_story_stage("The Abyss ritual consumed the throne room.")
 			return
-		var corrupted_add_count: int = 0
-		for enemy in _enemies:
-			if bool((enemy as Dictionary).get("corrupted", false)):
-				corrupted_add_count += 1
+		if _story_difficulty_rank() > 0:
+			var ritual_pressure_timer := float(_story_custom_progress.get("difficulty_ritual_pressure", _story_diff_float("ritual_interval", 7.0))) - delta
+			if ritual_pressure_timer <= 0.0:
+				ritual_pressure_timer = _story_diff_float("ritual_interval", 7.0)
+				var active_anchor_types: Array[String] = []
+				for ritual_anchor in _adventure_props:
+					if str((ritual_anchor as Dictionary).get("kind", "")) == "ritual_anchor":
+						active_anchor_types.append(str((ritual_anchor as Dictionary).get("anchor_type", "dominion")))
+				for active_anchor_type in active_anchor_types:
+					if active_anchor_type == "dominion" and _enemies.size() < 36:
+						_spawn_story_objective_enemy("normal_tank", "c5_anchor_dominion", 1.1, _custom_objective_position(480.0))
+					elif active_anchor_type == "ruin":
+						_chapter_five.adjust_meter("abyss_pressure", 4.0 + float(_story_difficulty_rank()) * 2.0)
+						if _enemies.size() < 36: _c1_spawn_pressure(_story_difficulty_rank(), "c5_anchor_ruin", _player_pos, 0.9)
+					elif active_anchor_type == "reflection" and boss_index >= 0:
+						var reflection_origin: Vector2 = _enemies[boss_index].get("pos", _story_stage_origin) as Vector2
+						var reflection_aim := reflection_origin.direction_to(_player_pos)
+						for spread in [-0.18, 0.0, 0.18]:
+							_boss_projs.append({"kind":"straight", "pos":reflection_origin, "vel":reflection_aim.rotated(float(spread)) * 320.0, "dmg":float(_enemies[boss_index].get("dmg", 10.0)) * 0.48, "life":4.0})
+				_story_log("Difficulty Anchor threats: %s" % " + ".join(active_anchor_types))
+			_story_custom_progress["difficulty_ritual_pressure"] = ritual_pressure_timer
 		for prop_index in range(_adventure_props.size() - 1, -1, -1):
 			var anchor: Dictionary = _adventure_props[prop_index]
 			if str(anchor.get("kind", "")) != "ritual_anchor": continue
@@ -5807,38 +7439,65 @@ func _update_c5_abyss_king(delta: float) -> void:
 				anchor["selected"] = true
 				_story_log("Ritual anchor selected: %s" % anchor_type)
 			var distance: float = (anchor.pos as Vector2).distance_to(_player_pos)
-			var vulnerable: bool = (anchor_type == "dominion" and distance < 210.0) or (anchor_type == "ruin" and corrupted_add_count <= 8) or (anchor_type == "reflection" and fmod(_elapsed, 7.0) < 3.0)
+			var vulnerable: bool = _is_c5_anchor_vulnerable(anchor)
 			if vulnerable and distance < 230.0:
 				anchor["hp"] = float(anchor.get("hp", 1.0)) - (32.0 + float(_level) * 3.0) * delta
 			if float(anchor.get("hp", 1.0)) <= 0.0:
 				var destroyed_type: String = anchor_type
+				var destroyed_pos := anchor.get("pos", _story_stage_origin) as Vector2
 				_adventure_props.remove_at(prop_index)
 				var destroyed: int = _chapter_five.record_anchor_destroyed(destroyed_type)
 				_chapter_five.adjust_meter("abyss_pressure", -12.0)
+				if _story_telemetry != null:
+					_story_telemetry.boss_mechanic("abyss_king", "ritual_anchor_destroyed", {"anchor_type":destroyed_type, "destroyed":destroyed})
 				_story_log("Anchor destroyed: %s · %d/3" % [destroyed_type, destroyed])
+				if destroyed < 3:
+					_present_boss_moment("%s BROKEN" % destroyed_type.to_upper(), "RITUAL ABILITY DISABLED", Color(0.76, 0.42, 1.0), destroyed_pos, 8.0, "boss_break")
 				continue
 			_adventure_props[prop_index] = anchor
-		if _chapter_five.count("anchors_destroyed") >= 3:
+		if _chapter_five.count("anchors_destroyed") >= 3 and not _chapter_five.flag("anchor_transition_pending"):
+			_chapter_five.set_flag("anchor_transition_pending")
+			_chapter_five.set_flag("transition_pending")
+			_chapter_five.set_timer("anchor_transition", 0.85)
+			_clear_boss_attack_runtime()
+			_present_boss_moment("RITUAL SHIELD COLLAPSED", "ABYSS CROWN REVEALED", Color(0.90, 0.52, 1.0), _story_stage_origin, 12.0, "boss_break")
+		if _chapter_five.flag("anchor_transition_pending") and _chapter_five.tick_timer("anchor_transition", delta) <= 0.0:
+			_chapter_five.set_flag("anchor_transition_pending", false)
 			_chapter_five.set_flag("anchor_transitions_complete")
 			_c5_enter_phase("abyss_crown")
 			_spawn_custom_prop("abyss_crown", _story_stage_origin + Vector2(0.0, -260.0), {"hp":520.0, "max_hp":520.0, "sections":4})
 			_spawn_custom_prop("crown_seal", _story_stage_origin + Vector2(-330.0, 180.0), {"seal":0})
 			_spawn_custom_prop("crown_seal", _story_stage_origin + Vector2(330.0, 180.0), {"seal":1})
 			_chapter_five.set_flag("crown_spawned")
-			_chapter_five.set_timer("crown_cycle", 3.0)
+			_chapter_five.set_timer("crown_cycle", 3.0 * _story_diff_float("crown_window_mul", 1.0))
 	elif _chapter_five.phase == "abyss_crown":
+		if _chapter_five.flag("crown_transition_pending"):
+			if _chapter_five.tick_timer("crown_transition", delta) <= 0.0:
+				_chapter_five.set_flag("crown_transition_pending", false)
+				_chapter_five.set_flag("crown_transition_complete")
+				_chapter_five.set_flag("final_phase_entered")
+				_c5_enter_phase("final_boss_a")
+				if boss_index >= 0:
+					_enemies[boss_index]["shield_active"] = false
+					_enemies[boss_index]["hp"] = _enemies[boss_index].get("objective_max_hp", _enemies[boss_index].hp)
+				_story_log("Boss phase transition: Final Phase A")
+			return
 		if _chapter_five.tick_timer("crown_cycle", delta) <= 0.0:
 			var crown_cycle: int = _chapter_five.add_count("crown_cycles")
 			var seals_active: bool = _chapter_five.flag("seal_a_active") and _chapter_five.flag("seal_b_active")
 			if seals_active:
-				_chapter_five.set_timer("crown_vulnerable", 7.0)
+				_chapter_five.set_timer("crown_vulnerable", 7.0 * _story_diff_float("crown_window_mul", 1.0))
 				_chapter_five.set_flag("seal_a_active", false)
 				_chapter_five.set_flag("seal_b_active", false)
 				_story_log("Crown vulnerability opened: twin seals")
+				var vulnerable_crown := _find_adventure_prop("abyss_crown")
+				if vulnerable_crown >= 0:
+					_spawn_reaction_popup(_adventure_props[vulnerable_crown].get("pos", _story_stage_origin) as Vector2, "TWIN SEALS ALIGNED · CROWN VULNERABLE", Color(1.0, 0.48, 0.82))
+					if _sound != null: _sound.play("boss_break", -9.0, 1.14)
 			elif crown_cycle % 2 == 0 and _find_story_enemy("c5_crown_channeler") < 0:
 				_spawn_story_objective_enemy("normal_tank", "c5_crown_channeler", 2.0, _story_stage_origin + Vector2(0.0, 430.0))
 				_story_log("Crown vulnerability objective: interrupt ritual channeler")
-			_chapter_five.set_timer("crown_cycle", 5.0)
+			_chapter_five.set_timer("crown_cycle", 5.0 * _story_diff_float("crown_window_mul", 1.0))
 		for prop in _adventure_props:
 			if str(prop.get("kind", "")) == "crown_seal" and (prop.pos as Vector2).distance_to(_player_pos) < 145.0:
 				var seal_name: String = "a" if int(prop.get("seal", 0)) == 0 else "b"
@@ -5853,32 +7512,45 @@ func _update_c5_abyss_king(delta: float) -> void:
 			crown["sections"] = maxi(0, sections)
 			if sections < previous_sections:
 				_chapter_five.set_count("crown_sections_broken", mini(4, _chapter_five.count("crown_sections_broken") + previous_sections - maxi(0, sections)))
+				if _story_telemetry != null:
+					_story_telemetry.boss_mechanic("abyss_king", "crown_section_broken", {"sections_broken":_chapter_five.count("crown_sections_broken")})
 				_story_log("Crown section broken: %d/4" % _chapter_five.count("crown_sections_broken"))
+				if float(crown["hp"]) > 0.0:
+					_present_boss_moment("CROWN SECTION BROKEN", "%d/4 FRACTURED" % _chapter_five.count("crown_sections_broken"), Color(1.0, 0.48, 0.84), crown.get("pos", _story_stage_origin) as Vector2, 6.0, "boss_break")
 			if float(crown["hp"]) <= 0.0:
 				_adventure_props.remove_at(crown_index)
 				_chapter_five.set_flag("crown_destroyed")
-				_chapter_five.set_flag("crown_transition_complete")
-				_chapter_five.set_flag("final_phase_entered")
-				_c5_enter_phase("final_boss_a")
-				if boss_index >= 0:
-					_enemies[boss_index]["shield_active"] = false
-					_enemies[boss_index]["hp"] = _enemies[boss_index].get("objective_max_hp", _enemies[boss_index].hp)
-				_story_log("Boss phase transition: Final Phase A")
+				_chapter_five.set_flag("crown_transition_pending")
+				_chapter_five.set_flag("transition_pending")
+				_chapter_five.set_timer("crown_transition", 1.0)
+				_clear_boss_attack_runtime()
+				_present_boss_moment("ABYSS CROWN SHATTERED", "THE KING IS VULNERABLE", Color(1.0, 0.48, 0.86), crown.get("pos", _story_stage_origin) as Vector2, 14.0, "boss_break")
 			else: _adventure_props[crown_index] = crown
 	elif _chapter_five.phase.begins_with("final_boss") and boss_index >= 0:
 		var boss: Dictionary = _enemies[boss_index]
 		var hp_ratio: float = float(boss.get("hp", 1.0)) / maxf(float(boss.get("objective_max_hp", 1.0)), 1.0)
 		if hp_ratio <= 0.65 and _chapter_five.phase == "final_boss_a":
 			_c5_enter_phase("final_boss_b")
+			_begin_c5_boss_transition("THE DEEP ANSWERS", "WARMTH SANCTUARY OPEN", boss.get("pos", _story_stage_origin) as Vector2, Color(0.54, 0.82, 1.0), 7.0)
 			_spawn_custom_prop("healing_fountain", _story_stage_origin + Vector2(0.0, 260.0), {})
 			_story_log("Boss phase transition: Final Phase B · warmth callback")
 		elif hp_ratio <= 0.35 and _chapter_five.phase == "final_boss_b":
 			_c5_enter_phase("final_boss_c")
+			_begin_c5_boss_transition("MIRROR OF THE ABYSS", "REFLECTION PATTERNS ACTIVE", boss.get("pos", _story_stage_origin) as Vector2, Color(0.68, 0.48, 1.0), 8.0)
 			_story_log("Boss phase transition: Final Phase C · mirror attacks")
 		elif hp_ratio <= 0.22 and _chapter_five.phase == "final_boss_c":
 			_c5_enter_phase("desperation")
 			_chapter_five.set_flag("desperation_entered")
+			if _story_telemetry != null:
+				_story_telemetry.boss_mechanic("abyss_king", "desperation_entered", {"hp_ratio":hp_ratio})
+			_begin_c5_boss_transition("ABYSS KING · DESPERATION", "FINAL EXECUTION", boss.get("pos", _story_stage_origin) as Vector2, Color(1.0, 0.20, 0.38), 12.0)
 			_story_log("Boss phase transition: Desperation")
+
+func _begin_c5_boss_transition(title: String, detail: String, position: Vector2, color: Color, shake: float) -> void:
+	_chapter_five.set_flag("boss_transition_pending")
+	_chapter_five.set_timer("boss_transition", 0.65)
+	_clear_boss_attack_runtime()
+	_present_boss_moment(title, detail, color, position, shake, "boss_phase")
 
 func _count_adventure_props(kind: String) -> int:
 	var count: int = 0
@@ -5926,7 +7598,7 @@ func _setup_chapter_two_stage(objective: String) -> void:
 			_adventure_target = 4
 			_story_custom_sequence = [0, 1, 2, 3]
 			_story_custom_sequence.shuffle()
-			_story_custom_timer = 5.0
+			_story_custom_timer = _story_diff_float("reveal_time", 5.0)
 			_chapter_two.set_flag("sequence_generated")
 			_chapter_two.set_flag("rune_sequence_started", false)
 			_chapter_two.set_count("runes_correct", 0)
@@ -5937,16 +7609,23 @@ func _setup_chapter_two_stage(objective: String) -> void:
 				var rune_pos: Vector2 = _story_objective_zone_position(rune_slots[rune_index], 760.0)
 				_spawn_custom_prop("thaw_rune", rune_pos, {"rune":rune_index, "feedback":"", "fixed_pos":rune_pos})
 		"frost_mimic":
-			_adventure_target = 6
-			var real_chest: int = randi_range(0, _adventure_target - 1)
+			_adventure_target = ChapterTwoStageControllerClass.MIMIC_CHEST_COUNT
+			var mimic_layout: Dictionary = ChapterTwoStageControllerClass.build_mimic_layout(randi())
+			var real_chest: int = int(mimic_layout.get("real_chest", -1))
+			var safe_chests: Array = mimic_layout.get("safe_chests", []) as Array
 			_chapter_two.set_count("real_chest", real_chest)
 			_chapter_two.set_count("clues_found", 0)
+			_chapter_two.set_count("tablets_inspected", 0)
 			_chapter_two.set_count("suspects_remaining", _adventure_target)
+			_chapter_two.set_flag("clue_state_valid", ChapterTwoStageControllerClass.validate_mimic_layout(mimic_layout))
 			_chapter_two.enter("treasury_investigation")
 			for chest_index in _adventure_target:
 				var chest_pos: Vector2 = _story_objective_zone_position(chest_index, 650.0)
 				_spawn_custom_prop("mimic_chest", chest_pos, {"chest":chest_index, "real":chest_index == real_chest, "inspected":false, "excluded":false})
-				_spawn_custom_prop("frost_clue", chest_pos + Vector2(0.0, 92.0), {"chest":chest_index})
+			for clue_index in safe_chests.size():
+				var safe_chest: int = int(safe_chests[clue_index])
+				var clue_pos: Vector2 = _story_stage_origin + Vector2.from_angle(-PI * 0.5 + TAU * float(clue_index) / float(safe_chests.size())) * 310.0
+				_spawn_custom_prop("frost_clue", clue_pos, {"chest":safe_chest, "text":"Chest %d is safe" % (safe_chest + 1), "inspected":false})
 		"frost_colossus":
 			_adventure_target = 3
 			_chapter_two.set_count("crystals_broken", 0)
@@ -5958,6 +7637,7 @@ func _setup_chapter_two_stage(objective: String) -> void:
 				_spawn_custom_prop("armour_crystal", crystal_pos, {"crystal":crystal_index, "hp":260.0, "max_hp":260.0, "exposed":false, "broken":false})
 			_spawn_story_objective_enemy("shield_boss", "frost_colossus", 1.5, _story_stage_origin + Vector2(0.0, -180.0))
 			_chapter_two.set_flag("boss_spawned")
+			_present_boss_moment("CHAPTER BOSS", "FROSTBOUND COLOSSUS · DISMANTLE THE ARMOUR", Color(0.42, 0.86, 1.0), _story_stage_origin + Vector2(0.0, -180.0), 6.0, "boss_intro")
 	_story_log_phase("setup", _chapter_two.phase)
 	_story_log("Objective activation: Chapter 2 stage %d" % _chapter_two.stage_number)
 
@@ -5988,6 +7668,9 @@ func _update_c2_cold_exposure(delta: float) -> void:
 	var cold_rate: float = 2.4 if _chapter_two.stage_number in [1, 2, 3] else 1.6
 	if _chapter_two.stage_number == 2 and _chapter_two.phase == "blizzard_extraction":
 		cold_rate = 4.0
+	cold_rate *= _story_diff_float("cold_rate_mul", 1.0)
+	if _chapter_two.stage_number == 1:
+		cold_rate *= 1.0 - _story_synergy_bonus("cold_exposure")
 	_chapter_two.cold_exposure = clampf(_chapter_two.cold_exposure + (-8.0 if in_warmth else cold_rate) * delta, 0.0, 100.0)
 	var threshold: int = 100 if _chapter_two.cold_exposure >= 100.0 else (75 if _chapter_two.cold_exposure >= 75.0 else (50 if _chapter_two.cold_exposure >= 50.0 else 0))
 	if threshold > _c2_cold_threshold:
@@ -6024,7 +7707,8 @@ func _update_c2_rekindle(delta: float) -> void:
 		if str(brazier.get("kind", "")) != "brazier":
 			continue
 		if bool(brazier.get("active", false)):
-			brazier["heat"] = maxf(0.0, float(brazier.get("heat", 0.0)) - delta * (0.28 if _chapter_two.count("braziers_lit") < 2 else 0.42))
+			var build_decay_multiplier := 1.0 - _story_synergy_bonus("brazier_decay")
+			brazier["heat"] = maxf(0.0, float(brazier.get("heat", 0.0)) - delta * (0.28 if _chapter_two.count("braziers_lit") < 2 else 0.42) * _story_diff_float("brazier_decay_mul", 1.0) * build_decay_multiplier)
 			if float(brazier["heat"]) <= 0.0:
 				brazier["active"] = false
 				_story_log("Brazier heat change: Brazier %d went cold" % (int(brazier.get("order", 0)) + 1))
@@ -6074,7 +7758,7 @@ func _update_c2_rekindle(delta: float) -> void:
 						_enemies[suppressor_index]["objective_target_pos"] = suppression_pos
 						_enemies[suppressor_index]["objective_target_order"] = suppressed_order
 					_story_log("Suppression growth approaching Brazier %d" % (suppressed_order + 1))
-				_chapter_two.set_timer("suppression", 7.0)
+				_chapter_two.set_timer("suppression", 7.0 * _story_diff_float("spawn_interval_mul", 1.0))
 			if _chapter_two.tick_timer("stabilization", delta) <= 0.0:
 				_chapter_two.set_flag("warmth_stabilized")
 				_chapter_two.set_flag("finale_complete")
@@ -6144,7 +7828,8 @@ func _update_c2_captives(delta: float) -> void:
 				if str(enemy.get("story_tag", "")).begins_with("c2_jailer") and (enemy.get("pos", Vector2.ZERO) as Vector2).distance_to(captive_pos) < 250.0:
 					nearby_jailer = true
 					break
-			captive["refreeze"] = clampf(float(captive.get("refreeze", 0.0)) + (18.0 if nearby_jailer else -12.0) * delta, 0.0, 100.0)
+			var captive_protection := _story_synergy_bonus("captive_protection") if captive_pos.distance_to(_player_pos) < 260.0 else 0.0
+			captive["refreeze"] = clampf(float(captive.get("refreeze", 0.0)) + (18.0 * _story_diff_float("refreeze_mul", 1.0) * (1.0 - captive_protection) if nearby_jailer else -12.0) * delta, 0.0, 100.0)
 			if float(captive["refreeze"]) >= 100.0:
 				captive["refrozen"] = true
 				_story_log("Captive refrozen")
@@ -6185,7 +7870,7 @@ func _update_c2_prisons(delta: float) -> void:
 			if bool(prop.get("regen", false)) and crystals_remain:
 				prop["hp"] = minf(float(prop.get("max_hp", 1.0)), float(prop.get("hp", 1.0)) + 18.0 * delta)
 			elif (prop.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) < 185.0:
-				prop["hp"] = float(prop.get("hp", 1.0)) - (30.0 + float(_level) * 3.0) * delta
+				prop["hp"] = float(prop.get("hp", 1.0)) - (30.0 + float(_level) * 3.0) * delta * (1.0 + _story_synergy_bonus("prison_thaw"))
 			if float(prop["hp"]) <= 0.0:
 				var release_pos: Vector2 = prop.get("pos", Vector2.ZERO) as Vector2
 				_adventure_props.remove_at(prop_index)
@@ -6238,6 +7923,9 @@ func _update_c2_runes(delta: float) -> void:
 					return
 			else:
 				rune["feedback"] = "wrong"
+				if _story_telemetry != null:
+					_story_telemetry.mistake("wrong_thaw_rune", {"sequence_progress":entered})
+				_trigger_story_narrative("c2s3_wrong_rune")
 				var reduced: int = maxi(0, entered - 1)
 				if entered > 0:
 					var reopened_rune: int = _story_custom_sequence[entered - 1]
@@ -6247,7 +7935,7 @@ func _update_c2_runes(delta: float) -> void:
 							_adventure_props[reopen_index]["feedback"] = ""
 							break
 				_chapter_two.set_count("runes_correct", reduced)
-				_chapter_two.cold_exposure = minf(100.0, _chapter_two.cold_exposure + 18.0)
+				_chapter_two.cold_exposure = minf(100.0, _chapter_two.cold_exposure + 18.0 * _story_diff_float("wrong_penalty_mul", 1.0) * (1.0 - _story_synergy_bonus("wrong_rune_recovery")))
 				_story_log("Rune incorrect: sequence progress reduced to %d/4" % reduced)
 			rune["inside"] = true
 		elif not inside:
@@ -6257,6 +7945,25 @@ func _update_c2_runes(delta: float) -> void:
 		_chapter_two.tick_timer("freeze_finale", delta)
 
 func _update_c2_mimic(_delta: float) -> void:
+	for clue_index in _adventure_props.size():
+		var clue: Dictionary = _adventure_props[clue_index]
+		if str(clue.get("kind", "")) != "frost_clue":
+			continue
+		var clue_inside: bool = (clue.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) < 95.0
+		if clue_inside and not bool(clue.get("inside", false)) and not bool(clue.get("inspected", false)):
+			clue["inspected"] = true
+			var safe_chest: int = int(clue.get("chest", -1))
+			for chest_index in _adventure_props.size():
+				if str(_adventure_props[chest_index].get("kind", "")) == "mimic_chest" and int(_adventure_props[chest_index].get("chest", -2)) == safe_chest:
+					_adventure_props[chest_index]["excluded"] = true
+					break
+			var clues_found: int = _chapter_two.add_count("clues_found")
+			_chapter_two.add_count("tablets_inspected")
+			_chapter_two.set_count("suspects_remaining", maxi(1, _adventure_target - clues_found))
+			_story_custom_progress["last_mimic_clue"] = str(clue.get("text", "Safe chest identified"))
+			_story_log("Treasury clue inspected: %s · %d/5" % [str(clue.get("text", "")), clues_found])
+		clue["inside"] = clue_inside
+		_adventure_props[clue_index] = clue
 	for prop_index in range(_adventure_props.size() - 1, -1, -1):
 		var chest: Dictionary = _adventure_props[prop_index]
 		if str(chest.get("kind", "")) != "mimic_chest" or bool(chest.get("locked", false)):
@@ -6266,6 +7973,12 @@ func _update_c2_mimic(_delta: float) -> void:
 			var chest_id: int = int(chest.get("chest", -1))
 			var reveal_pos: Vector2 = chest.get("pos", Vector2.ZERO) as Vector2
 			if bool(chest.get("real", false)):
+				if _chapter_two.count("clues_found") < _adventure_target - 1:
+					chest["inside"] = true
+					_adventure_props[prop_index] = chest
+					_story_custom_progress["last_mimic_clue"] = "Need all 5 clues"
+					_story_log("Mimic chest remained sealed: treasury clues incomplete")
+					return
 				for other_index in range(_adventure_props.size() - 1, -1, -1):
 					if str(_adventure_props[other_index].get("kind", "")) in ["mimic_chest", "frost_clue"]:
 						_adventure_props.remove_at(other_index)
@@ -6278,11 +7991,26 @@ func _update_c2_mimic(_delta: float) -> void:
 			_adventure_props.remove_at(prop_index)
 			for clue_index in range(_adventure_props.size() - 1, -1, -1):
 				if str(_adventure_props[clue_index].get("kind", "")) == "frost_clue" and int(_adventure_props[clue_index].get("chest", -2)) == chest_id:
-					_adventure_props.remove_at(clue_index)
+					if not bool(_adventure_props[clue_index].get("inspected", false)):
+						_adventure_props[clue_index]["inspected"] = true
+						var opened_clues_found: int = _chapter_two.add_count("clues_found")
+						_chapter_two.set_count("suspects_remaining", maxi(1, _adventure_target - opened_clues_found))
+						_story_custom_progress["last_mimic_clue"] = "Chest %d was safe" % (chest_id + 1)
+					break
 			var wrong_chests: int = _chapter_two.add_count("wrong_chests")
-			_chapter_two.set_count("suspects_remaining", maxi(1, _chapter_two.count("suspects_remaining") - 1))
-			_c1_spawn_pressure(5 + wrong_chests * 2, "c2_mimic_ambush", reveal_pos, 1.0 + float(wrong_chests) * 0.12)
-			_story_log("Wrong Chest opened: ambush %d triggered" % wrong_chests)
+			if _story_telemetry != null:
+				_story_telemetry.mistake("wrong_mimic_chest", {"chest_id":chest_id, "wrong_chests":wrong_chests})
+			match chest_id % 3:
+				0:
+					_gain_xp(maxi(1, roundi(float(_xp_next) * 0.18)))
+					_story_log("Safe Chest opened: experience cache recovered")
+				1:
+					_chapter_two.cold_exposure = minf(100.0, _chapter_two.cold_exposure + 24.0)
+					_c1_spawn_pressure(2 + _story_diff_int("wrong_pressure_bonus", 0), "c2_mimic_trap", reveal_pos, 0.9)
+					_story_log("Safe Chest opened: frost trap triggered")
+				_:
+					_spawn_story_objective_enemy("normal_tank", "c2_lesser_mimic", 1.0 + float(wrong_chests) * 0.08, reveal_pos)
+					_story_log("Safe Chest opened: lesser Mimic revealed")
 			return
 		elif not inside:
 			chest["inside"] = false
@@ -6298,12 +8026,13 @@ func _update_c2_colossus(delta: float) -> void:
 		return
 	if _chapter_two.tick_timer("attack_cycle", delta) <= 0.0:
 		var next_crystal: int = _chapter_two.count("crystals_broken")
-		_chapter_two.set_timer("attack_cycle", 6.0)
+		_chapter_two.set_timer("attack_cycle", 6.0 * _story_diff_float("boss_cycle_mul", 1.0))
 		_chapter_two.set_timer("exposure_window", 5.0)
 		for prop_index in _adventure_props.size():
 			if str(_adventure_props[prop_index].get("kind", "")) == "armour_crystal":
 				_adventure_props[prop_index]["exposed"] = int(_adventure_props[prop_index].get("crystal", -1)) == next_crystal
 		_trigger_c2_colossus_exposure(next_crystal)
+		_trigger_story_narrative("c2s5_crystal_exposed")
 		_story_log("Crystal exposed: %s" % ["Frost Beam", "Ground Freeze", "Armour Regeneration"][next_crystal])
 	if _chapter_two.tick_timer("exposure_window", delta) <= 0.0:
 		for prop_index in _adventure_props.size():
@@ -6314,8 +8043,9 @@ func _update_c2_colossus(delta: float) -> void:
 		if str(crystal.get("kind", "")) != "armour_crystal" or not bool(crystal.get("exposed", false)):
 			continue
 		if (crystal.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) < 185.0:
-			crystal["hp"] = float(crystal.get("hp", 1.0)) - (30.0 + float(_level) * 3.0) * delta
+			crystal["hp"] = float(crystal.get("hp", 1.0)) - (30.0 + float(_level) * 3.0) * delta * (1.0 + _story_synergy_bonus("exposed_crystal"))
 			if float(crystal["hp"]) <= 0.0:
+				var broken_system := StoryBossPresentationClass.crystal_system(int(crystal.get("crystal", 0)))
 				var broken: int = _chapter_two.add_count("crystals_broken")
 				_chapter_two.add_count("armour_transitions")
 				_c2_bonus_levels_pending += 2
@@ -6323,11 +8053,15 @@ func _update_c2_colossus(delta: float) -> void:
 				_adventure_props.remove_at(prop_index)
 				_story_log("Crystal destroyed: %d/3 · boss phase transition · 2 bonus levels awarded" % broken)
 				if broken < 3:
+					_present_boss_moment("%s DESTROYED" % broken_system, "ARMOUR SYSTEM OFFLINE", Color(0.52, 0.92, 1.0), crystal.get("pos", _story_stage_origin) as Vector2, 8.0, "boss_break")
+				if broken < 3:
 					_c1_spawn_pressure(2, "c2_colossus_summon", _story_stage_origin, 0.95)
 				if broken >= 3:
 					_chapter_two.set_flag("all_armour_transitions_complete")
 					_chapter_two.set_flag("final_vulnerable_phase")
 					_story_custom_phase = 10
+					_clear_boss_attack_runtime()
+					_present_boss_moment("COLOSSUS ARMOUR SHATTERED", "TRUE CORE EXPOSED", Color(0.78, 0.96, 1.0), _story_stage_origin, 12.0, "boss_break")
 					_c2_enter_phase("final_vulnerable")
 				return
 		_adventure_props[prop_index] = crystal
@@ -6342,8 +8076,9 @@ func _trigger_c2_colossus_exposure(crystal_index: int) -> void:
 		0:
 			var beam_direction: Vector2 = boss_pos.direction_to(_player_pos)
 			if beam_direction.is_zero_approx(): beam_direction = Vector2.DOWN
+			_add_boss_telegraph({"kind":"line", "pos":boss_pos, "dir":beam_direction, "length":720.0, "width":64.0, "life":0.72, "color":Color(0.34, 0.78, 1.0)})
 			for spread in [-0.18, -0.09, 0.0, 0.09, 0.18]:
-				_boss_projs.append({"kind":"straight", "pos":boss_pos, "vel":beam_direction.rotated(float(spread)) * 360.0, "dmg":float(boss.get("dmg", 10.0)) * 0.55, "life":4.0})
+				_boss_projs.append({"kind":"straight", "pos":boss_pos, "vel":beam_direction.rotated(float(spread)) * 360.0, "dmg":float(boss.get("dmg", 10.0)) * 0.55, "life":4.0, "delay":0.72})
 			_story_log("Boss phase transition: Frost Beam fired · beam crystal exposed")
 		1:
 			for strike_index in 5:
@@ -6354,6 +8089,7 @@ func _trigger_c2_colossus_exposure(crystal_index: int) -> void:
 			var boss_max_hp: float = float(boss.get("objective_max_hp", boss.get("hp", 1.0)))
 			boss["hp"] = minf(boss_max_hp, float(boss.get("hp", 1.0)) + boss_max_hp * 0.08)
 			_enemies[boss_index] = boss
+			_spawn_reaction_popup(boss_pos, "ARMOUR REPAIR CHANNEL", Color(0.68, 0.92, 1.0))
 			_story_log("Boss phase transition: Armour regeneration channel · regeneration crystal exposed")
 
 func _update_frozen_braziers(delta: float) -> void:
@@ -6505,9 +8241,11 @@ func _update_chapter_three_stage(delta: float) -> void:
 		5: _update_c3_grand_antidote(delta)
 
 func _c3_spawn_pressure(count: int, tag: String = "c3_pressure", strength: float = 1.0) -> void:
+	var composition := _story_role_composition(count)
 	for enemy_index in count:
-		var kind: String = "normal_fast" if enemy_index % 3 == 0 else ("normal_tank" if enemy_index % 5 == 0 else "normal")
+		var kind: String = composition[enemy_index] if enemy_index < composition.size() else "normal"
 		_spawn_story_objective_enemy(kind, tag, strength, _player_pos + Vector2.from_angle(float(enemy_index) * TAU / float(maxi(1, count))) * randf_range(380.0, 540.0))
+	_story_log_role_composition(composition)
 
 func _update_c3_cleanse_mire(delta: float) -> void:
 	for energy_index in range(_adventure_props.size() - 1, -1, -1):
@@ -6525,7 +8263,7 @@ func _update_c3_cleanse_mire(delta: float) -> void:
 	if _c3_spawn_timer <= 0.0 and _chapter_three.count("energy") < _chapter_three.count("energy_max") and _find_story_enemy("c3_energy_carrier") < 0:
 		var carrier_pos: Vector2 = _player_pos + Vector2.from_angle(randf_range(0.0, TAU)) * 330.0
 		_spawn_story_objective_enemy("normal_fast", "c3_energy_carrier", 1.1 + float(_chapter_three.count("pools_purified")) * 0.18, carrier_pos)
-		_c3_spawn_timer = 3.0
+		_c3_spawn_timer = 3.0 * _story_diff_float("spawn_interval_mul", 1.0)
 	if _chapter_three.phase == "reclamation_surge":
 		var remaining: float = _chapter_three.tick_timer("reclamation", delta)
 		var all_stable: bool = true
@@ -6534,9 +8272,9 @@ func _update_c3_cleanse_mire(delta: float) -> void:
 			if str(pool.get("kind", "")) != "corrupted_pool": continue
 			var stability: float = float(pool.get("stability", 100.0))
 			if remaining > 0.0:
-				stability -= delta * 1.6
+				stability -= delta * 1.6 * _story_diff_float("stability_drain_mul", 1.0) * (1.0 - _story_synergy_bonus("mire_resistance"))
 			if (pool.pos as Vector2).distance_to(_player_pos) < 180.0:
-				stability += delta * (18.0 if remaining <= 0.0 else 11.0)
+				stability += delta * (18.0 if remaining <= 0.0 else 11.0) * (1.0 + _story_synergy_bonus("pool_stability"))
 			pool["stability"] = clampf(stability, 0.0, 100.0)
 			_adventure_props[i] = pool
 			all_stable = all_stable and stability >= 35.0
@@ -6544,7 +8282,7 @@ func _update_c3_cleanse_mire(delta: float) -> void:
 		_c3_spawn_timer -= delta
 		if _c3_spawn_timer <= 0.0:
 			_c3_spawn_pressure(3, "c3_reclaimer", 1.25)
-			_c3_spawn_timer = 4.0
+			_c3_spawn_timer = 4.0 * _story_diff_float("spawn_interval_mul", 1.0)
 		if remaining <= 0.0 and all_stable:
 			_chapter_three.set_flag("reclamation_complete")
 			_chapter_three.set_flag("all_pools_stable")
@@ -6605,6 +8343,7 @@ func _update_c3_cleanse_mire(delta: float) -> void:
 
 func _spawn_c3_tracking_choices() -> void:
 	_adventure_props.clear()
+	_story_custom_progress["mastery_tracking_choice_started"] = _elapsed
 	var trail_count: int = maxi(1, _chapter_three.count("tracking_trails"))
 	var correct_route: int = randi_range(0, trail_count - 1)
 	for route in trail_count:
@@ -6637,8 +8376,10 @@ func _update_c3_plaguebeast(delta: float) -> void:
 			_adventure_props.clear()
 			if not correct:
 				_chapter_three.set_count("tracking_trails", maxi(1, _chapter_three.count("tracking_trails") - 1))
+				if _story_telemetry != null:
+					_story_telemetry.mistake("wrong_tracking_route", {"wrong_routes":_chapter_three.count("wrong_routes")})
 				_story_log("Wrong trail selected: ambush triggered")
-				_c3_spawn_pressure(7, "c3_pursuit", 1.2 + float(_chapter_three.count("wrong_routes")) * 0.12)
+				_c3_spawn_pressure(7 + _story_diff_int("wrong_pressure_bonus", 0), "c3_pursuit", 1.2 + float(_chapter_three.count("wrong_routes")) * 0.12)
 				_c3_enter_phase("tracking_ambush")
 				return
 			_chapter_three.add_count("tracking_phases_complete")
@@ -6673,7 +8414,10 @@ func _spawn_c3_region_target(region: int) -> void:
 	_spawn_custom_prop(kind, _story_objective_zone_position(region + _chapter_three.count("regions_complete"), 470.0), {"region":region, "progress":0.0})
 
 func _c3_region_lure_duration(region: int) -> float:
-	return float([5.0, 6.0, 5.0][clampi(region, 0, 2)])
+	var duration := float([5.0, 6.0, 5.0][clampi(region, 0, 2)]) * _story_diff_float("channel_time_mul", 1.0)
+	if region == 0:
+		duration *= 1.0 - _story_synergy_bonus("web_lure")
+	return duration
 
 func _spawn_c3_venom_pack(region: int, center: Vector2) -> void:
 	var enemy_kind: String = str(["normal_fast", "normal_tank", "normal_fast"][region])
@@ -6737,7 +8481,8 @@ func _update_c3_venom_harvest(delta: float) -> void:
 		var region: int = _chapter_three.count("active_region")
 		var target_kind: String = str(["c3_web_nest", "c3_bile_vessel", "c3_wasp_hive"][region])
 		var target: int = _find_adventure_prop(target_kind)
-		if target >= 0 and (_adventure_props[target].pos as Vector2).distance_to(_player_pos) < 145.0:
+		var lure_range := 145.0 * (1.0 + _story_synergy_bonus("wasp_lure_range") if region == 2 else 1.0)
+		if target >= 0 and (_adventure_props[target].pos as Vector2).distance_to(_player_pos) < lure_range:
 			_c3_action_timer += delta
 			_adventure_props[target]["progress"] = _c3_action_timer
 			if _c3_action_timer >= _c3_region_lure_duration(region):
@@ -6760,7 +8505,7 @@ func _update_c3_venom_harvest(delta: float) -> void:
 		_c3_spawn_timer -= delta
 		if _c3_spawn_timer <= 0.0:
 			_c3_spawn_pressure(2, "c3_contaminator", 1.25)
-			_c3_spawn_timer = 4.0
+			_c3_spawn_timer = 4.0 * _story_diff_float("spawn_interval_mul", 1.0)
 
 func _update_c3_fragile_cure(delta: float) -> void:
 	if _chapter_three.phase == "vial_collection":
@@ -6860,6 +8605,37 @@ func _update_c3_fragile_cure(delta: float) -> void:
 			_story_primary_complete = true
 			_request_story_victory("chapter_three_altar_cured")
 
+func _recover_shattered_antidote_vial() -> void:
+	_story_custom_carried = ""
+	_story_custom_touch_lock = ""
+	_story_custom_failure = ""
+	_c3_action_timer = 0.0
+	_c3_spawn_timer = 0.0
+	_chapter_three.set_flag("vial_collected", false)
+	_chapter_three.set_flag("vial_at_altar", false)
+	_chapter_three.set_flag("transfer_complete", false)
+	_chapter_three.set_flag("altar_cured", false)
+	_chapter_three.set_flag("primary_complete", false)
+	_story_primary_complete = false
+	_chapter_three.set_count("route_checkpoints", 0)
+	_chapter_three.set_count("route_checkpoints_required", 2)
+	_chapter_three.set_count("selection_route", -1)
+	_chapter_three.set_timer("transfer", 0.0)
+	_chapter_three.set_meter("vial_integrity", 100.0)
+	_adventure_props.clear()
+	for enemy_index in range(_enemies.size() - 1, -1, -1):
+		var tag: String = str(_enemies[enemy_index].get("story_tag", ""))
+		if tag in ["c3_route_guard", "c3_vial_hunter"]:
+			_enemies.remove_at(enemy_index)
+	_spawn_custom_prop("c3_vial", _player_pos + Vector2(0.0, -230.0), {})
+	_c3_enter_phase("vial_collection")
+	_story_log("Antidote vial shattered: objective reset to vial collection")
+	if _story_telemetry != null:
+		_story_telemetry.objective_failed("fragile_cure", "antidote_vial_shattered", true)
+		_story_telemetry.mistake("antidote_vial_shattered")
+		_story_telemetry.recovery("replacement_antidote_vial_spawned")
+		_story_telemetry.retry("fragile_cure_objective")
+
 func _spawn_c3_cure_checkpoint(checkpoint: int) -> void:
 	var route_offset: int = 0 if _chapter_three.count("route") == 0 else 4
 	_spawn_custom_prop("c3_cure_checkpoint", _story_objective_zone_position(route_offset + checkpoint, 470.0 + float(checkpoint) * 80.0), {"checkpoint":checkpoint, "progress":0.0})
@@ -6886,8 +8662,10 @@ func _update_c3_grand_antidote(delta: float) -> void:
 				_story_custom_timer = 2.5
 				_story_log("Ingredient submitted: correct · %d/3" % _chapter_three.count("ingredients_submitted"))
 			else:
-				_chapter_three.adjust_meter("heat", 18.0)
-				_chapter_three.adjust_meter("purity", -12.0)
+				_chapter_three.adjust_meter("heat", 18.0 * _story_diff_float("wrong_penalty_mul", 1.0))
+				_chapter_three.adjust_meter("purity", -12.0 * _story_diff_float("wrong_penalty_mul", 1.0))
+				if _story_telemetry != null:
+					_story_telemetry.mistake("wrong_brew_ingredient", {"submitted_index":submitted})
 				_spawn_custom_prop("c3_brew_ingredient", _custom_objective_position(320.0), {"ingredient":int(_story_custom_carried)})
 				var required_name: String = _ingredient_name(str(_chapter_three.recipe[submitted])) if submitted < _chapter_three.recipe.size() else "none"
 				_story_custom_progress["brew_feedback"] = "WRONG INGREDIENT · Bring %s" % required_name
@@ -6902,8 +8680,8 @@ func _update_c3_grand_antidote(delta: float) -> void:
 	elif _chapter_three.phase == "active_brewing":
 		var cauldron: int = _find_adventure_prop("cauldron")
 		var near: bool = cauldron >= 0 and (_adventure_props[cauldron].pos as Vector2).distance_to(_player_pos) < 155.0
-		_chapter_three.adjust_meter("heat", delta * (1.6 if not near else -2.4))
-		if near: _chapter_three.adjust_meter("purity", delta * 0.55)
+		_chapter_three.adjust_meter("heat", delta * (1.6 * _story_diff_float("heat_gain_mul", 1.0) if not near else -2.4 * (1.0 + _story_synergy_bonus("brew_cooling"))))
+		if near: _chapter_three.adjust_meter("purity", delta * 0.55 * (1.0 + _story_synergy_bonus("brew_purity")))
 		var heat: float = _chapter_three.meter("heat")
 		if heat >= 35.0 and heat <= 82.0 and _chapter_three.meter("purity") >= 35.0:
 			_chapter_three.adjust_meter("brew_progress", delta * 2.7)
@@ -6914,8 +8692,16 @@ func _update_c3_grand_antidote(delta: float) -> void:
 		if _chapter_three.meter("brew_progress") >= 100.0:
 			_chapter_three.set_flag("brew_complete")
 			_chapter_three.set_flag("boss_spawned")
-			_story_log("Brew completed: purity %d%%" % roundi(_chapter_three.meter("purity")))
+			var brew_purity: float = _chapter_three.meter("purity")
+			var brew_quality: String = StoryBossPresentationClass.brew_quality(brew_purity)
+			_chapter_three.set_flag("brew_quality_%s" % brew_quality.to_lower())
+			_story_log("Brew completed: purity %d%% · quality=%s" % [roundi(brew_purity), brew_quality])
 			_spawn_story_objective_enemy("blight_vine_tyrant", "c3_blight_tyrant", 4.4 - _chapter_three.meter("purity") * 0.012, _story_objective_zone_position(7, 540.0))
+			var tyrant_index := _find_story_enemy("c3_blight_tyrant")
+			if tyrant_index >= 0:
+				_enemies[tyrant_index]["brew_purity"] = brew_purity
+				_enemies[tyrant_index]["brew_quality"] = brew_quality
+				_present_boss_moment("ANTIDOTE QUALITY · %s" % brew_quality, "CORRUPTION WEAKENED" if brew_quality == "PURE" else ("REGENERATION SUPPRESSED" if brew_quality == "STABLE" else "CORRUPTION RESISTING"), Color(0.42, 0.94, 0.30), _enemies[tyrant_index].get("pos", _story_stage_origin) as Vector2, 6.0, "boss_intro")
 			_c3_enter_phase("blight_tyrant")
 
 func _setup_chapter_four_stage(objective: String) -> void:
@@ -7023,7 +8809,7 @@ func _update_c4_ore_rush(delta: float) -> void:
 			if near and _chapter_four.count("ore_carried") < 3 and not bool(prop.get("heat_locked", false)):
 				var duration: float = float([3.0, 5.0, 4.0][deposit_type])
 				prop["progress"] = float(prop.get("progress", 0.0)) + delta
-				_chapter_four.adjust_meter("heat", delta * float([1.2, 2.8, 2.0][deposit_type]))
+				_chapter_four.adjust_meter("heat", delta * float([1.2, 2.8, 2.0][deposit_type]) * _story_diff_float("heat_gain_mul", 1.0) * (1.0 - _story_synergy_bonus("mining_heat")))
 				if float(prop["progress"]) >= duration:
 					var ore_yield: int = int(prop.get("yield", 1))
 					var capacity: int = 3 - _chapter_four.count("ore_carried")
@@ -7107,7 +8893,7 @@ func _update_c4_ore_thieves(delta: float) -> void:
 		if _find_adventure_prop("c4_ore_bag") >= 0 and _find_story_enemy("c4_ore_thief") < 0:
 			_spawn_story_objective_enemy("normal_fast", "c4_ore_thief", 1.35, _custom_objective_position(460.0))
 			_story_log("Ore thief entered: unattended ore at risk")
-		_chapter_four.set_timer("ore_thief", 18.0)
+		_chapter_four.set_timer("ore_thief", 18.0 * _story_diff_float("spawn_interval_mul", 1.0))
 	var thief_index: int = _find_story_enemy("c4_ore_thief")
 	if thief_index < 0: return
 	var thief: Dictionary = _enemies[thief_index]
@@ -7120,6 +8906,8 @@ func _update_c4_ore_thieves(delta: float) -> void:
 				_adventure_props.remove_at(bag_index)
 				thief["stolen_ore"] = 1
 				_chapter_four.add_count("ore_stolen")
+				if _story_telemetry != null:
+					_story_telemetry.mistake("ore_stolen", {"ore_stolen":_chapter_four.count("ore_stolen")})
 				_story_log("Ore stolen: recover it from the marked thief")
 	else:
 		var thief_exit: Vector2 = _story_stage_origin + Vector2(1050.0, 0.0)
@@ -7136,7 +8924,7 @@ func _update_c4_molten_circuit(delta: float) -> void:
 				var mask: int = _chapter_four.count("valve_mask") ^ int(prop.get("toggle_mask", 0))
 				_chapter_four.set_count("valve_mask", mask)
 				_chapter_four.set_count("mechanisms_powered", _bit_count(mask))
-				_chapter_four.adjust_meter("heat", 5.0 if mask != 7 else -12.0)
+				_chapter_four.adjust_meter("heat", 5.0 * _story_diff_float("wrong_penalty_mul", 1.0) if mask != 7 else -12.0)
 				_story_log("Valve activated: %d · powered=%d/3" % [int(prop.get("valve", 0)) + 1, _bit_count(mask)])
 				for mechanism_index in _adventure_props.size():
 					if str(_adventure_props[mechanism_index].get("kind", "")) == "c4_forge_mechanism":
@@ -7167,11 +8955,11 @@ func _update_c4_molten_circuit(delta: float) -> void:
 		for mechanism_index in _adventure_props.size():
 			if str(_adventure_props[mechanism_index].get("kind", "")) == "c4_forge_mechanism":
 				_adventure_props[mechanism_index]["jammed"] = jammer_active
-		if not jammer_active: _chapter_four.tick_timer("stabilization", delta)
+		if not jammer_active: _chapter_four.tick_timer("stabilization", delta * (1.0 + _story_synergy_bonus("forge_stabilization")))
 		_c4_spawn_timer -= delta
 		if _c4_spawn_timer <= 0.0 and not jammer_active:
 			_spawn_story_objective_enemy("normal_fast", "c4_forge_jammer", 1.45, _custom_objective_position(420.0))
-			_c4_spawn_timer = 9.0
+			_c4_spawn_timer = 9.0 * _story_diff_float("spawn_interval_mul", 1.0)
 		if _chapter_four.timer("stabilization") <= 0.0 and not jammer_active:
 			_chapter_four.set_flag("puzzle_initialized")
 			_chapter_four.set_flag("mechanisms_powered")
@@ -7248,7 +9036,7 @@ func _update_c4_golem_taming(delta: float) -> void:
 	_chapter_four.set_flag("capture_channel_active", capture_channel_active)
 	if capture_channel_active:
 		_c4_action_timer += delta
-		if _c4_action_timer >= 2.5:
+		if _c4_action_timer >= 2.5 * _story_diff_float("channel_time_mul", 1.0) * (1.0 - _story_synergy_bonus("capture_channel")):
 			_c4_action_timer = 0.0
 			_enemies.remove_at(golem_index)
 			var captured: int = _chapter_four.add_count("golems_captured")
@@ -7289,7 +9077,11 @@ func _update_c4_lost_relic(delta: float) -> void:
 		_c4_spawn_timer -= delta
 		if _c4_spawn_timer <= 0.0 and _find_story_enemy("c4_chamber_guardian_%d" % (components + 1)) >= 0:
 			_c3_spawn_pressure(2, "c4_chamber_hazard", 1.1 + float(components) * 0.12)
-			_c4_spawn_timer = 7.0
+			var reinforcement_key := "mastery_chamber_reinforcements_%d" % components
+			var reinforcements := int(_story_custom_progress.get(reinforcement_key, 0)) + 1
+			_story_custom_progress[reinforcement_key] = reinforcements
+			if reinforcements >= 3: _fail_story_mastery(0, "third_chamber_reinforcement")
+			_c4_spawn_timer = 7.0 * _story_diff_float("spawn_interval_mul", 1.0)
 	elif not _chapter_four.flag("relic_choice_committed"):
 		if _find_adventure_prop("relic_forge") < 0: _spawn_custom_prop("relic_forge", _story_stage_origin + Vector2(0.0, -220.0), {})
 		var forge: int = _find_adventure_prop("relic_forge")
@@ -7314,7 +9106,7 @@ func _select_c4_relic(choice: String) -> void:
 	_chapter_four.set_flag("relic_choice_committed")
 	_story_custom_progress["relic_choice"] = choice
 	if choice == "power": _ring_bonuses["skill_dmg"] = float(_ring_bonuses.get("skill_dmg", 0.0)) + 0.25
-	elif choice == "guard": _player_max_hp *= 1.20; _player_hp = minf(_player_max_hp, _player_hp + _player_max_hp * 0.20)
+	elif choice == "guard": _player_max_hp *= 1.20; _restore_player_hp(_player_max_hp * 0.20)
 	else: _player_speed *= 1.15
 	_adventure_props.clear()
 	_spawn_story_objective_enemy("normal_tank", "c4_relic_guardian", 4.0, _story_objective_zone_position(7, 560.0))
@@ -7323,17 +9115,21 @@ func _select_c4_relic(choice: String) -> void:
 	_c4_enter_phase("relic_guardian")
 
 func _update_c4_meltdown(delta: float) -> void:
+	if _chapter_four.flag("boss_transition_pending"):
+		if _chapter_four.tick_timer("boss_transition", delta) <= 0.0:
+			_chapter_four.set_flag("boss_transition_pending", false)
+			_story_log("Boss transition complete: Behemoth power core exposed")
 	var shutdown: int = _chapter_four.count("regulators_disabled")
 	if _chapter_four.flag("shutdown_complete"):
 		_chapter_four.adjust_meter("heat", -delta * 1.15)
 	else:
-		_chapter_four.adjust_meter("heat", delta * (0.24 + float(4 - shutdown) * 0.06))
+		_chapter_four.adjust_meter("heat", delta * (0.24 + float(4 - shutdown) * 0.06) * _story_diff_float("heat_gain_mul", 1.0) * (1.0 - _story_synergy_bonus("meltdown_heat")))
 	for i in _adventure_props.size():
 		var regulator: Dictionary = _adventure_props[i]
 		if str(regulator.get("kind", "")) != "regulator" or bool(regulator.get("disabled", false)): continue
 		var near: bool = (regulator.pos as Vector2).distance_to(_player_pos) < 120.0
 		if near:
-			regulator["progress"] = float(regulator.get("progress", 0.0)) + delta
+			regulator["progress"] = float(regulator.get("progress", 0.0)) + delta * (1.0 + _story_synergy_bonus("regulator_channel"))
 			if float(regulator["progress"]) >= 2.0:
 				regulator["progress"] = 0.0
 				var regulator_id: int = int(regulator.get("regulator", 0))
@@ -7345,6 +9141,8 @@ func _update_c4_meltdown(delta: float) -> void:
 					_chapter_four.adjust_meter("heat", -18.0)
 					_story_log("Regulator activated: correct %d/4" % shutdown)
 					_story_log("Boss ability disabled: %s" % str(["Lava Eruption", "Armour Regeneration", "Projectile Forge", "Arena Heat Pulse"][regulator_id]))
+					if shutdown < 4:
+						_present_boss_moment("%s OFFLINE" % StoryBossPresentationClass.regulator_system(regulator_id), "FORGE SYSTEM DISABLED · %d/4" % shutdown, Color(1.0, 0.62, 0.16), regulator.get("pos", _story_stage_origin) as Vector2, 7.0, "boss_break")
 					_chapter_four.set_flag("boss_system_%d_disabled" % regulator_id)
 					if shutdown == 2 and not _chapter_four.flag("boss_spawned"):
 						_spawn_story_objective_enemy("thunderforge_behemoth", "c4_thunderforge_behemoth", 4.8, _story_stage_origin + Vector2(0.0, -520.0))
@@ -7354,6 +9152,7 @@ func _update_c4_meltdown(delta: float) -> void:
 							_enemies[spawned_boss_index]["forge_systems_active"] = 2
 							for disabled_system in 4:
 								_enemies[spawned_boss_index]["system_%d_disabled" % disabled_system] = _chapter_four.flag("boss_system_%d_disabled" % disabled_system)
+							_present_boss_moment("CHAPTER BOSS", "THUNDERFORGE BEHEMOTH · SHUT DOWN THE FORGE", Color(1.0, 0.68, 0.18), _enemies[spawned_boss_index].get("pos", _story_stage_origin) as Vector2, 8.0, "boss_intro")
 						if _chapter_four.meter("heat") >= 55.0:
 							var remaining_regulator: int = _chapter_four.sequence[2]
 							_chapter_four.sequence[2] = _chapter_four.sequence[3]
@@ -7369,12 +9168,21 @@ func _update_c4_meltdown(delta: float) -> void:
 						_chapter_four.set_flag("shutdown_complete")
 						_chapter_four.set_flag("shutdown_committed")
 						_chapter_four.set_flag("final_phase_entered")
+						_chapter_four.set_flag("boss_transition_pending")
+						_chapter_four.set_timer("boss_transition", 0.85)
 						_chapter_four.adjust_meter("heat", -30.0)
+						_clear_boss_attack_runtime()
+						_present_boss_moment("FORGE POWER COLLAPSED", "BEHEMOTH CORE EXPOSED", Color(1.0, 0.82, 0.26), _story_stage_origin, 12.0, "boss_break")
 						_c4_enter_phase("behemoth_final")
 				else:
-					_chapter_four.adjust_meter("heat", 14.0)
+					_chapter_four.adjust_meter("heat", 14.0 * _story_diff_float("wrong_penalty_mul", 1.0))
 					_chapter_four.set_flag("regulator_transition_pending", true)
+					if _story_telemetry != null:
+						_story_telemetry.mistake("wrong_shutdown_regulator", {"selected":regulator_id, "expected":expected, "completed":shutdown})
 					_story_log("Regulator activated: wrong · heat increased")
+					_spawn_reaction_popup(regulator.get("pos", _story_stage_origin) as Vector2, "INCORRECT SHUTDOWN SEQUENCE", Color(1.0, 0.22, 0.10))
+					_add_boss_telegraph({"kind":"circle", "pos":regulator.get("pos", _story_stage_origin), "radius":105.0, "life":0.85, "color":Color(1.0, 0.18, 0.08)})
+					if _sound != null: _sound.play("boss_blocked", -7.0, 0.82)
 					call_deferred("_clear_c4_regulator_transition")
 		else: regulator["progress"] = 0.0
 		_adventure_props[i] = regulator
@@ -7570,11 +9378,13 @@ func _update_silent_descent(delta: float) -> void:
 			_fail_custom_story_stage()
 
 func _spawn_silent_descent_ambush(count: int) -> void:
+	var composition := _story_role_composition(count)
 	for enemy_index in count:
-		var kind: String = "normal_tank" if enemy_index % 4 == 3 else ("normal_fast" if enemy_index % 2 == 0 else "normal")
+		var kind: String = composition[enemy_index] if enemy_index < composition.size() else "normal"
 		var spawn_direction: Vector2 = Vector2.RIGHT.rotated(float(enemy_index) * TAU / float(maxi(count, 1)))
 		var spawn_position: Vector2 = _player_pos + spawn_direction * randf_range(380.0, 520.0)
 		_spawn_story_objective_enemy(kind, "silent_descent_ambush", 1.12, spawn_position)
+	_story_log_role_composition(composition)
 
 func _update_soul_liberation(delta: float) -> void:
 	_update_custom_breakables(delta, "soul_chain", 165.0)
@@ -7718,6 +9528,8 @@ func _handle_custom_story_enemy_death(enemy: Dictionary) -> bool:
 				_chapter_one.set_flag("key_enemy_held", false)
 				_story_log("Objective completion: key carrier defeated")
 			"crestkeeper":
+				_clear_boss_attack_runtime()
+				_present_boss_moment("CRESTKEEPER DEFEATED", "THE GATE FALLS SILENT", Color(1.0, 0.72, 0.24), enemy.pos as Vector2, 12.0, "boss_defeated")
 				_chapter_one.set_flag("boss_defeated")
 				_chapter_one.set_flag("finale_complete")
 				_chapter_one.set_flag("primary_complete")
@@ -7751,12 +9563,18 @@ func _handle_custom_story_enemy_death(enemy: Dictionary) -> bool:
 				_story_log("Boss death: Eclipse Elite")
 				return false
 			"c5_crown_channeler":
-				_chapter_five.set_timer("crown_vulnerable", 7.0)
+				_chapter_five.set_timer("crown_vulnerable", 7.0 * _story_diff_float("crown_window_mul", 1.0))
 				_story_log("Crown vulnerability opened: ritual channeler interrupted")
+				var crown_index := _find_adventure_prop("abyss_crown")
+				if crown_index >= 0:
+					_spawn_reaction_popup(_adventure_props[crown_index].get("pos", _story_stage_origin) as Vector2, "RITUAL INTERRUPTED · CROWN VULNERABLE", Color(1.0, 0.48, 0.84))
+					if _sound != null: _sound.play("boss_break", -9.0, 1.10)
 				return false
 			"abyss_king":
 				if not _chapter_five.flag("final_phase_entered"):
 					return true
+				_clear_boss_attack_runtime()
+				_present_boss_moment("ABYSS KING DEFEATED", "THE CORRUPTION RETRACTS", Color(0.90, 0.62, 1.0), enemy.pos as Vector2, 15.0, "boss_defeated")
 				_chapter_five.set_flag("boss_defeated")
 				_chapter_five.set_flag("primary_complete")
 				_chapter_five.set_flag("boss_transition_pending", false)
@@ -7786,12 +9604,13 @@ func _handle_custom_story_enemy_death(enemy: Dictionary) -> bool:
 			_story_log("Golem weakened: capture mechanic required")
 			return true
 		if tag.begins_with("c4_chamber_guardian_"):
+			if _count_story_enemies_with_tag("c4_chamber_hazard", true) > 0: _fail_story_mastery(1, "component_collected_with_hazards")
 			var component_number: int = _chapter_four.add_count("components_collected")
 			_chapter_four.set_flag("chamber_%d_complete" % component_number)
 			var component_name: String = str(["Ember Core", "Forge Frame", "Relic Heart"][component_number - 1])
 			if component_number == 1:
 				_player_max_hp *= 1.12
-				_player_hp = minf(_player_max_hp, _player_hp + _player_max_hp * 0.20)
+				_restore_player_hp(_player_max_hp * 0.20)
 			elif component_number == 2:
 				_player_speed *= 1.10
 			_story_log("Relic component collected: %s · %d/3" % [component_name, component_number])
@@ -7820,6 +9639,8 @@ func _handle_custom_story_enemy_death(enemy: Dictionary) -> bool:
 					_enemies[behemoth_index] = behemoth
 				_story_log("Boss defeat blocked: finish the shutdown sequence")
 				return true
+			_clear_boss_attack_runtime()
+			_present_boss_moment("THUNDERFORGE BEHEMOTH DEFEATED", "MELTDOWN CONTAINED", Color(1.0, 0.76, 0.22), enemy.pos as Vector2, 14.0, "boss_defeated")
 			_chapter_four.set_flag("boss_defeated")
 			_chapter_four.set_flag("primary_complete")
 			_story_required_boss_defeated = true
@@ -7876,6 +9697,8 @@ func _handle_custom_story_enemy_death(enemy: Dictionary) -> bool:
 					_spawn_c3_region_target(_chapter_three.count("active_region"))
 				return false
 			"c3_blight_tyrant":
+				_clear_boss_attack_runtime()
+				_present_boss_moment("BLIGHT VINE TYRANT DEFEATED", "THE MIRE IS PURIFIED", Color(0.54, 1.0, 0.38), enemy.pos as Vector2, 12.0, "boss_defeated")
 				_chapter_three.set_flag("boss_defeated")
 				_chapter_three.set_flag("primary_complete")
 				_story_required_boss_defeated = true
@@ -7910,6 +9733,8 @@ func _handle_custom_story_enemy_death(enemy: Dictionary) -> bool:
 				return true
 			"frost_colossus":
 				if _chapter_two.count("crystals_broken") >= 3 and _chapter_two.flag("all_armour_transitions_complete"):
+					_clear_boss_attack_runtime()
+					_present_boss_moment("FROSTBOUND COLOSSUS DEFEATED", "THE WAR MACHINE SHATTERS", Color(0.72, 0.94, 1.0), enemy.pos as Vector2, 13.0, "boss_defeated")
 					_chapter_two.set_flag("boss_defeated")
 					_chapter_two.set_flag("finale_complete")
 					_chapter_two.set_flag("primary_complete")
@@ -7958,7 +9783,10 @@ func _complete_custom_story_stage() -> void:
 func _request_story_victory(reason: String) -> bool:
 	if story_stage.is_empty():
 		return false
+	if _is_boss_practice():
+		return _request_boss_practice_completion(reason)
 	if _story_telemetry != null:
+		_story_telemetry.sync_active_time(_story_telemetry_active_seconds())
 		_story_telemetry.victory_requested(reason)
 	_story_last_victory_request = reason
 	var state := _story_completion_state()
@@ -7974,6 +9802,7 @@ func _request_story_victory(reason: String) -> bool:
 		return false
 	_story_victory_validated = true
 	_story_victory_started = true
+	_story_mastery_result = _finalize_story_mastery(state)
 	if _story_telemetry != null:
 		_story_telemetry.victory_accepted(str(result.get("reason", "all_required_conditions_complete")))
 	_story_last_victory_result = "ACCEPTED — %s" % str(result.get("reason", "all_required_conditions_complete"))
@@ -7984,6 +9813,49 @@ func _request_story_victory(reason: String) -> bool:
 	_reset_staged_objective_state()
 	call_deferred("_show_story_victory")
 	return true
+
+func _update_boss_practice_completion() -> void:
+	if not _is_boss_practice() or _practice_result_shown or _game_over:
+		return
+	var phase_id := str(story_stage.get("practice_phase", "full"))
+	if phase_id == "full":
+		return
+	var state := _story_completion_state()
+	if StoryBossPracticeClass.phase_complete(str(story_stage.get("id", "")), phase_id, state):
+		_complete_boss_practice("phase_goal_complete")
+
+func _request_boss_practice_completion(reason: String) -> bool:
+	if _practice_result_shown:
+		return false
+	var stage_id := str(story_stage.get("id", ""))
+	var phase_id := str(story_stage.get("practice_phase", "full"))
+	var state := _story_completion_state()
+	if phase_id == "full":
+		var validation := StoryCompletionValidatorClass.validate(story_stage, state)
+		state["full_encounter_complete"] = bool(validation.get("accepted", false))
+	if not StoryBossPracticeClass.phase_complete(stage_id, phase_id, state):
+		if _story_telemetry != null:
+			_story_telemetry.log_event("Practice completion rejected: %s · %s" % [reason, _story_completion_snapshot(state)])
+		return false
+	_complete_boss_practice(reason)
+	return true
+
+func _complete_boss_practice(reason: String) -> void:
+	if _practice_result_shown:
+		return
+	_practice_result_shown = true
+	_story_victory_started = true
+	_game_over = true
+	_paused = true
+	_clear_boss_attack_runtime()
+	_reset_boss_camera()
+	_enemies.clear()
+	_adventure_props.clear()
+	if _story_telemetry != null:
+		_story_telemetry.stage_completed(_story_telemetry_active_seconds(), _story_completion_state(), _story_telemetry_run_summary())
+		_story_telemetry.log_event("Mutator cleanup")
+	_cleanup_story_mutator_runtime()
+	call_deferred("_show_boss_practice_result", true)
 
 func _story_completion_state() -> Dictionary:
 	var objective: String = str(story_stage.get("objective", ""))
@@ -8032,6 +9904,9 @@ func _story_completion_state() -> Dictionary:
 		"boss_defeated": _story_required_boss_defeated,
 		"stage_phase": _story_custom_phase,
 		"failure_active": not _story_custom_failure.is_empty(),
+		"escort_command": _c1_command,
+		"route_choice": _c1_route_choice,
+		"relic_choice": str(_story_custom_progress.get("relic_choice", "")),
 	}
 	if _chapter_one != null and int(story_stage.get("chapter", 0)) == 1:
 		state.merge(_chapter_one.completion_state(), true)
@@ -8062,7 +9937,6 @@ func _story_completion_state() -> Dictionary:
 		state["spirits_captured"] = _c5_captured_spirit_count()
 		state["elite_disruption_active"] = _find_adventure_prop("eclipse_disruption") >= 0
 		state["boss_defeated"] = _story_required_boss_defeated or _chapter_five.flag("boss_defeated")
-		state["spirits_captured"] = _c5_captured_spirit_count()
 	return state
 
 func _story_completion_snapshot(state: Dictionary) -> String:
@@ -8082,12 +9956,350 @@ func _story_completion_snapshot(state: Dictionary) -> String:
 		fields.append("boss_defeated=%s" % str(state.get("boss_defeated", false)))
 	return " ".join(fields)
 
+func _story_telemetry_run_summary() -> Dictionary:
+	var run_stats := _story_run_stats.snapshot()
+	return {
+		"final_level":_level,
+		"kills":_kills,
+		"top_damage":_story_run_stats.top_damage(3),
+		"total_damage":run_stats.get("total_damage", 0.0),
+		"damage_taken":run_stats.get("damage_taken", 0.0),
+		"healing":run_stats.get("healing", 0.0),
+		"boss_damage":run_stats.get("boss_damage", 0.0),
+		"damage_coverage":run_stats.get("damage_coverage", 0.0),
+		"revives":run_stats.get("revives", 0),
+		"build":StoryTelemetryClass.compact_build(_story_build_profile),
+	}
+
+func _story_telemetry_active_seconds() -> float:
+	return maxf(0.0, _elapsed - _practice_started_elapsed) if _is_boss_practice() else maxf(0.0, _elapsed)
+
+func _record_story_abandon(reason: String) -> void:
+	if story_stage.is_empty() or _story_telemetry == null or _story_telemetry.is_terminal():
+		return
+	_story_telemetry.stage_abandoned(reason, _story_telemetry_active_seconds(), _story_completion_state(), _story_telemetry_run_summary())
+
 func _story_log(message: String) -> void:
+	_observe_story_mastery_event(message)
 	if _story_telemetry != null:
 		_story_telemetry.log_event(message)
 
+func _story_mastery_objectives() -> Array:
+	return StoryStore.mastery_objectives(str(story_stage.get("id", "")))
+
+func _fail_story_mastery(star_index: int, reason: String) -> void:
+	if _is_boss_practice(): return
+	var objectives: Array = _story_mastery_objectives()
+	if star_index < 0 or star_index >= objectives.size(): return
+	var objective: Dictionary = objectives[star_index] as Dictionary
+	var objective_id: String = str(objective.get("id", ""))
+	if objective_id.is_empty() or _story_mastery_failed.has(objective_id): return
+	_story_mastery_failed[objective_id] = reason
+	if _story_telemetry != null: _story_telemetry.mastery_failed(objective_id, reason)
+	_show_story_mastery_notice("Mastery Failed: %s" % str(objective.get("title", "Objective")))
+	_update_story_mastery_label()
+
+func _show_story_mastery_notice(message: String) -> void:
+	if _story_mastery_notice_label == null or not is_instance_valid(_story_mastery_notice_label): return
+	if _combat_readability != null and _combat_readability.critical_visual_active():
+		_pending_story_mastery_notice = message
+		return
+	if _story_mastery_notice_tween != null and _story_mastery_notice_tween.is_valid(): _story_mastery_notice_tween.kill()
+	_story_mastery_notice_label.text = message
+	_story_mastery_notice_label.modulate.a = _hud_opacity
+	_story_mastery_notice_tween = _story_mastery_notice_label.create_tween()
+	_story_mastery_notice_tween.tween_interval(2.4)
+	_story_mastery_notice_tween.tween_property(_story_mastery_notice_label, "modulate:a", 0.0, 0.5)
+
+func _observe_story_mastery_event(message: String) -> void:
+	if story_stage.is_empty() or _is_boss_practice(): return
+	var stage_id := str(story_stage.get("id", ""))
+	match stage_id:
+		"ch1_1":
+			if "escort recovery" in message.to_lower(): _fail_story_mastery(1, "escort_recovery")
+			if "extraction" in message.to_lower() and "reset" in message.to_lower(): _fail_story_mastery(2, "extraction_reset")
+		"ch1_2":
+			if "energy" in message.to_lower() and "empty" in message.to_lower(): _fail_story_mastery(1, "shrine_energy_empty")
+		"ch1_3":
+			if "Nest " in message and " destroyed" in message and _count_story_enemies_with_tag("supply_thief", true) + _count_story_enemies_with_tag("nest_defender", true) > 0:
+				_fail_story_mastery(1, "nest_defenders_active")
+		"ch1_4":
+			if "key carrier defeated" in message.to_lower(): _story_custom_progress["mastery_key_drop_time"] = _elapsed
+			if "key " in message.to_lower() and " recovered" in message.to_lower():
+				var dropped_at := float(_story_custom_progress.get("mastery_key_drop_time", _elapsed))
+				if _elapsed - dropped_at > 10.0: _fail_story_mastery(1, "slow_key_recovery")
+			if "gate window missed" in message.to_lower(): _fail_story_mastery(2, "gate_window_reset")
+		"ch1_5":
+			if "boss mechanic reset" in message.to_lower(): _fail_story_mastery(2, "boss_mechanic_reset")
+		"ch2_1":
+			if "went cold" in message: _fail_story_mastery(0, "brazier_extinguished")
+			if "network_recovery" in message or "stabilization reset" in message: _fail_story_mastery(2, "stabilization_reset")
+		"ch2_2":
+			if "Captive refrozen" in message:
+				_fail_story_mastery(1, "captive_refrozen")
+				if _chapter_two != null and _chapter_two.phase == "blizzard_extraction": _fail_story_mastery(2, "blizzard_interrupted")
+		"ch2_3":
+			if "Rune incorrect" in message: _fail_story_mastery(0, "wrong_rune")
+		"ch2_4":
+			if "Safe Chest opened" in message: _fail_story_mastery(0, "safe_chest_opened")
+			if "frost trap triggered" in message: _fail_story_mastery(2, "trap_triggered")
+		"ch2_5":
+			if "exposure missed" in message.to_lower():
+				_fail_story_mastery(0, "exposure_missed")
+				_fail_story_mastery(2, "armour_phase_restart")
+		"ch3_1":
+			if "fully reclaimed" in message.to_lower():
+				_fail_story_mastery(0, "pool_reclaimed")
+				_fail_story_mastery(2, "surge_reclaim")
+			if "pool reset" in message.to_lower(): _fail_story_mastery(1, "pool_reset")
+		"ch3_2":
+			if "Wrong trail" in message: _fail_story_mastery(0, "wrong_trail")
+			if "Correct trail selected" in message and _elapsed - float(_story_custom_progress.get("mastery_tracking_choice_started", _elapsed)) > 12.0: _fail_story_mastery(1, "slow_tracking_choice")
+			if "Beast escaped: first sighting" in message and _c3_action_timer >= 18.0: _fail_story_mastery(2, "sighting_timeout")
+		"ch3_3":
+			if "contaminated during extraction" in message.to_lower(): _fail_story_mastery(2, "extraction_contamination")
+		"ch3_4":
+			if "Vial damaged" in message: _fail_story_mastery(0, "vial_damaged")
+			if "vial shattered" in message.to_lower(): _fail_story_mastery(1, "vial_shattered")
+		"ch3_5":
+			if "Ingredient submitted: wrong" in message: _fail_story_mastery(2, "wrong_ingredient")
+		"ch4_1":
+			if "Ore stolen" in message: _fail_story_mastery(0, "ore_stolen")
+		"ch4_2":
+			pass
+		"ch4_3":
+			if "Golem weakened" in message: _fail_story_mastery(0, "capture_floor_reached")
+		"ch4_4":
+			if "chamber reset" in message.to_lower(): _fail_story_mastery(0, "chamber_reset")
+		"ch4_5":
+			if "Regulator activated: wrong" in message: _fail_story_mastery(0, "wrong_regulator")
+		"ch5_1":
+			if "Detection state: Alerted" in message: _fail_story_mastery(0, "alerted")
+		"ch5_2":
+			if "Spirit lost" in message: _fail_story_mastery(0, "spirit_lost")
+			if "capture state changed: captured" in message: _fail_story_mastery(1, "spirit_captured")
+			if "Boss death: Portal Keeper" in message and _chapter_five != null and _chapter_five.count("seals_stable") < 3: _fail_story_mastery(2, "keeper_defeated_before_seals")
+		"ch5_3":
+			if "Wrong mirror" in message:
+				_fail_story_mastery(0, "wrong_mirror")
+				_fail_story_mastery(2, "puzzle_penalty")
+				if _chapter_five != null and _chapter_five.count("rooms_completed") == 2: _fail_story_mastery(1, "false_clue_misread")
+		"ch5_4":
+			if "Synchronization failed" in message: _fail_story_mastery(0, "sync_retry")
+		"ch5_5":
+			if "Crown vulnerability objective: interrupt ritual channeler" in message: _fail_story_mastery(1, "crown_recovery_channeler")
+
+func _update_story_mastery_observation(delta: float) -> void:
+	if story_stage.is_empty() or _story_victory_started or _is_boss_practice(): return
+	_story_mastery_observe_timer -= delta
+	if _story_mastery_observe_timer > 0.0: return
+	_story_mastery_observe_timer = 0.2
+	var stage_id := str(story_stage.get("id", ""))
+	if stage_id == "ch1_1":
+		var scout_index := _find_adventure_prop("scout")
+		if scout_index >= 0:
+			var scout: Dictionary = _adventure_props[scout_index]
+			if float(scout.get("hp", 0.0)) / maxf(float(scout.get("max_hp", 1.0)), 1.0) < 0.40: _fail_story_mastery(0, "scout_critical")
+			if (scout.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) > 720.0: _fail_story_mastery(1, "scout_separated")
+			if _chapter_one != null and _chapter_one.phase == "extraction":
+				var extraction_start_hp := float(_story_custom_progress.get("mastery_extraction_start_hp", scout.get("hp", 0.0)))
+				_story_custom_progress["mastery_extraction_start_hp"] = extraction_start_hp
+				if float(scout.get("hp", 0.0)) < extraction_start_hp: _fail_story_mastery(2, "scout_damaged_during_extraction")
+	if stage_id == "ch1_2":
+		var shrine_index := _find_adventure_prop("shrine")
+		if shrine_index >= 0:
+			var shrine: Dictionary = _adventure_props[shrine_index]
+			var shrine_ratio := float(shrine.get("hp", 0.0)) / maxf(float(shrine.get("max_hp", 1.0)), 1.0)
+			if shrine_ratio < 0.60: _fail_story_mastery(0, "shrine_below_60_percent")
+			if shrine_ratio < 0.40 and _chapter_one != null and _chapter_one.phase == "cleansing_channel": _fail_story_mastery(2, "shrine_critical_during_cleanse")
+			if _chapter_one != null and _chapter_one.flag("mission_started") and float(shrine.get("energy", 0.0)) <= 0.0: _fail_story_mastery(1, "shrine_energy_empty")
+	if stage_id == "ch1_3" and _chapter_one != null:
+		var nest_defenders := _count_story_enemies_with_tag("supply_thief", true) + _count_story_enemies_with_tag("nest_defender", true)
+		if nest_defenders >= 12: _fail_story_mastery(0, "nest_defender_overrun")
+		if _chapter_one.phase == "foreman_finale" and _story_player_health_ratio() < 0.25: _fail_story_mastery(2, "critical_health_during_foreman")
+	if stage_id == "ch1_4" and _chapter_one != null:
+		var track_progress := _c1_interaction
+		var previous_track_progress := float(_story_custom_progress.get("mastery_track_progress", 0.0))
+		var tracks_found := int(_story_custom_progress.get("tracks_found", 0))
+		var previous_tracks_found := int(_story_custom_progress.get("mastery_tracks_found", tracks_found))
+		if previous_track_progress > 0.1 and track_progress <= 0.0 and tracks_found == previous_tracks_found and _chapter_one.phase.begins_with("tracking_carrier"):
+			_fail_story_mastery(0, "track_channel_interrupted")
+		_story_custom_progress["mastery_track_progress"] = track_progress
+		_story_custom_progress["mastery_tracks_found"] = tracks_found
+	if stage_id == "ch1_5" and _chapter_one != null and _chapter_one.phase == "crestkeeper_boss" and _story_player_health_ratio() < 0.25:
+		_fail_story_mastery(2, "critical_health_during_crestkeeper")
+	if stage_id in ["ch2_1", "ch2_3"] and _chapter_two != null:
+		if stage_id == "ch2_1" and _chapter_two.cold_exposure >= 100.0: _fail_story_mastery(1, "maximum_cold_exposure")
+		if stage_id == "ch2_3" and _chapter_two.cold_exposure >= 75.0: _fail_story_mastery(1, "high_cold_exposure")
+		if stage_id == "ch2_3" and _chapter_two.cold_exposure >= 100.0: _fail_story_mastery(2, "maximum_cold_exposure")
+	if stage_id == "ch2_2":
+		for prop in _adventure_props:
+			if str(prop.get("kind", "")) == "released_soul" and float(prop.get("refreeze", 0.0)) >= 75.0: _fail_story_mastery(0, "captive_critical")
+	if stage_id == "ch2_5" and _chapter_two != null:
+		var exposure_active: bool = _chapter_two.timer("exposure_window") > 0.0
+		var exposure_was_active := bool(_story_custom_progress.get("mastery_exposure_active", false))
+		if exposure_active and not exposure_was_active: _story_custom_progress["mastery_exposure_crystals"] = _chapter_two.count("crystals_broken")
+		if exposure_was_active and not exposure_active:
+			var exposure_start_crystals := int(_story_custom_progress.get("mastery_exposure_crystals", _chapter_two.count("crystals_broken")))
+			if _chapter_two.count("crystals_broken") == exposure_start_crystals:
+				_fail_story_mastery(0, "exposure_window_missed")
+				_fail_story_mastery(2, "armour_cycle_repeated")
+				if exposure_start_crystals == 2: _fail_story_mastery(1, "regeneration_exposure_missed")
+		_story_custom_progress["mastery_exposure_active"] = exposure_active
+	if stage_id == "ch3_1" and _chapter_three != null and _chapter_three.phase == "reclamation_surge":
+		for pool in _adventure_props:
+			if str(pool.get("kind", "")) != "corrupted_pool": continue
+			var stability := float(pool.get("stability", 100.0))
+			if stability <= 0.0: _fail_story_mastery(0, "pool_fully_reclaimed")
+			if stability < 60.0: _fail_story_mastery(1, "pool_below_60_percent")
+			if stability < 35.0: _fail_story_mastery(2, "pool_below_stable_threshold")
+	if stage_id == "ch3_3" and _chapter_three != null:
+		var contamination_time := float(_story_custom_progress.get("mastery_contamination_time", 0.0))
+		contamination_time = contamination_time + 0.2 if _chapter_three.flag("ingredients_contaminated") else 0.0
+		_story_custom_progress["mastery_contamination_time"] = contamination_time
+		if contamination_time >= 5.0: _fail_story_mastery(0, "contamination_not_cleansed")
+		var lure_target_active := _find_adventure_prop("c3_web_nest") >= 0 or _find_adventure_prop("c3_bile_vessel") >= 0 or _find_adventure_prop("c3_wasp_hive") >= 0
+		var previous_lure_progress := float(_story_custom_progress.get("mastery_lure_progress", 0.0))
+		if previous_lure_progress > 0.1 and _c3_action_timer <= 0.0 and lure_target_active: _fail_story_mastery(1, "lure_channel_interrupted")
+		_story_custom_progress["mastery_lure_progress"] = _c3_action_timer if lure_target_active else 0.0
+	if stage_id == "ch3_5" and _chapter_three != null and _chapter_three.meter("heat") >= 90.0: _fail_story_mastery(1, "critical_brew_heat")
+	if stage_id in ["ch4_1", "ch4_5"] and _chapter_four != null and _chapter_four.meter("heat") >= 90.0:
+		_fail_story_mastery(2 if stage_id == "ch4_5" else 1, "critical_forge_heat")
+	if stage_id == "ch4_1" and _chapter_four != null:
+		var obstruction_time := float(_story_custom_progress.get("mastery_obstruction_time", 0.0))
+		obstruction_time = obstruction_time + 0.2 if _find_story_enemy("c4_cart_blocker") >= 0 else 0.0
+		_story_custom_progress["mastery_obstruction_time"] = obstruction_time
+		if obstruction_time >= 6.0: _fail_story_mastery(2, "cart_obstruction_active_too_long")
+	if stage_id == "ch4_2" and _chapter_four != null:
+		var powered: int = _chapter_four.count("mechanisms_powered")
+		var peak := int(_story_custom_progress.get("mastery_peak_powered", 0))
+		if powered < peak:
+			_fail_story_mastery(0, "incorrect_valve_toggle")
+			_fail_story_mastery(1, "circuit_backtrack")
+		_story_custom_progress["mastery_peak_powered"] = maxi(peak, powered)
+		var jammer_time := float(_story_custom_progress.get("mastery_jammer_time", 0.0))
+		jammer_time = jammer_time + 0.2 if _find_story_enemy("c4_forge_jammer") >= 0 else 0.0
+		_story_custom_progress["mastery_jammer_time"] = jammer_time
+		if jammer_time >= 5.0: _fail_story_mastery(2, "jammer_active_too_long")
+	if stage_id == "ch4_3":
+		var captured_now: int = _chapter_four.count("golems_captured") if _chapter_four != null else 0
+		var captured_before := int(_story_custom_progress.get("mastery_captured_before", captured_now))
+		var channel_active: bool = _chapter_four.flag("capture_channel_active") if _chapter_four != null else false
+		var channel_was_active := bool(_story_custom_progress.get("mastery_channel_active", false))
+		if channel_was_active and not channel_active and captured_now == captured_before: _fail_story_mastery(2, "capture_channel_interrupted")
+		var ready_now: bool = _chapter_four.flag("capture_ready") if _chapter_four != null else false
+		var ready_before := bool(_story_custom_progress.get("mastery_capture_ready", false))
+		if ready_before and not ready_now and captured_now == captured_before: _fail_story_mastery(1, "capture_ready_lost")
+		_story_custom_progress["mastery_channel_active"] = channel_active
+		_story_custom_progress["mastery_capture_ready"] = ready_now
+		_story_custom_progress["mastery_captured_before"] = captured_now
+		for enemy in _enemies:
+			if str(enemy.get("story_tag", "")).begins_with("c4_golem_") and float(enemy.get("hp", 1.0)) <= float(enemy.get("objective_max_hp", 1.0)) * 0.201: _fail_story_mastery(0, "capture_floor_reached")
+	if stage_id == "ch5_1":
+		for prop in _adventure_props:
+			if str(prop.get("kind", "")) == "sentry" and str(prop.get("state", "")) == "searching": _fail_story_mastery(1, "sentry_searching")
+		var gate_unlock_progress := 0.0
+		var gate_opened := false
+		for prop in _adventure_props:
+			if str(prop.get("kind", "")) == "citadel_gate":
+				gate_unlock_progress = float(prop.get("unlock", 0.0))
+				gate_opened = bool(prop.get("opened", false))
+				break
+		var previous_gate_progress := float(_story_custom_progress.get("mastery_gate_unlock_progress", 0.0))
+		if previous_gate_progress > 0.1 and gate_unlock_progress <= previous_gate_progress and not gate_opened and _chapter_five != null and _chapter_five.count("lockdowns") == 0:
+			_fail_story_mastery(2, "quiet_gate_channel_interrupted")
+		_story_custom_progress["mastery_gate_unlock_progress"] = gate_unlock_progress
+	if stage_id == "ch5_4" and _chapter_five != null:
+		var disruption_time := float(_story_custom_progress.get("mastery_disruption_time", 0.0))
+		disruption_time = disruption_time + 0.2 if _find_adventure_prop("eclipse_disruption") >= 0 else 0.0
+		_story_custom_progress["mastery_disruption_time"] = disruption_time
+		if disruption_time >= 5.0: _fail_story_mastery(2, "disruption_active_too_long")
+	if stage_id == "ch5_5" and _chapter_five != null:
+		if _chapter_five.phase == "ritual_anchors":
+			var corrupted_adds := 0
+			for enemy in _enemies:
+				if bool(enemy.get("corrupted", false)): corrupted_adds += 1
+			var invalid_anchor_attempt := false
+			for anchor in _adventure_props:
+				if str(anchor.get("kind", "")) != "ritual_anchor" or (anchor.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos) >= 230.0: continue
+				var anchor_type := str(anchor.get("anchor_type", ""))
+				var anchor_distance := (anchor.get("pos", Vector2.ZERO) as Vector2).distance_to(_player_pos)
+				var anchor_vulnerable := (anchor_type == "dominion" and anchor_distance < 210.0) or (anchor_type == "ruin" and corrupted_adds <= 8) or (anchor_type == "reflection" and fmod(_elapsed, 7.0) < 3.0)
+				invalid_anchor_attempt = invalid_anchor_attempt or not anchor_vulnerable
+			var invalid_time := float(_story_custom_progress.get("mastery_invalid_anchor_time", 0.0))
+			invalid_time = invalid_time + 0.2 if invalid_anchor_attempt else 0.0
+			_story_custom_progress["mastery_invalid_anchor_time"] = invalid_time
+			if invalid_time >= 2.0: _fail_story_mastery(0, "invalid_anchor_attempt")
+		if (_chapter_five.phase.begins_with("final_boss") or _chapter_five.phase == "desperation") and _story_player_health_ratio() < 0.25:
+			_fail_story_mastery(2, "critical_health_during_finale")
+	if stage_id == "ch4_5" and _chapter_four != null and not _chapter_four.flag("shutdown_complete"):
+		var behemoth_index := _find_story_enemy("c4_thunderforge_behemoth")
+		if behemoth_index >= 0:
+			var behemoth: Dictionary = _enemies[behemoth_index]
+			if float(behemoth.get("hp", 1.0)) <= float(behemoth.get("objective_max_hp", 1.0)) * 0.251: _fail_story_mastery(1, "boss_reached_protected_floor")
+	_update_story_mastery_label()
+
+func _finalize_story_mastery(state: Dictionary) -> Array[String]:
+	if _is_boss_practice(): return []
+	var earned: Array[String] = []
+	var stage_id := str(story_stage.get("id", ""))
+	var objectives: Array = _story_mastery_objectives()
+	for star_index in objectives.size():
+		var objective_id := str((objectives[star_index] as Dictionary).get("id", ""))
+		if not _story_mastery_failed.has(objective_id) and _story_mastery_requirement_met(stage_id, star_index, state): earned.append(objective_id)
+	if _story_telemetry != null: _story_telemetry.mastery_final(earned, _story_mastery_failed, is_story_test_run)
+	return earned
+
+func _story_mastery_requirement_met(stage_id: String, star_index: int, state: Dictionary) -> bool:
+	match stage_id:
+		"ch1_1": return bool(state.get("target_alive", false)) and (star_index != 0 or _story_target_health_ratio("scout") >= 0.40)
+		"ch1_2": return bool(state.get("target_alive", false)) and (star_index == 1 or _story_target_health_ratio("shrine") >= (0.60 if star_index == 0 else 0.40))
+		"ch1_3": return int(state.get("required_completed", 0)) >= 3
+		"ch1_4": return int(state.get("required_completed", 0)) >= 3 and bool(state.get("gate_crossed", false))
+		"ch1_5": return bool(state.get("boss_defeated", false)) and int(state.get("barrage_phases_completed", 0)) >= 3
+		"ch2_2": return int(state.get("captives_extracted", 0)) >= 5
+		"ch2_4": return int(state.get("tablets_inspected", 0)) >= (5 if star_index == 1 else 0)
+		"ch2_5": return int(state.get("crystals_broken", 0)) >= 3
+		"ch3_1": return int(state.get("pools_purified", 0)) >= 3 and bool(state.get("all_pools_stable", false))
+		"ch3_2": return int(state.get("tracking_phases_complete", 0)) >= (3 if star_index == 1 else 0)
+		"ch3_3": return bool(state.get("ingredient_case_extracted", false)) and not bool(state.get("ingredients_contaminated", false)) and (star_index != 2 or _count_story_enemies_with_tag("c3_contaminator", true) == 0)
+		"ch3_4": return (float(state.get("vial_integrity", 0.0)) >= 99.5 if star_index == 0 else (int(state.get("route", -1)) == 0 if star_index == 2 else true))
+		"ch3_5": return float(state.get("purity", 0.0)) >= (80.0 if star_index in [0, 2] else 35.0)
+		"ch4_1": return int(state.get("ore_stolen", 0)) == 0 and bool(state.get("cart_reached_extraction", false))
+		"ch4_2": return bool(state.get("stabilization_complete", false))
+		"ch4_3": return int(state.get("golems_captured", 0)) >= 4
+		"ch4_4": return int(state.get("components_collected", 0)) >= 3 and bool(state.get("relic_choice_committed", false)) and (star_index != 2 or _count_story_enemies_with_tag("c4_chamber_hazard", true) == 0)
+		"ch4_5": return int(state.get("regulators_disabled", 0)) >= 4 and bool(state.get("boss_defeated", false))
+		"ch5_1": return bool(state.get("final_threshold_crossed", false)) and (star_index != 2 or bool(state.get("silent_finale_selected", false)))
+		"ch5_2": return int(state.get("spirits_saved", 0)) >= 6 and bool(state.get("portal_sealed", false))
+		"ch5_3": return int(state.get("rooms_completed", 0)) >= 4 and (star_index != 1 or int(state.get("wrong_choices", 0)) == 0)
+		"ch5_4": return bool(state.get("sync_succeeded", false)) and (star_index != 1 or bool(state.get("preparation_complete", false)) and bool(state.get("route_prepared", false)))
+		"ch5_5": return int(state.get("anchors_destroyed", 0)) >= 3 and bool(state.get("crown_destroyed", false)) and bool(state.get("desperation_entered", false))
+	return bool(state.get("primary_complete", false))
+
+func _story_target_health_ratio(kind: String) -> float:
+	for prop in _adventure_props:
+		if str(prop.get("kind", "")) == kind: return float(prop.get("hp", 0.0)) / maxf(float(prop.get("max_hp", 1.0)), 1.0)
+	return 1.0
+
+func _story_player_health_ratio() -> float:
+	return _player_hp / maxf(_player_max_hp, 1.0)
+
+func _count_story_enemies_with_tag(tag: String, prefix: bool = false) -> int:
+	var count := 0
+	for enemy in _enemies:
+		var enemy_tag := str(enemy.get("story_tag", ""))
+		if (enemy_tag.begins_with(tag) if prefix else enemy_tag == tag): count += 1
+	return count
+
+func _update_story_mastery_label() -> void:
+	if _story_mastery_label == null or not is_instance_valid(_story_mastery_label) or _is_boss_practice(): return
+	var eligible := maxi(0, 3 - _story_mastery_failed.size())
+	_story_mastery_label.text = "%s★ %d/3" % ["DEV MASTERY · " if is_story_test_run else "MASTERY · ", eligible]
+
 func _story_log_phase(previous: String, current: String) -> void:
 	if _story_telemetry != null:
+		_story_telemetry.sync_active_time(_story_telemetry_active_seconds())
 		_story_telemetry.phase_changed(previous, current)
 
 func _begin_custom_story_final_encounter() -> void:
@@ -8098,6 +10310,7 @@ func _begin_custom_story_final_encounter() -> void:
 	_story_log_phase("primary_objective", "final_assault")
 	_story_gate_remaining = 0
 	_adventure_props.clear()
+	_cleanup_enemy_role_runtime()
 	_enemies.clear()
 	_boss_projs.clear()
 	var final_boss: String = str(_story_custom_data.get("final_boss", ""))
@@ -8107,9 +10320,11 @@ func _begin_custom_story_final_encounter() -> void:
 		return
 	var final_count: int = maxi(1, int(_story_custom_data.get("final_enemy_count", 10)))
 	_story_final_remaining = final_count
+	var composition := _story_role_composition(final_count)
 	for enemy_index in final_count:
-		var kind := "normal_tank" if enemy_index % 4 == 3 else ("normal_fast" if enemy_index % 3 == 2 else "normal")
+		var kind := composition[enemy_index] if enemy_index < composition.size() else "normal"
 		_spawn_story_objective_enemy(kind, "story_final", 1.15 + float(story_stage.get("chapter", 1)) * 0.12, _player_pos + Vector2.RIGHT.rotated(float(enemy_index) * TAU / float(final_count)) * randf_range(420.0, 560.0))
+	_story_log_role_composition(composition)
 
 func _fail_custom_story_stage(reason: String = "") -> void:
 	if _game_over: return
@@ -8126,6 +10341,7 @@ func _fail_custom_story_stage(reason: String = "") -> void:
 	_on_death()
 
 func _setup_chapter_one_stage(objective: String) -> void:
+	_cleanup_boss_presentation()
 	_chapter_one = ChapterOneStageControllerClass.new()
 	_chapter_one.reset(int(story_stage.get("chapter_stage", 1)))
 	_story_custom_id = "chapter_one_%s" % objective
@@ -8160,12 +10376,16 @@ func _setup_chapter_one_stage(objective: String) -> void:
 		_story_hazard_pattern = 0
 		_adventure_props.append({"kind":"hazard_emitter", "pos":_story_hazard_arena_center, "hp":1.0, "max_hp":1.0})
 		_lock_story_hazard_camera()
+		_present_boss_moment("CHAPTER BOSS", "CRESTKEEPER · THE ARENA AWAKENS", Color(1.0, 0.52, 0.16), _story_hazard_arena_center, 5.0, "boss_intro")
 	_story_log("Objective activation: Chapter 1 stage %d setup" % _chapter_one.stage_number)
 
 func _c1_enter_phase(next_phase: String, duration: float = 0.0) -> void:
 	var previous: String = _chapter_one.enter(next_phase)
 	_story_custom_phase += 1
 	_c1_phase_timer = duration
+	if next_phase == "extraction":
+		var scout_index := _find_adventure_prop("scout")
+		if scout_index >= 0: _story_custom_progress["mastery_extraction_start_hp"] = float(_adventure_props[scout_index].get("hp", 0.0))
 	_chapter_one.set_flag("transition_pending", false)
 	_story_log_phase(previous, next_phase)
 	_story_log("Objective activation: %s" % next_phase)
@@ -8179,10 +10399,12 @@ func _update_chapter_one_stage(delta: float) -> void:
 		5: _update_c1_crestkeeper_gate(delta)
 
 func _c1_spawn_pressure(count: int, tag: String, center: Vector2, strength: float = 1.0) -> void:
+	var composition := _story_role_composition(count)
 	for enemy_index in count:
-		var kind: String = "normal_tank" if enemy_index % 5 == 4 else ("normal_fast" if enemy_index % 2 == 0 else "normal")
+		var kind: String = composition[enemy_index] if enemy_index < composition.size() else "normal"
 		var position: Vector2 = center + Vector2.RIGHT.rotated(TAU * float(enemy_index) / float(maxi(count, 1))) * randf_range(390.0, 540.0)
 		_spawn_story_objective_enemy(kind, tag, strength * _story_stage_strength(), position)
+	_story_log_role_composition(composition)
 
 func _update_c1_broken_trail(delta: float) -> void:
 	if not _chapter_one.flag("mission_started") or _adventure_props.is_empty():
@@ -8200,7 +10422,8 @@ func _update_c1_broken_trail(delta: float) -> void:
 		if _story_route_index < _story_route_waypoints.size() and _c1_command != "wait":
 			var destination: Vector2 = _story_route_waypoints[_story_route_index]
 			var speed: float = 105.0 if _c1_command == "hurry" else (125.0 if phase == "final_pursuit" else 90.0)
-			if (scout.pos as Vector2).distance_to(_player_pos) > 720.0:
+			var hurry_safe_distance := 720.0 * (1.0 + _story_synergy_bonus("hurry_safety") if _c1_command == "hurry" else 1.0)
+			if (scout.pos as Vector2).distance_to(_player_pos) > hurry_safe_distance:
 				speed *= 0.35
 			scout.pos = (scout.pos as Vector2).move_toward(destination, speed * delta)
 			if (scout.pos as Vector2).distance_to(destination) < 36.0:
@@ -8220,18 +10443,18 @@ func _update_c1_broken_trail(delta: float) -> void:
 					_c1_enter_phase("extraction", 18.0)
 		_c1_spawn_budget -= delta
 		if _c1_spawn_budget <= 0.0 and _enemies.size() < 44:
-			_c1_spawn_budget = 2.1 if phase != "final_pursuit" else 1.25
+			_c1_spawn_budget = (2.1 if phase != "final_pursuit" else 1.25) * _story_diff_float("spawn_interval_mul", 1.0)
 			var travel_direction: Vector2 = Vector2.RIGHT
 			if _story_route_index < _story_route_waypoints.size():
 				travel_direction = (scout.pos as Vector2).direction_to(_story_route_waypoints[_story_route_index])
 			var ambush_center: Vector2 = (scout.pos as Vector2) + travel_direction * 900.0
-			var pursuit_count: int = 8 if phase == "final_pursuit" else (7 if phase == "short_route" else 5)
+			var pursuit_count: int = (8 if phase == "final_pursuit" else (7 if phase == "short_route" else 5)) + _story_diff_int("pressure_bonus", 0)
 			_c1_spawn_pressure(pursuit_count, "escort_pursuer", ambush_center, 0.82)
 	elif phase == "barricade":
 		_c1_spawn_budget -= delta
 		if _c1_spawn_budget <= 0.0 and _enemies.size() < 40:
-			_c1_spawn_budget = 1.7
-			_c1_spawn_pressure(6, "barricade_blocker", scout.pos as Vector2, 0.9)
+			_c1_spawn_budget = 1.7 * _story_diff_float("spawn_interval_mul", 1.0)
+			_c1_spawn_pressure(6 + _story_diff_int("pressure_bonus", 0), "barricade_blocker", scout.pos as Vector2, 0.9)
 		var barricade_index: int = _find_adventure_prop("c1_barricade")
 		if barricade_index >= 0 and (_adventure_props[barricade_index].pos as Vector2).distance_to(_player_pos) < 175.0:
 			_c1_interaction += delta
@@ -8248,8 +10471,8 @@ func _update_c1_broken_trail(delta: float) -> void:
 		_c1_phase_timer = maxf(0.0, _c1_phase_timer - delta)
 		_c1_spawn_budget -= delta
 		if _c1_spawn_budget <= 0.0 and _enemies.size() < 40:
-			_c1_spawn_budget = 1.6
-			_c1_spawn_pressure(6, "extraction_raider", scout.pos as Vector2, 0.95)
+			_c1_spawn_budget = 1.6 * _story_diff_float("spawn_interval_mul", 1.0)
+			_c1_spawn_pressure(6 + _story_diff_int("pressure_bonus", 0), "extraction_raider", scout.pos as Vector2, 0.95)
 		if _c1_phase_timer <= 0.0:
 			_chapter_one.set_flag("extraction_complete")
 			_chapter_one.set_flag("primary_complete")
@@ -8285,10 +10508,10 @@ func _update_c1_mushroom_crossing(delta: float) -> void:
 		return
 	var shrine: Dictionary = _adventure_props[shrine_index]
 	if _chapter_one.phase == "energy_defence":
-		shrine.energy = 100.0 if _chapter_one.flag("timer_complete") else maxf(0.0, float(shrine.get("energy", 20.0)) - delta * 0.05)
+		shrine.energy = 100.0 if _chapter_one.flag("timer_complete") else maxf(0.0, float(shrine.get("energy", 20.0)) - delta * 0.05 * _story_diff_float("energy_drain_mul", 1.0) * (1.0 - _story_synergy_bonus("shrine_energy_decay")))
 		_c1_spawn_budget -= delta
 		if _c1_spawn_budget <= 0.0:
-			_c1_spawn_budget = 6.0
+			_c1_spawn_budget = 6.0 * _story_diff_float("spawn_interval_mul", 1.0)
 			var pressure_tag: String = "shrine_attacker" if _chapter_one.flag("timer_complete") else "spore_carrier"
 			_c1_spawn_pressure(4 + _c1_milestones, pressure_tag, shrine.pos as Vector2, 0.75 + float(_c1_milestones) * 0.12)
 		var energy: float = float(shrine.get("energy", 0.0))
@@ -8298,7 +10521,7 @@ func _update_c1_mushroom_crossing(delta: float) -> void:
 			_story_log("Timer progress milestone: shrine energy %d%%" % (milestone * 25))
 			if milestone in [2, 3]:
 				_story_custom_progress["blessing"] = "healing_pulse" if milestone == 2 else "wider_spore_collection"
-				_player_hp = minf(_player_max_hp, _player_hp + _player_max_hp * 0.16)
+				_restore_player_hp(_player_max_hp * 0.16)
 		if _chapter_one.flag("timer_complete"):
 			_chapter_one.set_flag("growth_resolved")
 			_c1_enter_phase("cleansing_channel", 12.0)
@@ -8307,7 +10530,7 @@ func _update_c1_mushroom_crossing(delta: float) -> void:
 		_c1_phase_timer = maxf(0.0, _c1_phase_timer - delta)
 		_c1_spawn_budget -= delta
 		if _c1_spawn_budget <= 0.0 and _enemies.size() < 36:
-			_c1_spawn_budget = 1.3
+			_c1_spawn_budget = 1.3 * _story_diff_float("spawn_interval_mul", 1.0)
 			_c1_spawn_pressure(5 + mini(_c1_milestones, 2), "cleansing_rusher", shrine.pos as Vector2, 1.05)
 		if _c1_phase_timer <= 0.0:
 			_chapter_one.set_flag("finale_complete")
@@ -8336,8 +10559,8 @@ func _update_c1_supply_thieves(delta: float) -> void:
 	var nest_number: int = int(nest.get("nest_number", 1))
 	_c1_spawn_budget -= delta
 	if _c1_spawn_budget <= 0.0 and _enemies.size() < 22:
-		_c1_spawn_budget = 2.6 if nest_number == 1 else 4.2
-		_c1_spawn_pressure(2 + nest_number, "supply_thief" if nest_number == 1 else "nest_defender", nest.pos as Vector2, 0.75 + nest_number * 0.12)
+		_c1_spawn_budget = (2.6 if nest_number == 1 else 4.2) * _story_diff_float("spawn_interval_mul", 1.0)
+		_c1_spawn_pressure(2 + nest_number + _story_diff_int("pressure_bonus", 0), "supply_thief" if nest_number == 1 else "nest_defender", nest.pos as Vector2, 0.75 + nest_number * 0.12)
 	if nest_number == 2:
 		var health_step: int = ceili(clampf(float(nest.hp) / float(nest.max_hp), 0.0, 1.0) * 3.0)
 		if health_step < int(nest.get("health_step", 3)):
@@ -8375,8 +10598,8 @@ func _spawn_c1_nest(number: int) -> void:
 func _update_c1_watchpath(_delta: float) -> void:
 	_c1_spawn_budget -= _delta
 	if _chapter_one.flag("mission_started") and _chapter_one.phase != "gate_window" and _c1_spawn_budget <= 0.0 and _enemies.size() < 36:
-		_c1_spawn_budget = maxf(1.8, 2.8 - float(_adventure_progress) * 0.35)
-		var reinforcement_count: int = 4 + _adventure_progress
+		_c1_spawn_budget = maxf(1.8, 2.8 - float(_adventure_progress) * 0.35) * _story_diff_float("spawn_interval_mul", 1.0)
+		var reinforcement_count: int = 4 + _adventure_progress + _story_diff_int("pressure_bonus", 0)
 		_c1_spawn_pressure(reinforcement_count, "watchpath_reinforcement", _player_pos, 0.82 + float(_adventure_progress) * 0.12)
 	var examining_track: bool = false
 	for prop_index in range(_adventure_props.size() - 1, -1, -1):
@@ -8408,7 +10631,7 @@ func _update_c1_watchpath(_delta: float) -> void:
 				_begin_c1_key_hunt(_adventure_progress + 1)
 			else:
 				_chapter_one.set_flag("gate_unlocked")
-				_c1_enter_phase("gate_window", 22.0)
+				_c1_enter_phase("gate_window", _story_diff_float("gate_window", 22.0))
 				_adventure_props.append({"kind":"c1_gate", "pos":_player_pos + Vector2(1500.0, 0.0), "hp":1.0, "max_hp":1.0})
 	if not examining_track and _find_adventure_prop("c1_track_marker") >= 0:
 		_c1_interaction = maxf(0.0, _c1_interaction - _delta * 1.5)
@@ -8458,19 +10681,22 @@ func _update_c1_crestkeeper_gate(delta: float) -> void:
 		_c1_phase_timer = maxf(0.0, _c1_phase_timer - delta)
 		_story_hazard_shot_timer -= delta
 		if _story_hazard_shot_timer <= 0.0:
-			_story_hazard_shot_timer = 0.95 if _chapter_one.phase == "radial_barrage" else (0.72 if _chapter_one.phase == "aimed_barrage" else 1.15)
+			_story_hazard_shot_timer = (0.95 if _chapter_one.phase == "radial_barrage" else (0.72 if _chapter_one.phase == "aimed_barrage" else 1.15)) * _story_diff_float("shot_interval_mul", 1.0)
 			_story_hazard_pattern += 1
 			_fire_c1_arena_pattern(_chapter_one.phase)
 		if _c1_phase_timer <= 0.0:
 			_adventure_progress += 1
 			_story_log("Timer progress milestone: barrage %d/3 complete" % _adventure_progress)
 			if _adventure_progress == 1:
+				_present_boss_moment("EMITTER BANK SHATTERED", "AIMED ARRAY ONLINE", Color(1.0, 0.58, 0.18), _story_hazard_arena_center, 6.0, "boss_break")
 				_c1_enter_phase("aimed_barrage", 52.0)
 			elif _adventure_progress == 2:
+				_present_boss_moment("EMITTER BANK SHATTERED", "ROTATION ARRAY ONLINE", Color(1.0, 0.58, 0.18), _story_hazard_arena_center, 7.0, "boss_break")
 				_c1_enter_phase("rotating_barrage", 55.0)
 			else:
 				_chapter_one.set_flag("timer_complete")
-				_boss_projs.clear()
+				_clear_boss_attack_runtime()
+				_present_boss_moment("CENTRAL EMITTER DESTROYED", "CRESTKEEPER EXPOSED", Color(1.0, 0.74, 0.22), _story_hazard_arena_center, 11.0, "boss_break")
 				_c1_enter_phase("overheat_burst", 2.5)
 				_story_log("Objective activation: emitter ruptured with bomb and gas")
 	elif _chapter_one.phase == "overheat_burst":
@@ -8487,22 +10713,27 @@ func _fire_c1_arena_pattern(pattern: String) -> void:
 	var offset: float = _story_hazard_pattern * 0.18
 	for projectile_index in count:
 		var angle: float = offset + TAU * float(projectile_index) / float(count)
+		var perimeter_direction: Vector2 = Vector2.from_angle(angle)
 		# Every fourth lane remains empty and readable.
 		if projectile_index % 4 == _story_hazard_pattern % 4:
+			_add_boss_telegraph({"kind":"line", "pos":_story_hazard_arena_center, "dir":perimeter_direction, "length":520.0, "width":76.0, "life":0.46, "color":Color(0.30, 0.92, 0.88)})
 			continue
-		var perimeter_direction: Vector2 = Vector2.from_angle(angle)
 		var travel_direction: Vector2 = -perimeter_direction
 		if pattern == "rotating_barrage":
 			travel_direction = travel_direction.rotated(0.24 if _story_hazard_pattern % 2 == 0 else -0.24)
-		var projectile_speed: float = 230.0 if pattern == "rotating_barrage" else 280.0
+		var projectile_speed: float = (230.0 if pattern == "rotating_barrage" else 280.0) * _story_diff_float("hazard_speed_mul", 1.0)
 		var projectile_damage: float = 5.0 if pattern == "rotating_barrage" else 6.0
-		_boss_projs.append({"kind":"hazard_orb", "pos":_story_hazard_arena_center + perimeter_direction * 560.0, "vel":travel_direction * projectile_speed, "life":5.0, "dmg":projectile_damage, "phase_flicker":pattern == "rotating_barrage", "flicker_offset":float(projectile_index) * 0.11})
+		var launch_pos := _story_hazard_arena_center + perimeter_direction * 560.0
+		_add_boss_telegraph({"kind":"line", "pos":launch_pos, "dir":travel_direction, "length":560.0, "width":34.0, "life":0.46, "color":Color(1.0, 0.20, 0.08)})
+		_boss_projs.append({"kind":"hazard_orb", "pos":launch_pos, "vel":travel_direction * projectile_speed, "life":5.0, "delay":0.46, "dmg":projectile_damage, "phase_flicker":pattern == "rotating_barrage", "flicker_offset":float(projectile_index) * 0.11})
 	if pattern == "aimed_barrage":
 		var launch_direction: Vector2 = Vector2.from_angle(offset + PI)
 		var launch_position: Vector2 = _story_hazard_arena_center + launch_direction * 560.0
 		var aimed: Vector2 = launch_position.direction_to(_player_pos)
 		for spread in [-0.22, 0.0, 0.22]:
-			_boss_projs.append({"kind":"hazard_orb", "pos":launch_position, "vel":aimed.rotated(spread) * 330.0, "life":5.0, "dmg":7.0})
+			var aimed_direction := aimed.rotated(spread)
+			_add_boss_telegraph({"kind":"line", "pos":launch_position, "dir":aimed_direction, "length":620.0, "width":28.0, "life":0.58, "color":Color(1.0, 0.12, 0.08)})
+			_boss_projs.append({"kind":"hazard_orb", "pos":launch_position, "vel":aimed_direction * 330.0 * _story_diff_float("hazard_speed_mul", 1.0), "life":5.0, "delay":0.58, "dmg":7.0, "aimed":true})
 
 func _update_story_escort(delta: float) -> void:
 	if _adventure_props.is_empty(): return
@@ -8582,7 +10813,7 @@ func _update_story_nests(delta: float) -> void:
 		return
 	var nest := _adventure_props[nest_index]
 	nest.shield_t = maxf(float(nest.get("shield_t", 0.0)) - delta, 0.0)
-	_adventure_spawn_timer -= delta
+	_adventure_spawn_timer -= _story_mutator_spawn_delta(delta)
 	var nest_number := _story_nests_destroyed + 1
 	var enemy_cap := 5 + nest_number * 5
 	if _adventure_spawn_timer <= 0.0 and _enemies.size() < enemy_cap:
@@ -8700,6 +10931,7 @@ func _start_story_objective_boss() -> void:
 	_story_log_phase(_adventure_state, "story_boss")
 	_adventure_state = "story_boss"
 	_adventure_props.clear()
+	_cleanup_enemy_role_runtime()
 	_enemies.clear()
 	_boss_projs.clear()
 	var bosses: Array[String] = ["blight_vine_tyrant", "teleporter_boss", "lava_boss", "prism_triarch", "shield_boss", "thunderforge_behemoth"]
@@ -9089,8 +11321,8 @@ func _chapter_five_objective_text() -> String:
 			if _chapter_five.phase == "moving_escape": return "Lockdown escape · Cross the final threshold · Alert %d%%" % roundi(_chapter_five.meter("alert"))
 			return "Silent Descent · Checkpoints %d/3 · Alert %d%% · %s" % [_chapter_five.count("checkpoints_reached"), roundi(_chapter_five.meter("alert")), _c5_sentry_status()]
 		2:
-			if _chapter_five.phase == "portal_sealing": return "Seal the Abyss Portal · Stabilizers %d/3 · Portal Keeper %s" % [_chapter_five.count("seals_stable"), "defeated" if _chapter_five.flag("boss_defeated") else "active"]
-			return "Soul Liberation · Saved %d/6 · Active %d · Abyss Pressure %d%%" % [_chapter_five.count("spirits_saved"), _count_adventure_props("released_soul"), roundi(_chapter_five.meter("abyss_pressure"))]
+			if _chapter_five.phase == "portal_sealing": return "STABILIZERS  %d / 3  ·  KEEPER %s" % [_chapter_five.count("seals_stable"), "DOWN" if _chapter_five.flag("boss_defeated") else "ACTIVE"]
+			return "SOULS  %d / 6  ·  PRESSURE %d%%" % [_chapter_five.count("spirits_saved"), roundi(_chapter_five.meter("abyss_pressure"))]
 		3:
 			if _chapter_five.phase == "guardian": return "Reach the Labyrinth Exit · Defeat the Mirror Guardian"
 			return "Mirror Labyrinth · Room %d/4 · %s · Abyss Pressure %d%%" % [_chapter_five.count("rooms_completed") + 1, str(_chapter_five.mirror_room.get("clue", "Read the inscription")), roundi(_chapter_five.meter("abyss_pressure"))]
@@ -9100,9 +11332,9 @@ func _chapter_five_objective_text() -> String:
 			if _chapter_five.flag("preparation_complete") and _chapter_five.flag("route_prepared"): return "Twin Eclipse ready · Return to Obelisk A and start synchronization"
 			return "Twin Eclipse · Obelisk A: %s · Obelisk B: %s · Prepare route" % ["Stable" if _chapter_five.flag("obelisk_a_stabilized") else "Unstable", "Stable" if _chapter_five.flag("obelisk_b_stabilized") else "Unstable"]
 		5:
-			if _chapter_five.phase == "ritual_anchors": return "Throne of the Deep · Ritual Anchors %d/3 · Ritual %.0fs" % [_chapter_five.count("anchors_destroyed"), _chapter_five.timer("ritual")]
-			if _chapter_five.phase == "abyss_crown": return "Break the Abyss Crown · Sections %d/4 · Activate both seals" % _chapter_five.count("crown_sections_broken")
-			return "Abyss King · %s" % _chapter_five.phase.replace("_", " ").capitalize()
+			if _chapter_five.phase == "ritual_anchors": return "ANCHORS  %d / 3  ·  %.0fs" % [_chapter_five.count("anchors_destroyed"), _chapter_five.timer("ritual")]
+			if _chapter_five.phase == "abyss_crown": return "CROWN  %d / 4  ·  ACTIVATE SEALS" % _chapter_five.count("crown_sections_broken")
+			return "ABYSS KING  ·  %s" % _chapter_five.phase.replace("_", " ").to_upper()
 	return "Complete the Chapter 5 objective"
 
 func _c5_sentry_status() -> String:
@@ -9163,7 +11395,7 @@ func _chapter_three_objective_text() -> String:
 			if _chapter_three.phase == "final_hunt": return "Final Hunt · defeat the actual Plaguebeast"
 			if _chapter_three.phase == "tracking_ambush": return "Wrong trail · defeat the ambush before tracking resumes"
 			if _chapter_three.phase == "first_sighting": return "Force the Plaguebeast to retreat, then follow its trail"
-			return "Choose 1 of %d trails · correct clues: %d/3" % [_chapter_three.count("tracking_trails"), _chapter_three.count("tracking_phases_complete")]
+			return "Follow the trail marked FRESH SPORES · clues %d/3" % _chapter_three.count("tracking_phases_complete")
 		3:
 			if _chapter_three.phase == "ingredient_extraction": return "Carry the Ingredient Case to extraction"
 			if _chapter_three.flag("ingredients_contaminated"): return "Ingredients contaminated · stand near the Cleansing Station for 2 seconds"
@@ -9226,14 +11458,15 @@ func _chapter_two_objective_text() -> String:
 				return "Stabilize the Warmth Chain · %ds · Active Warmth %d/4%s" % [ceili(_chapter_two.timer("stabilization")), _chapter_two.count("active_braziers"), cold_text]
 			return "Braziers Lit: %d/4 · Active Warmth: %d/4 · Carrying %s%s" % [_chapter_two.count("braziers_lit"), _chapter_two.count("active_braziers"), "Flame Charge" if _story_custom_carried == "flame_charge" else "No Flame", cold_text]
 		2:
-			return "Captives Released: %d/5 · Captives Safe: %d/5 · Refrozen: %d%s" % [_chapter_two.count("captives_released"), _chapter_two.count("captives_extracted"), _chapter_two.count("captives_refrozen"), cold_text]
+			return "CAPTIVES  %d / 5  ·  SAFE %d  ·  REFROZEN %d%s" % [_chapter_two.count("captives_released"), _chapter_two.count("captives_extracted"), _chapter_two.count("captives_refrozen"), cold_text]
 		3:
 			if _chapter_two.phase == "sequence_reveal":
 				return "Memorize: %s · %.1fs%s" % [_sequence_text(_story_custom_sequence), _story_custom_timer, cold_text]
 			return "Thaw Sequence: %d/4 · %s%s" % [_chapter_two.count("runes_correct"), "Spreading freeze" if _chapter_two.phase == "spreading_freeze" else "Find the next rune", cold_text]
 		4:
 			if _chapter_two.phase == "frost_mimic_battle": return "Defeat the actual Frost Mimic"
-			return "Open one chest · Wrong chests trigger an ambush · Chests Remaining: %d" % _chapter_two.count("suspects_remaining")
+			var last_clue: String = str(_story_custom_progress.get("last_mimic_clue", "Inspect clue tablets"))
+			return "Mimic Clues %d/5 · Suspects %d · %s" % [_chapter_two.count("clues_found"), _chapter_two.count("suspects_remaining"), last_clue]
 		5:
 			if _chapter_two.phase == "final_vulnerable": return "Frostbound Colossus · Armour broken · Defeat it%s" % cold_text
 			return "Frostbound Colossus · Armour Crystals: %d/3 · Attack the exposed crystal%s" % [3 - _chapter_two.count("crystals_broken"), cold_text]
@@ -9315,6 +11548,13 @@ func _next_portal_boss_type() -> String:
 func _is_boss_kind(kind: String) -> bool:
 	return kind.ends_with("_boss") or PORTAL_BOSS_TYPES.has(kind)
 
+func _ensure_enemy_texture(kind: String) -> void:
+	if _enemy_tex.has(kind):
+		return
+	var path := str(ENEMY_TEXTURE_PATHS.get(kind, ""))
+	if not path.is_empty() and ResourceLoader.exists(path):
+		_enemy_tex[kind] = load(path) as Texture2D
+
 func _make_enemy_data(kind: String, ws: float) -> Dictionary:
 	var boss_progress: Dictionary = _boss_progression_multiplier()
 	var boss_hp_mult: float = float(boss_progress.get("hp", 1.0))
@@ -9392,6 +11632,16 @@ func _make_enemy_data(kind: String, ws: float) -> Dictionary:
 				"r": randf_range(18.0, 26.0),
 				"col": Color.from_hsv(0.55, 0.70, 0.80 + randf() * 0.20)  # bright cyan-blue
 			}
+		"role_zoner":
+			return {"kind":"role_zoner", "visual_kind":"normal", "hp_mult":ws * 0.85, "spd_mult":0.78, "dmg_mult":ws * 0.78, "r":32.0, "col":Color(0.34, 0.78, 0.30)}
+		"role_sniper":
+			return {"kind":"role_sniper", "visual_kind":"normal_fast", "hp_mult":ws * 0.72, "spd_mult":0.70, "dmg_mult":ws * 1.25, "r":27.0, "col":Color(0.92, 0.34, 0.24)}
+		"role_support":
+			return {"kind":"role_support", "visual_kind":"normal", "hp_mult":ws * 0.82, "spd_mult":0.76, "dmg_mult":ws * 0.55, "r":30.0, "col":Color(0.30, 0.88, 0.54)}
+		"role_controller":
+			return {"kind":"role_controller", "visual_kind":"normal_fast", "hp_mult":ws * 0.90, "spd_mult":0.82, "dmg_mult":ws * 0.68, "r":29.0, "col":Color(0.38, 0.62, 0.96)}
+		"role_summoner":
+			return {"kind":"role_summoner", "visual_kind":"normal_tank", "hp_mult":ws * 1.15, "spd_mult":0.64, "dmg_mult":ws * 0.55, "r":35.0, "col":Color(0.66, 0.32, 0.82)}
 		_:  # normal — balanced
 			return {
 				"kind": "normal",
@@ -9417,7 +11667,7 @@ func _spawn_enemy_from(data: Dictionary) -> void:
 		var wave_bonus: float = float(_wave) * 2.5
 		base_spd = (randf_range(72.0, 105.0) + wave_bonus) * (data["spd_mult"] as float)
 	if not story_stage.is_empty():
-		base_spd *= float(story_stage.get("enemy_speed", 1.0))
+		base_spd *= float(story_stage.get("enemy_speed", 1.0)) * float(_story_difficulty_config().get("enemy_speed", 1.0))
 	var base_dmg: float = (4.5 + float(_level) * 1.0) * (data["dmg_mult"] as float)
 	var base_r: float   = data["r"] as float
 	var base_col: Color = data["col"] as Color
@@ -9425,6 +11675,7 @@ func _spawn_enemy_from(data: Dictionary) -> void:
 	# Apply the current floor affix to non-boss enemies.
 	var assigned_mod: String = ""
 	var ekind_spawn: String = data["kind"] as String
+	_ensure_enemy_texture(str(data.get("visual_kind", ekind_spawn)))
 	if _wave >= 10 and not _active_enemy_mod.is_empty() and not _is_boss_kind(ekind_spawn):
 		assigned_mod = _active_enemy_mod
 		match assigned_mod:
@@ -9435,18 +11686,27 @@ func _spawn_enemy_from(data: Dictionary) -> void:
 			"frozen_trail": base_col = base_col.lerp(Color(0.45, 0.85, 1.0), 0.55)
 			_: pass
 
+	var spawned_roles := StoryEnemyRolesClass.roles_for(ekind_spawn)
+	var spawned_id := _enemy_next_id
+	_enemy_next_id += 1
 	_enemies.append({
+		"id":spawned_id,
 		"pos": pos, "hp": base_hp, "max_hp": base_hp,
 		"spd": base_spd, "base_spd": base_spd, "r": base_r,
 		"dmg": base_dmg, "col": base_col,
 		"iframes": 0.0, "kind": ekind_spawn,
+		"visual_kind":str(data.get("visual_kind", ekind_spawn)),
+		"enemy_roles":spawned_roles,
+		"primary_role":spawned_roles[0] if not spawned_roles.is_empty() else "",
+		"role_enabled":ekind_spawn.begins_with("role_"),
+		"role_state":"idle", "role_state_t":0.0, "role_cooldown":randf_range(0.8, 2.2),
 		"alive_t": 0.0, "speed_boosted": false, "facing_x": 1,
 		"special_timer": 0.0, "shield_active": false,
 		"mod": assigned_mod,
 		"trail_t": 0.0,
 	})
 
-func _hit_enemy_element(idx: int, dmg: float, element: String) -> void:
+func _hit_enemy_element(idx: int, dmg: float, element: String, feedback: Dictionary = {}) -> void:
 	if idx < 0 or idx >= _enemies.size():
 		return
 	var enemy := _enemies[idx] as Dictionary
@@ -9482,18 +11742,70 @@ func _hit_enemy_element(idx: int, dmg: float, element: String) -> void:
 	if not reaction.is_empty():
 		_spawn_reaction_popup(enemy["pos"] as Vector2, reaction, reaction_color)
 		_waves.append({"pos": enemy["pos"], "r": 8.0, "max_r": 70.0, "life": 0.28, "max_life": 0.28, "kind": element})
-	_hit_enemy(idx, dmg * multiplier)
+	var event := feedback.duplicate()
+	event["element"] = element
+	_hit_enemy(idx, dmg * multiplier, event)
 
-func _hit_enemy(idx: int, dmg: float) -> void:
+func _story_boss_damage_floor(enemy: Dictionary) -> float:
+	var story_tag := str(enemy.get("story_tag", ""))
+	var max_hp := float(enemy.get("objective_max_hp", enemy.get("max_hp", 1.0)))
+	if story_tag == "frost_colossus" and _chapter_two != null:
+		return StoryDamageProtectionClass.minimum_hp(story_tag, max_hp, {"crystals_broken":_chapter_two.count("crystals_broken")})
+	if story_tag == "c3_blight_tyrant":
+		return StoryDamageProtectionClass.minimum_hp(story_tag, max_hp, {"arena_rooted":bool(enemy.get("arena_rooted", false)) and float(enemy.get("signature_transition_t", 0.0)) <= 0.0})
+	if story_tag == "c4_thunderforge_behemoth" and _chapter_four != null:
+		return StoryDamageProtectionClass.minimum_hp(story_tag, max_hp, {"shutdown_complete":_chapter_four.flag("shutdown_complete")})
+	if story_tag == "abyss_king" and _chapter_five != null:
+		return StoryDamageProtectionClass.minimum_hp(story_tag, max_hp, {"final_phase_entered":_chapter_five.flag("final_phase_entered"), "phase":_chapter_five.phase})
+	return 0.0
+
+func _show_story_boss_blocked(enemy_index: int, message: String, color: Color) -> void:
+	if enemy_index < 0 or enemy_index >= _enemies.size():
+		return
+	var enemy := _enemies[enemy_index] as Dictionary
+	if float(enemy.get("boss_feedback_t", 0.0)) > 0.0:
+		return
+	enemy["boss_feedback_t"] = 1.15
+	_enemies[enemy_index] = enemy
+	_spawn_reaction_popup(enemy.get("pos", Vector2.ZERO) as Vector2, message, color)
+	if _combat_feedback != null:
+		_combat_feedback.play_blocked(enemy.get("pos", Vector2.ZERO) as Vector2, color)
+	elif _sound != null:
+		_sound.play("boss_blocked", -11.0, 1.0)
+	if _story_telemetry != null:
+		_story_telemetry.protected_damage_rejected(str(enemy.get("story_tag", enemy.get("kind", "unknown"))), message.to_snake_case())
+
+func _hit_enemy(idx: int, dmg: float, feedback: Dictionary = {}) -> void:
 	if idx < 0 or idx >= _enemies.size():
 		return
 	var e: Dictionary = _enemies[idx]
 	var ekind: String = e.get("kind", "normal") as String
+	var story_enemy_tag: String = str(e.get("story_tag", ""))
+	if story_enemy_tag == "c4_thunderforge_behemoth" and _chapter_four != null and _chapter_four.flag("boss_transition_pending"):
+		_show_story_boss_blocked(idx, "CORE TRANSFORMING", Color(1.0, 0.68, 0.18))
+		return
+	if story_enemy_tag == "abyss_king" and _chapter_five != null and _chapter_five.flag("boss_transition_pending"):
+		_show_story_boss_blocked(idx, "PHASE SHIFT", Color(0.78, 0.42, 1.0))
+		return
+	if story_enemy_tag == "abyss_king" and _chapter_five != null and not _chapter_five.flag("final_phase_entered"):
+		_show_story_boss_blocked(idx, "RITUAL SHIELD", Color(0.78, 0.42, 1.0))
+		return
 	# Shielded bosses absorb hits.
 	if (e.get("shield_active", false) as bool):
+		if not story_enemy_tag.is_empty():
+			_show_story_boss_blocked(idx, "ARMOUR ACTIVE" if story_enemy_tag == "frost_colossus" else "BLOCKED", Color(0.42, 0.86, 1.0))
+		elif float(e.get("boss_feedback_t", 0.0)) <= 0.0:
+			e["boss_feedback_t"] = 0.75
+			_enemies[idx] = e
+			_spawn_reaction_popup(e.get("pos", Vector2.ZERO) as Vector2, "BLOCKED", Color(0.42, 0.86, 1.0))
+			if _combat_feedback != null:
+				_combat_feedback.play_blocked(e.get("pos", Vector2.ZERO) as Vector2, Color(0.42, 0.86, 1.0))
 		return
 	# Apply crit from ring bonus
 	var final_dmg: float = dmg
+	final_dmg *= float(_story_mutator_config.get("player_damage", 1.0))
+	if _story_mutator_chaos_buff > 0.0:
+		final_dmg *= 1.18
 	if (e.get("bleed_t", 0.0) as float) > 0.0:
 		final_dmg *= 1.0 + (e.get("bleed_bonus", 0.25) as float)
 	if _is_boss_kind(ekind):
@@ -9505,60 +11817,104 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 			if str(guard.get("story_tag", "")) == "carrier_guard":
 				final_dmg *= 0.05
 				break
+	if str(e.get("primary_role", "")) == "tank" and str(e.get("role_state", "")) == "guard":
+		var facing := Vector2(float(int(e.get("facing_x", 1))), 0.0)
+		var toward_attacker := (e.get("pos", Vector2.ZERO) as Vector2).direction_to(_player_pos)
+		if facing.dot(toward_attacker) > 0.35:
+			final_dmg *= 0.55 if bool(e.get("mutator_elite", false)) else 0.62
 	var crit_chance: float = _ring_bonus("crit_chance")
 	var did_crit: bool = false
 	if crit_chance > 0.0 and randf() < crit_chance:
 		did_crit = true
 		final_dmg *= 1.8 + _ring_bonus("crit_dmg")
+	var protected_floor := _story_boss_damage_floor(e)
+	if protected_floor > 0.0:
+		final_dmg = minf(final_dmg, maxf(0.0, float(e.get("hp", 0.0)) - protected_floor))
+		if final_dmg <= 0.0:
+			var blocked_text := "PHASE LOCKED"
+			var blocked_color := Color(1.0, 0.56, 0.16)
+			if story_enemy_tag == "frost_colossus":
+				blocked_text = "ARMOUR ACTIVE"
+				blocked_color = Color(0.42, 0.86, 1.0)
+			elif story_enemy_tag == "c3_blight_tyrant":
+				blocked_text = "ROOTING INTO ARENA"
+				blocked_color = Color(0.46, 0.94, 0.38)
+			elif story_enemy_tag == "c4_thunderforge_behemoth":
+				blocked_text = "FORGE CORE PROTECTED"
+			_show_story_boss_blocked(idx, blocked_text, blocked_color)
+			return
 	if _ring_bonus("lifesteal") > 0.0:
-		_player_hp = min(_player_max_hp, _player_hp + final_dmg * _ring_bonus("lifesteal"))
+		_restore_player_hp(final_dmg * _ring_bonus("lifesteal"))
 	var impact_pos: Vector2 = e["pos"] as Vector2
+	var hp_before := float(e.get("hp", 0.0))
+	var max_hp := maxf(float(e.get("max_hp", hp_before)), 1.0)
+	var is_boss := _is_boss_kind(ekind)
+	var hit_event := feedback.duplicate()
+	hit_event["position"] = impact_pos
+	hit_event["damage"] = final_dmg
+	hit_event["damage_ratio"] = final_dmg / max_hp
+	hit_event["critical"] = did_crit
+	hit_event["killing_blow"] = hp_before - final_dmg <= 0.0
+	hit_event["overkill"] = maxf(0.0, final_dmg - hp_before)
+	hit_event["boss"] = is_boss
+	hit_event["custom_boss"] = story_enemy_tag in ["crestkeeper", "frost_colossus", "c3_blight_tyrant", "c4_thunderforge_behemoth", "abyss_king"]
+	hit_event["elite"] = bool(e.get("mutator_elite", false)) or ekind.contains("elite") or story_enemy_tag.contains("elite")
+	hit_event["volatile"] = bool(e.get("mutator_volatile", false)) or str(e.get("mod", "")) == "explosive"
 	if _draw_world_rect.size == Vector2.ZERO or _is_world_pos_visible(impact_pos, 120.0):
-		_spawn_damage_popup(impact_pos, final_dmg, did_crit)
-		if _combat_vfx != null:
-			_combat_vfx.emit_impact(impact_pos, did_crit, (e["hp"] as float) - final_dmg <= 0.0)
+		_spawn_damage_popup(impact_pos, final_dmg, did_crit, hit_event)
+		if _combat_feedback != null:
+			_combat_feedback.play_enemy_hit(hit_event)
+	e["hit_flash_t"] = maxf(float(e.get("hit_flash_t", 0.0)), 0.025 if bool(hit_event.get("dot", false)) else 0.065)
 	e["hp"]      = (e["hp"] as float) - final_dmg
 	e["iframes"] = ENEMY_HIT_IF
-	var story_enemy_tag: String = str(e.get("story_tag", ""))
 	if story_enemy_tag == "abyss_king" and _chapter_five != null and not _chapter_five.flag("final_phase_entered"):
-		var ritual_floor: float = maxf(1.0, float(e.get("objective_max_hp", 100.0)) * 0.72)
+		var ritual_floor := StoryDamageProtectionClass.minimum_hp(story_enemy_tag, float(e.get("objective_max_hp", 100.0)), {"final_phase_entered":false, "phase":_chapter_five.phase})
 		e["hp"] = maxf(float(e["hp"]), ritual_floor)
 		if not _chapter_five.flag("ritual_shield_announced"):
 			_chapter_five.set_flag("ritual_shield_announced")
 			_spawn_reaction_popup(e["pos"] as Vector2, "RITUAL SHIELD", Color(0.78, 0.42, 1.0))
 			_story_log("Boss phase gate: Ritual Shield Active")
 	elif story_enemy_tag == "abyss_king" and _chapter_five != null:
-		var phase_floor_ratio: float = {"final_boss_a":0.65, "final_boss_b":0.35, "final_boss_c":0.22}.get(_chapter_five.phase, 0.0) as float
-		if phase_floor_ratio > 0.0:
-			e["hp"] = maxf(float(e["hp"]), float(e.get("objective_max_hp", 100.0)) * phase_floor_ratio)
+		var phase_floor := StoryDamageProtectionClass.minimum_hp(story_enemy_tag, float(e.get("objective_max_hp", 100.0)), {"final_phase_entered":true, "phase":_chapter_five.phase})
+		if phase_floor > 0.0:
+			e["hp"] = maxf(float(e["hp"]), phase_floor)
 	if story_enemy_tag.begins_with("c4_golem_") and _chapter_four != null:
-		var capture_floor: float = maxf(1.0, float(e.get("objective_max_hp", 100.0)) * 0.20)
+		var capture_floor := StoryDamageProtectionClass.minimum_hp(story_enemy_tag, float(e.get("objective_max_hp", 100.0)))
 		e["hp"] = maxf(float(e["hp"]), capture_floor)
 	elif story_enemy_tag == "c4_thunderforge_behemoth" and _chapter_four != null and not _chapter_four.flag("shutdown_complete"):
-		var shutdown_floor: float = maxf(1.0, float(e.get("objective_max_hp", 100.0)) * 0.25)
+		var shutdown_floor := StoryDamageProtectionClass.minimum_hp(story_enemy_tag, float(e.get("objective_max_hp", 100.0)), {"shutdown_complete":false})
 		e["hp"] = maxf(float(e["hp"]), shutdown_floor)
 		if float(e["hp"]) <= shutdown_floor and not _chapter_four.flag("boss_protection_announced"):
 			_chapter_four.set_flag("boss_protection_announced")
 			_spawn_reaction_popup(e["pos"] as Vector2, "FORGE PROTECTED", Color(1.0, 0.56, 0.16))
 			_story_log("Boss phase gate: Forge protection holds until shutdown completes")
 	if str(e.get("story_tag", "")) == "frost_colossus" and _chapter_two != null and _chapter_two.count("crystals_broken") < 3 and float(e.hp) <= 0.0:
-		e["hp"] = 1.0
+		e["hp"] = StoryDamageProtectionClass.minimum_hp("frost_colossus", float(e.get("objective_max_hp", 100.0)), {"crystals_broken":_chapter_two.count("crystals_broken")})
+	var applied_damage := StoryRunStatsClass.actual_applied_damage(hp_before, float(e.get("hp", hp_before)), not story_enemy_tag.begins_with("c4_golem_"))
+	_story_run_stats.record_damage(
+		str(feedback.get("source", feedback.get("element", "other"))),
+		applied_damage,
+		bool(hit_event.get("custom_boss", false)),
+		true
+	)
 	if (e["hp"] as float) <= 0.0:
 		var ep: Vector2   = e["pos"] as Vector2
-		_append_xp_orb(ep, _xp_drop(e))
+		_append_xp_orb(ep, _on_story_mutator_enemy_death(e, ep, _xp_drop(e)))
 		_kills += 1
+		_story_run_stats.record_enemy_defeat(not story_enemy_tag.begins_with("c4_golem_"))
+		if _story_telemetry != null:
+			_story_telemetry.story_enemy_defeated(str(e.get("primary_role", "")), story_enemy_tag if is_boss else "")
 		if _handle_custom_story_enemy_death(e):
 			return
-		var is_boss: bool = _is_boss_kind(ekind)
 		_try_drop_story_key(ep, is_boss)
 		# Potion drop: 25% base + ring bonus, from any boss
-		var potion_rate: float = 0.25 + _ring_bonus("potion_drop_rate")
+		var potion_rate: float = (0.25 + _ring_bonus("potion_drop_rate")) * float(_story_mutator_config.get("recovery_drop_multiplier", 1.0))
 		if is_boss and randf() < potion_rate:
 			_potions.append({"pos": ep + Vector2(randf_range(-20, 20), randf_range(-20, 20)), "life": 15.0})
 		if is_boss:
 			if not story_stage.is_empty():
 				_story_log("Boss defeated: %s" % ekind)
-			if not account_username.is_empty() and not is_story_test_run: ProgressionStore.record_mission_event(account_username, "boss_kills")
+			if not account_username.is_empty() and not _is_non_persistent_story_run(): ProgressionStore.record_mission_event(account_username, "boss_kills")
 			if not dungeon_mode.is_empty() and _adventure_state not in ["coin_hunt", "forge_activate"]:
 				_dungeon_depth_cleared = maxi(_dungeon_depth_cleared, _wave)
 			_boss_keys += 1
@@ -9580,7 +11936,7 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 				_request_story_victory("chapter_one_wave_boss_defeated")
 		# Ring drop: 60% base chance from any boss (+ ring bonus, clamped).
 		var ring_rate: float = min(1.0, 0.60 + _ring_bonus("ring_drop_rate"))
-		if is_boss and not is_story_test_run and randf() < ring_rate:
+		if is_boss and not _is_non_persistent_story_run() and randf() < ring_rate:
 			var ring: Dictionary = RingStore.roll_ring()
 			_ring_drops.append({"pos": ep + Vector2(randf_range(-30, 30), randf_range(-30, 30)), "life": 20.0, "ring": ring})
 		var bleed_seed: bool = e.get("bleed_seed", false) as bool
@@ -9618,25 +11974,52 @@ func _hit_enemy(idx: int, dmg: float) -> void:
 				var off: Vector2 = Vector2(randf_range(-28, 28), randf_range(-28, 28))
 				_append_burn_trail(ep + off, 2.2 + float(_wave) * 0.08)
 
-func _spawn_damage_popup(world_pos: Vector2, damage: float, critical: bool) -> void:
-	if damage <= 0.0 or is_nan(damage) or is_inf(damage):
+func _spawn_damage_popup(world_pos: Vector2, damage: float, critical: bool, feedback: Dictionary = {}) -> void:
+	if not _damage_numbers_enabled or damage <= 0.0 or is_nan(damage) or is_inf(damage):
 		return
-	if _damage_popups.size() >= DAMAGE_POPUP_MAX:
-		_damage_popups.remove_at(0)
-	_damage_popups.append({
-		"pos": world_pos + Vector2(randf_range(-14.0, 14.0), randf_range(-10.0, -2.0)),
+	var is_dot := bool(feedback.get("dot", false))
+	var popup_priority := 4 if critical else CombatFeedbackClass.popup_priority(feedback)
+	var load_tier := int(_combat_readability.debug_state().get("load_tier", 0)) if _combat_readability != null else 0
+	if not CombatReadabilityClass.allows_damage_number(_damage_number_mode, critical, popup_priority, load_tier):
+		return
+	var source := String(feedback.get("source", feedback.get("element", "dot" if is_dot else "hit")))
+	var now := Time.get_ticks_usec()
+	if is_dot:
+		for index in range(_damage_popups.size() - 1, -1, -1):
+			var existing := _damage_popups[index] as Dictionary
+			if String(existing.get("kind", "")) != "dot" or String(existing.get("source", "")) != source:
+				continue
+			if now - int(existing.get("created_usec", 0)) > 180000 or (existing.get("pos", world_pos) as Vector2).distance_to(world_pos) > 70.0:
+				continue
+			existing["value"] = float(existing.get("value", 0.0)) + damage
+			existing["text"] = str(roundi(float(existing["value"])))
+			existing["life"] = DAMAGE_POPUP_LIFE
+			existing["created_usec"] = now
+			_damage_popups[index] = existing
+			return
+	var prefix := "ULT " if bool(feedback.get("ultimate", false)) else ""
+	if critical:
+		prefix += "CRIT "
+	var popup_offset := Vector2(randf_range(-14.0, 14.0), randf_range(-10.0, -2.0))
+	if bool(feedback.get("boss", false)):
+		popup_offset += Vector2(42.0, -18.0)
+	_append_damage_popup({
+		"pos": world_pos + popup_offset,
 		"vel": Vector2(randf_range(-24.0, 24.0), randf_range(-128.0, -96.0)),
 		"life": DAMAGE_POPUP_LIFE,
 		"max_life": DAMAGE_POPUP_LIFE,
-		"text": str(int(round(damage))),
-		"size": 36 if critical else 30,
-		"color": Color(1.0, 0.86, 0.38, 1.0) if critical else Color(0.96, 0.96, 0.96, 1.0),
+		"text": prefix + str(roundi(damage)),
+		"value": damage,
+		"size": 36 if critical else (34 if bool(feedback.get("ultimate", false)) else (25 if is_dot else 30)),
+		"color": Color(1.0, 0.86, 0.38, 1.0) if critical else (Color(1.0, 0.64, 0.22) if bool(feedback.get("ultimate", false)) else (Color(0.70, 0.90, 0.46) if is_dot else Color(0.96, 0.96, 0.96, 1.0))),
+		"priority": popup_priority,
+		"kind": "dot" if is_dot else "damage",
+		"source": source,
+		"created_usec": now,
 	})
 
 func _spawn_reaction_popup(world_pos: Vector2, label: String, color: Color) -> void:
-	if _damage_popups.size() >= DAMAGE_POPUP_MAX:
-		_damage_popups.remove_at(0)
-	_damage_popups.append({
+	_append_damage_popup({
 		"pos": world_pos + Vector2(0.0, -28.0),
 		"vel": Vector2(0.0, -82.0),
 		"life": 0.90,
@@ -9644,7 +12027,36 @@ func _spawn_reaction_popup(world_pos: Vector2, label: String, color: Color) -> v
 		"text": label,
 		"size": 24,
 		"color": color,
+		"priority": 5,
 	})
+
+func _spawn_status_popup(world_pos: Vector2, label: String, color: Color, priority: int) -> void:
+	if not _damage_numbers_enabled:
+		return
+	_append_damage_popup({
+		"pos": world_pos + Vector2(0.0, -42.0),
+		"vel": Vector2(0.0, -105.0),
+		"life": 0.72,
+		"max_life": 0.72,
+		"text": label,
+		"size": 31,
+		"color": color,
+		"priority": priority,
+	})
+
+func _append_damage_popup(popup: Dictionary) -> void:
+	var cap := DAMAGE_POPUP_IOS_MAX if OS.get_name() == "iOS" else DAMAGE_POPUP_MAX
+	if _combat_readability != null:
+		cap = _combat_readability.damage_popup_cap(cap)
+	if _damage_popups.size() >= cap:
+		var lowest_index := 0
+		for index in range(1, _damage_popups.size()):
+			if int(_damage_popups[index].get("priority", 2)) < int(_damage_popups[lowest_index].get("priority", 2)):
+				lowest_index = index
+		if int(_damage_popups[lowest_index].get("priority", 2)) > int(popup.get("priority", 2)):
+			return
+		_damage_popups.remove_at(lowest_index)
+	_damage_popups.append(popup)
 
 func _update_damage_popups(delta: float) -> void:
 	for i in range(_damage_popups.size() - 1, -1, -1):
@@ -9752,7 +12164,7 @@ func _update_potions(delta: float) -> void:
 			# Heal 25% of max HP
 			var potion_heal: float = _player_max_hp * 0.25 * _room_potion_heal_multiplier()
 			potion_heal *= 1.0 + _ring_bonus("healing_efficiency")
-			_player_hp = min(_player_hp + potion_heal, _player_max_hp)
+			_restore_player_hp(potion_heal, false, "potion")
 			_potions.remove_at(i)
 
 func _update_ring_drops(delta: float) -> void:
@@ -9764,9 +12176,34 @@ func _update_ring_drops(delta: float) -> void:
 			continue
 		if (_player_pos.distance_to(rd["pos"] as Vector2)) < 32.0:
 			var ring: Dictionary = RingStore.normalize_ring(rd["ring"] as Dictionary)
-			if not is_story_test_run:
+			if not _is_non_persistent_story_run():
+				var stash_before := RingStore.load_stash(account_username)
+				var matching_before := RingStore.count_merge_matches(stash_before, ring)
+				var discovered_before := false
+				for owned_variant in stash_before:
+					if typeof(owned_variant) != TYPE_DICTIONARY:
+						continue
+					var owned := owned_variant as Dictionary
+					if String(owned.get("name", "")) == String(ring.get("name", "")):
+						discovered_before = true
+						break
+				if not discovered_before:
+					for equipped_slots_variant in RingStore.load_equipped(account_username).values():
+						if typeof(equipped_slots_variant) != TYPE_DICTIONARY:
+							continue
+						for equipped_variant in (equipped_slots_variant as Dictionary).values():
+							if typeof(equipped_variant) == TYPE_DICTIONARY and String((equipped_variant as Dictionary).get("name", "")) == String(ring.get("name", "")):
+								discovered_before = true
+								break
+						if discovered_before:
+							break
 				RingStore.add_ring_to_stash(account_username, ring)
-				_rings_obtained.append(ring)
+				var reward_ring := ring.duplicate(true)
+				reward_ring["_reward_new"] = not discovered_before
+				reward_ring["_reward_duplicate"] = discovered_before
+				reward_ring["_reward_merge_count"] = matching_before + 1
+				reward_ring["_reward_merge_ready"] = matching_before + 1 >= 3 and String(ring.get("rarity", "common")).to_lower() != "legendary"
+				_rings_obtained.append(reward_ring)
 			_ring_drops.remove_at(i)
 
 func _update_artifact_drops(delta: float) -> void:
@@ -9781,14 +12218,20 @@ func _update_artifact_drops(delta: float) -> void:
 			continue
 		if (_player_pos.distance_to(ad["pos"] as Vector2)) < 32.0:
 			var artifact: Dictionary = ad["artifact"] as Dictionary
-			if not is_story_test_run:
+			if not _is_non_persistent_story_run():
 				ArtifactStore.ensure_artifact_in_stash(account_username, artifact)
 			_artifact_drops.remove_at(i)
 
 func _update_boss_projs(delta: float) -> void:
 	var vp: Rect2 = get_viewport_rect()
+	var player_hit_radius_squared := (PLAYER_R + 12.0) * (PLAYER_R + 12.0)
 	for i in range(_boss_projs.size() - 1, -1, -1):
 		var bp: Dictionary = _boss_projs[i]
+		var delay := float(bp.get("delay", 0.0))
+		if delay > 0.0:
+			bp["delay"] = maxf(0.0, delay - delta)
+			_boss_projs[i] = bp
+			continue
 		var proj_kind: String = bp.get("kind", "straight") as String
 		if proj_kind == "homing":
 			var to_player: Vector2 = _player_pos - (bp["pos"] as Vector2)
@@ -9812,7 +12255,7 @@ func _update_boss_projs(delta: float) -> void:
 			continue
 		# Damage player if they touch it
 		var can_hit: bool = not bool(bp.get("phase_flicker", false)) or _c1_projectile_flicker_alpha(bp) >= 0.45
-		if can_hit and _player_iframes <= 0.0 and bpp.distance_to(_player_pos) < PLAYER_R + 12.0:
+		if can_hit and _player_iframes <= 0.0 and bpp.distance_squared_to(_player_pos) < player_hit_radius_squared:
 			if _damage_player(bp["dmg"] as float, IFRAMES_SEC):
 				return
 			_boss_projs.remove_at(i)
@@ -9954,7 +12397,7 @@ func _apply_level_up_hp_growth() -> void:
 	var hp_gain: float = max(_player_base_max_hp * LEVEL_UP_HP_GAIN_PCT, LEVEL_UP_HP_GAIN_FLAT)
 	_player_base_max_hp += hp_gain
 	_player_max_hp += hp_gain
-	_player_hp = min(_player_max_hp, _player_hp + hp_gain * LEVEL_UP_HEAL_GAIN_MULT)
+	_restore_player_hp(hp_gain * LEVEL_UP_HEAL_GAIN_MULT, false, "major")
 
 # ═════════════════════════════════════════════════════════════════════════════
 # DRAWING
@@ -10001,7 +12444,23 @@ func _draw_adventure_objectives() -> void:
 			"hazard_emitter":
 				var emitter_size := Vector2(210, 210)
 				if _objective_hazard_tex != null: draw_texture_rect(_objective_hazard_tex, Rect2(pos - emitter_size * 0.5, emitter_size), false)
-				draw_arc(pos, 118.0 + sin(_elapsed * 7.0) * 5.0, 0, TAU, 48, Color(1.0, 0.38, 0.10, 0.82), 5.0)
+				var emitter_disabled: bool = _chapter_one != null and _chapter_one.stage_number == 5 and _chapter_one.phase == "crestkeeper_boss"
+				if emitter_disabled:
+					draw_arc(pos, 118.0, 0, TAU, 48, Color(0.32, 0.28, 0.26, 0.72), 5.0)
+					draw_line(pos + Vector2(-54.0, -54.0), pos + Vector2(54.0, 54.0), Color(0.26, 0.20, 0.18, 0.92), 9.0)
+					draw_line(pos + Vector2(54.0, -54.0), pos + Vector2(-54.0, 54.0), Color(0.26, 0.20, 0.18, 0.92), 9.0)
+				else:
+					draw_arc(pos, 118.0 + sin(_elapsed * 7.0) * 5.0, 0, TAU, 48, Color(1.0, 0.38, 0.10, 0.82), 5.0)
+				if _chapter_one != null and _chapter_one.stage_number == 5:
+					for bank_index in 3:
+						var bank_pos := pos + Vector2.from_angle(-PI * 0.5 + TAU * float(bank_index) / 3.0) * 145.0
+						var bank_broken := bank_index < _adventure_progress
+						if bank_broken:
+							draw_line(bank_pos + Vector2(-12.0, -12.0), bank_pos + Vector2(12.0, 12.0), Color(0.32, 0.22, 0.18, 0.88), 5.0)
+							draw_line(bank_pos + Vector2(12.0, -12.0), bank_pos + Vector2(-12.0, 12.0), Color(0.32, 0.22, 0.18, 0.88), 5.0)
+						else:
+							draw_circle(bank_pos, 16.0 + sin(_elapsed * 6.0 + float(bank_index)) * 2.0, Color(1.0, 0.44, 0.12, 0.30))
+							draw_arc(bank_pos, 18.0, 0.0, TAU, 18, Color(1.0, 0.76, 0.22, 0.94), 4.0)
 				if _chapter_one != null and _chapter_one.stage_number == 5 and _chapter_one.phase == "rotating_barrage" and _c1_phase_timer <= 5.0:
 					draw_string(font, pos + Vector2(-110.0, -145.0), "OVERHEATING", HORIZONTAL_ALIGNMENT_CENTER, 220.0, 25, Color(1.0, 0.82, 0.18))
 				if _chapter_one != null and _chapter_one.stage_number == 5 and _chapter_one.phase == "overheat_burst" and _chapter_one_overheat_burst_tex != null:
@@ -10065,6 +12524,34 @@ func _draw_custom_story_prop(prop: Dictionary, font: Font) -> void:
 	var pos: Vector2 = prop.pos
 	var color := _custom_story_prop_color(kind)
 	var pulse := 1.0 + sin(_elapsed * 4.0 + pos.x * 0.01) * 0.08
+	if kind == "armour_crystal" and prop.has("crystal"):
+		var colossus_index := _find_story_enemy("frost_colossus")
+		if colossus_index >= 0:
+			var link_color := Color(0.42, 0.86, 1.0, 0.34 if bool(prop.get("exposed", false)) else 0.72)
+			draw_line(pos, _enemies[colossus_index].get("pos", pos) as Vector2, link_color, 5.0)
+		if not bool(prop.get("exposed", false)):
+			draw_arc(pos, 68.0, 0.0, TAU, 32, Color(0.64, 0.92, 1.0, 0.82), 5.0)
+	if kind == "regulator":
+		var behemoth_index := _find_story_enemy("c4_thunderforge_behemoth")
+		if behemoth_index >= 0:
+			var regulator_online := not bool(prop.get("disabled", false))
+			var conduit_color := Color(1.0, 0.58, 0.12, 0.72) if regulator_online else Color(0.24, 0.20, 0.18, 0.40)
+			draw_line(pos, _enemies[behemoth_index].get("pos", pos) as Vector2, conduit_color, 6.0 if regulator_online else 3.0)
+	if kind == "ritual_anchor":
+		var king_index := _find_story_enemy("abyss_king")
+		var anchor_type := str(prop.get("anchor_type", ""))
+		var anchor_color := {"dominion":Color(0.92, 0.58, 0.22), "ruin":Color(0.72, 0.20, 0.62), "reflection":Color(0.38, 0.78, 1.0)}.get(anchor_type, color) as Color
+		if king_index >= 0:
+			draw_line(pos, _enemies[king_index].get("pos", pos) as Vector2, Color(anchor_color.r, anchor_color.g, anchor_color.b, 0.70), 6.0)
+		draw_arc(pos, 72.0, 0.0, TAU, 32, Color(anchor_color.r, anchor_color.g, anchor_color.b, 0.96 if _is_c5_anchor_vulnerable(prop) else 0.56), 6.0 if _is_c5_anchor_vulnerable(prop) else 3.0)
+	if kind == "abyss_crown":
+		var crown_sections := int(prop.get("sections", 4))
+		var crown_color := Color(1.0, 0.42, 0.80) if _is_abyss_crown_vulnerable() else Color(0.58, 0.72, 1.0)
+		draw_circle(pos, 84.0, Color(crown_color.r, crown_color.g, crown_color.b, 0.12))
+		draw_arc(pos, 84.0, 0.0, TAU, 36, Color(crown_color.r, crown_color.g, crown_color.b, 0.92), 6.0)
+		for broken_section in range(crown_sections, 4):
+			var crack_angle := -PI * 0.75 + float(broken_section) * PI * 0.5
+			draw_line(pos + Vector2.from_angle(crack_angle) * 28.0, pos + Vector2.from_angle(crack_angle + 0.22) * 78.0, Color(0.08, 0.04, 0.12, 0.92), 6.0)
 	if kind == "brazier" and bool(prop.get("active", false)):
 		var warmth_color: Color = Color(0.38, 0.72, 1.0, 0.10) if bool(prop.get("suppressed", false)) else Color(1.0, 0.58, 0.16, 0.12)
 		draw_circle(pos, 245.0, warmth_color)
@@ -10097,10 +12584,16 @@ func _draw_custom_story_prop(prop: Dictionary, font: Font) -> void:
 		var sight_range: float = 410.0
 		var left: Vector2 = pos + facing.rotated(-0.58) * sight_range
 		var right: Vector2 = pos + facing.rotated(0.58) * sight_range
-		draw_colored_polygon(PackedVector2Array([pos, left, right]), Color(1.0, 0.18, 0.12, 0.18))
-		draw_line(pos, left, Color(1.0, 0.30, 0.20, 0.82), 4.0)
-		draw_line(pos, right, Color(1.0, 0.30, 0.20, 0.82), 4.0)
-		draw_arc(pos, sight_range, facing.angle() - 0.58, facing.angle() + 0.58, 28, Color(1.0, 0.30, 0.20, 0.82), 4.0)
+		draw_colored_polygon(PackedVector2Array([pos, left, right]), Color(1.0, 0.18, 0.12, 0.24 if _high_contrast_telegraphs else 0.18))
+		var sentry_edge_width := 7.0 if _high_contrast_telegraphs else 4.0
+		draw_line(pos, left, Color(1.0, 0.30, 0.20, 0.94 if _high_contrast_telegraphs else 0.82), sentry_edge_width)
+		draw_line(pos, right, Color(1.0, 0.30, 0.20, 0.94 if _high_contrast_telegraphs else 0.82), sentry_edge_width)
+		draw_arc(pos, sight_range, facing.angle() - 0.58, facing.angle() + 0.58, 28, Color(1.0, 0.30, 0.20, 0.94 if _high_contrast_telegraphs else 0.82), sentry_edge_width)
+		draw_dashed_line(pos + facing * 48.0, pos + facing * sight_range, Color(1.0, 0.92, 0.72, 0.78), 3.0, 22.0)
+		if _enhanced_hazard_patterns:
+			for ray_index in 5:
+				var angle := lerpf(-0.48, 0.48, float(ray_index) / 4.0)
+				draw_dashed_line(pos + facing.rotated(angle) * 70.0, pos + facing.rotated(angle) * sight_range, Color(1.0, 0.72, 0.44, 0.38), 2.0, 18.0)
 		_draw_custom_story_asset(kind, pos, pulse)
 	else:
 		if not _draw_custom_story_asset(kind, pos, pulse):
@@ -10215,12 +12708,24 @@ func _custom_story_prop_color(kind: String) -> Color:
 func _custom_story_prop_marker(prop: Dictionary) -> String:
 	var kind := str(prop.get("kind", ""))
 	if kind == "brazier" and bool(prop.get("suppressed", false)): return "SUPPRESSED"
-	if kind == "armour_crystal" and bool(prop.get("exposed", false)): return "EXPOSED"
+	if kind == "armour_crystal" and prop.has("crystal"):
+		var crystal_system := StoryBossPresentationClass.crystal_system(int(prop.get("crystal", 0)))
+		return "%s · %s" % [crystal_system, "CORE EXPOSED" if bool(prop.get("exposed", false)) else "ARMOURED"]
 	if kind == "released_soul" and bool(prop.get("refrozen", false)): return "REFROZEN"
 	if kind == "released_soul" and float(prop.get("refreeze", 0.0)) > 1.0: return "%d%%" % roundi(float(prop.get("refreeze", 0.0)))
-	if kind == "mimic_chest" and bool(prop.get("excluded", false)): return "FROST FOUND"
+	if kind == "mimic_chest":
+		var chest_number: int = int(prop.get("chest", 0)) + 1
+		return "SAFE · CHEST %d" % chest_number if bool(prop.get("excluded", false)) else "CHEST %d" % chest_number
+	if kind == "frost_clue":
+		return str(prop.get("text", "CLUE")) if bool(prop.get("inspected", false)) else "INSPECT CLUE"
 	if kind == "thaw_rune": return str(int(prop.get("rune", 0)) + 1)
-	if kind == "regulator": return str(int(prop.get("regulator", 0)) + 1)
+	if kind == "regulator":
+		var regulator_id := int(prop.get("regulator", 0))
+		return "%s · %s" % [StoryBossPresentationClass.regulator_system(regulator_id), "OFFLINE" if bool(prop.get("disabled", false)) else "ACTIVE"]
+	if kind == "ritual_anchor":
+		return "%s · %s" % [StoryBossPresentationClass.anchor_name(str(prop.get("anchor_type", ""))), "VULNERABLE" if _is_c5_anchor_vulnerable(prop) else "PROTECTED"]
+	if kind == "abyss_crown":
+		return "%s · %d/4" % ["CROWN VULNERABLE" if _is_abyss_crown_vulnerable() else "CROWN REFLECTING", int(prop.get("sections", 4))]
 	if kind == "c4_ore_deposit":
 		if bool(prop.get("heat_locked", false)): return "SEALED BY HEAT · USE A COOLING VENT"
 		if float(prop.get("progress", 0.0)) > 0.0:
@@ -10244,7 +12749,10 @@ func _custom_story_prop_marker(prop: Dictionary) -> String:
 			return "SAFE POINT %d · HOLD %ds" % [int(prop.get("section", 0)) + 1, ceili(10.0 - activation_progress)]
 		return "SAFE POINT %d · HOLD 10s" % (int(prop.get("section", 0)) + 1)
 	if kind == "mirror_portal": return str(prop.get("symbol", int(prop.get("portal", 0)) + 1))
-	if kind == "sentry": return str(prop.get("state", "unaware")).to_upper()
+	if kind == "sentry":
+		var sentry_state := str(prop.get("state", "unaware")).to_lower()
+		var sentry_symbol := str({"unaware":"○", "suspicious":"?", "searching":"!!", "alert":"!"}.get(sentry_state, "!"))
+		return "%s  %s" % [sentry_symbol, sentry_state.to_upper()] if _color_independent_indicators else sentry_state.to_upper()
 	if kind == "security_switch": return "DISABLED" if bool(prop.get("disabled", false)) else "HOLD TO DISABLE"
 	if kind == "spirit_safe_zone": return "SPIRIT SANCTUARY"
 	if kind == "portal_seal": return "STABLE" if bool(prop.get("stable", false)) else "HOLD TO STABILIZE"
@@ -10265,7 +12773,9 @@ func _custom_story_prop_marker(prop: Dictionary) -> String:
 		if bool(prop.get("purified", false)): return "PURIFIED"
 		if pool_index == _chapter_three.count("pools_purified"): return "PURIFY HERE"
 		return "LOCKED"
-	if kind == "c3_tracking_clue": return "TRAIL %d" % (int(prop.get("route", 0)) + 1)
+	if kind == "c3_tracking_clue":
+		var trail_number: int = int(prop.get("route", 0)) + 1
+		return "FRESH SPORES · TRAIL %d" % trail_number if bool(prop.get("correct", false)) else "STALE TRACKS · TRAIL %d" % trail_number
 	if kind == "c3_region":
 		var region: int = int(prop.get("region", 0))
 		if _chapter_three != null and _chapter_three.count("selection_region") == region and _c3_action_timer > 0.0:
@@ -10299,7 +12809,6 @@ func _custom_story_prop_marker(prop: Dictionary) -> String:
 			if heat > 82.0: return "STAND NEAR · COOL"
 			return "BREWING"
 	if kind == "ember_ore": return "+%d" % int(prop.get("value", 1))
-	if kind == "mimic_chest" and bool(prop.get("real", false)) and sin(_elapsed * 5.0) > 0.78: return "?"
 	return ""
 
 func _draw_story_objective_indicators() -> void:
@@ -10322,9 +12831,11 @@ func _draw_story_objective_indicators() -> void:
 		_draw_player_direction_indicator(objective_pos, indicator_label, color, near_radius)
 	for enemy in _enemies:
 		var tag := str(enemy.get("story_tag", ""))
+		if str(enemy.get("primary_role", "")) == "sniper" and str(enemy.get("role_state", "")) == "aiming" and not _is_world_pos_visible(enemy.pos as Vector2, 100.0):
+			_draw_player_direction_indicator(enemy.pos as Vector2, "SNIPER AIMING", Color(1.0, 0.26, 0.16, 0.98), 300.0)
 		var chapter_four_target: bool = tag.begins_with("c4_golem_") or tag.begins_with("c4_chamber_guardian_") or tag in ["c4_ore_thief", "c4_cart_blocker", "c4_relic_guardian", "c4_thunderforge_behemoth", "c4_forge_jammer"]
-		if tag not in ["fleeing_key_carrier", "protected_key_carrier", "watchpath_captain", "frost_mimic", "frost_colossus", "plaguebeast", "c3_energy_carrier", "c3_plague_sighting", "c3_plaguebeast_final", "c3_marked_spider", "c3_marked_toad", "c3_marked_wasp", "c3_blight_tyrant", "rogue_golem", "relic_guardian", "abyss_king"] and not chapter_four_target: continue
-		var label: String = str({"fleeing_key_carrier":"Fleeing Carrier", "protected_key_carrier":"Protected Carrier", "watchpath_captain":"Watchpath Captain", "frost_mimic":"Frost Mimic", "frost_colossus":"Frostbound Colossus", "plaguebeast":"Plaguebeast", "c3_energy_carrier":"Cleansing Energy Carrier", "c3_plague_sighting":"Plaguebeast Sighting", "c3_plaguebeast_final":"Plaguebeast", "c3_marked_spider":"Marked Spider", "c3_marked_toad":"Marked Toad", "c3_marked_wasp":"Marked Wasp", "c3_blight_tyrant":"Blight Vine Tyrant", "c4_ore_thief":"Ore Thief", "c4_cart_blocker":"Cart Obstruction", "c4_relic_guardian":"Relic Guardian", "c4_thunderforge_behemoth":"Thunderforge Behemoth", "c4_forge_jammer":"Forge Jammer", "rogue_golem":"Rogue Golem", "relic_guardian":"Chamber Guardian", "abyss_king":"Abyss King"}.get(tag, "Rogue Golem" if tag.begins_with("c4_golem_") else ("Chamber Guardian" if tag.begins_with("c4_chamber_guardian_") else "Target")))
+		if tag not in ["fleeing_key_carrier", "protected_key_carrier", "watchpath_captain", "frost_mimic", "frost_colossus", "plaguebeast", "c3_energy_carrier", "c3_plague_sighting", "c3_plaguebeast_final", "c3_marked_spider", "c3_marked_toad", "c3_marked_wasp", "c3_blight_tyrant", "c5_portal_keeper", "c5_mirror_guardian", "c5_eclipse_elite", "rogue_golem", "relic_guardian", "abyss_king"] and not chapter_four_target: continue
+		var label: String = str({"fleeing_key_carrier":"Fleeing Carrier", "protected_key_carrier":"Protected Carrier", "watchpath_captain":"Watchpath Captain", "frost_mimic":"Frost Mimic", "frost_colossus":"Frostbound Colossus", "plaguebeast":"Plaguebeast", "c3_energy_carrier":"Cleansing Energy Carrier", "c3_plague_sighting":"Plaguebeast Sighting", "c3_plaguebeast_final":"Plaguebeast", "c3_marked_spider":"Marked Spider", "c3_marked_toad":"Marked Toad", "c3_marked_wasp":"Marked Wasp", "c3_blight_tyrant":"Blight Vine Tyrant", "c4_ore_thief":"Ore Thief", "c4_cart_blocker":"Cart Obstruction", "c4_relic_guardian":"Relic Guardian", "c4_thunderforge_behemoth":"Thunderforge Behemoth", "c4_forge_jammer":"Forge Jammer", "c5_portal_keeper":"Portal Keeper", "c5_mirror_guardian":"Mirror Guardian", "c5_eclipse_elite":"Eclipse Elite", "rogue_golem":"Rogue Golem", "relic_guardian":"Chamber Guardian", "abyss_king":"Abyss King"}.get(tag, "Rogue Golem" if tag.begins_with("c4_golem_") else ("Chamber Guardian" if tag.begins_with("c4_chamber_guardian_") else "Target")))
 		if tag.begins_with("c4_golem_") and _chapter_four != null and _chapter_four.flag("capture_ready"):
 			label = "CAPTURABLE · Hold Nearby"
 		_draw_player_direction_indicator(enemy.pos as Vector2, label, Color(1.0, 0.42, 0.18, 0.98), 240.0)
@@ -10405,8 +12916,71 @@ func _story_objective_indicator_label(kind: String) -> String:
 		_: return _custom_story_indicator_label(kind) if _is_custom_story_prop(kind) else "Key"
 
 func _custom_story_indicator_label(kind: String) -> String:
+	if kind == "released_soul" and _chapter_two != null and _chapter_two.stage_number == 2:
+		return "Frozen Captive"
 	var labels := {"brazier":"Frozen Brazier", "ice_prison":"Ice Prison", "thaw_rune":"Next Rune", "mimic_chest":"Chest", "armour_crystal":"Armour Crystal", "corrupted_pool":"Active Corrupted Pool", "tracker":"Plaguebeast", "c3_cleansing_energy":"Cleansing Energy", "c3_corruption_node":"Corruption Node", "c3_tracking_clue":"Tracking Clue", "c3_region":"Harvest Region", "c3_web_nest":"Web Nest", "c3_bile_vessel":"Bile Vessel", "c3_wasp_hive":"Wasp Hive", "c3_cleanse_station":"Cleansing Station", "c3_extraction":"Ingredient Extraction", "c3_vial":"Antidote Vial", "c3_route":"Route Choice", "c3_cure_checkpoint":"Cure Checkpoint", "c3_brew_ingredient":"Brew Ingredient", "infected_altar":"Infected Altar", "ingredient":"Ingredient", "cauldron":"Cauldron", "ember_ore":"Ember Ore", "lava_valve":"Lava Valve", "relic_chamber":"Relic Chamber", "relic_forge":"Central Forge", "regulator":"Next Regulator", "c4_ore_deposit":"Ember Ore Deposit", "c4_ore_bag":"Dropped Ember Ore", "c4_mining_cart":"Mining Cart", "c4_cooling_vent":"Cooling Vent", "c4_lava_vent":"Lava Vent", "c4_extraction":"Extraction", "c4_forge_mechanism":"Forge Mechanism", "c4_route_node":"Powered Route", "c4_charge_wall":"Charge Wall", "c4_tether":"Forge Tether", "hiding_zone":"Next Safe Point", "citadel_gate":"Inner Citadel", "soul_chain":"Soul Chain", "released_soul":"Released Soul", "mirror_portal":"Mirror Portal", "eclipse_obelisk":"Obelisk", "ritual_anchor":"Ritual Anchor", "abyss_crown":"Abyss Crown", "security_switch":"Security Switch", "spirit_safe_zone":"Spirit Sanctuary", "portal_seal":"Portal Stabilizer", "mirror_clue":"Clue Inscription", "labyrinth_exit":"Labyrinth Exit", "eclipse_seal":"Corruption Seal", "eclipse_ring":"Eclipse Rings", "eclipse_shortcut":"Route Shortcut", "crown_seal":"Crown Seal", "final_threshold":"Escape Threshold"}
 	return str(labels.get(kind, "Objective"))
+
+func _draw_story_mutator_effects() -> void:
+	var boss_override := not _readability_boss_mode().is_empty()
+	var mutator_priority_scale := 0.48 if boss_override else 1.0
+	var ground_overlap_scale := 1.0 / (1.0 + maxf(float(_story_mutator_ground_zones.size() - 1), 0.0) * 0.12)
+	for zone in _story_mutator_ground_zones:
+		var zone_pos := zone.get("pos", Vector2.ZERO) as Vector2
+		var zone_radius := float(zone.get("r", 82.0))
+		var life_ratio := clampf(float(zone.get("life", 0.0)) / maxf(float(zone.get("max_life", 1.0)), 0.01), 0.0, 1.0)
+		draw_circle(zone_pos, zone_radius, Color(0.42, 0.08, 0.54, 0.18 * life_ratio * ground_overlap_scale * mutator_priority_scale))
+		draw_arc(zone_pos, zone_radius, 0.0, TAU, 30, Color(0.86, 0.30, 1.0, 0.72 * life_ratio * mutator_priority_scale), 3.0)
+	var burst_overlap_scale := 1.0 / (1.0 + maxf(float(_story_mutator_volatile_bursts.size() - 1), 0.0) * 0.18)
+	for burst in _story_mutator_volatile_bursts:
+		var burst_pos := burst.get("pos", Vector2.ZERO) as Vector2
+		var burst_radius := float(burst.get("r", 112.0))
+		var burst_ratio := clampf(1.0 - float(burst.get("life", 0.0)) / maxf(float(burst.get("max_life", 1.0)), 0.01), 0.0, 1.0)
+		draw_circle(burst_pos, burst_radius * burst_ratio, Color(1.0, 0.22, 0.05, 0.13 * burst_overlap_scale * mutator_priority_scale))
+		draw_arc(burst_pos, burst_radius, 0.0, TAU, 32, Color(1.0, 0.62, 0.18, (0.42 + burst_ratio * 0.48) * mutator_priority_scale), 5.0)
+	if not _story_mutator_pressure_wave.is_empty():
+		var wave_center := _story_mutator_pressure_wave.get("center", Vector2.ZERO) as Vector2
+		var wave_direction := _story_mutator_pressure_wave.get("direction", Vector2.RIGHT) as Vector2
+		var perpendicular := Vector2(-wave_direction.y, wave_direction.x)
+		var telegraphing := float(_story_mutator_pressure_wave.get("telegraph", 0.0)) > 0.0
+		var wave_color := Color(1.0, 0.78, 0.20, (0.48 if telegraphing else 0.92) * mutator_priority_scale)
+		draw_line(wave_center - perpendicular * 1200.0, wave_center + perpendicular * 1200.0, wave_color, (14.0 if telegraphing else 34.0) * (0.62 if boss_override else 1.0))
+	if _story_mutator_has("frostbite") and _story_mutator_frostbite >= 1.2:
+		var frost_ratio := clampf((_story_mutator_frostbite - 1.2) / 0.8, 0.0, 1.0)
+		draw_arc(_player_pos, PLAYER_R + 18.0, 0.0, TAU, 28, Color(0.42, 0.86, 1.0, 0.45 + frost_ratio * 0.45), 3.0 + frost_ratio * 3.0)
+
+func _draw_boss_presentation() -> void:
+	for telegraph in _boss_telegraphs:
+		var pos := telegraph.get("pos", Vector2.ZERO) as Vector2
+		if not _is_world_pos_visible(pos, float(telegraph.get("length", telegraph.get("radius", 160.0)))):
+			continue
+		var life_ratio := clampf(float(telegraph.get("life", 0.0)) / maxf(float(telegraph.get("max_life", 1.0)), 0.01), 0.0, 1.0)
+		var color := telegraph.get("color", Color(1.0, 0.22, 0.12)) as Color
+		var kind := str(telegraph.get("kind", "circle"))
+		if kind == "line":
+			var direction := telegraph.get("dir", Vector2.RIGHT) as Vector2
+			var length := float(telegraph.get("length", 600.0))
+			var side := Vector2(-direction.y, direction.x)
+			var half_width := float(telegraph.get("width", 32.0)) * 0.5
+			var end := pos + direction * length
+			draw_line(pos + side * half_width, end + side * half_width, Color(color.r, color.g, color.b, 0.55 * life_ratio), 3.0)
+			draw_line(pos - side * half_width, end - side * half_width, Color(color.r, color.g, color.b, 0.55 * life_ratio), 3.0)
+			for marker_index in 5:
+				var marker_pos := pos.lerp(end, float(marker_index + 1) / 6.0)
+				draw_colored_polygon(PackedVector2Array([marker_pos + direction * 13.0, marker_pos - direction * 8.0 + side * 8.0, marker_pos - direction * 8.0 - side * 8.0]), Color(color.r, color.g, color.b, 0.72 * life_ratio))
+		else:
+			var radius := float(telegraph.get("radius", 80.0))
+			draw_circle(pos, radius, Color(color.r, color.g, color.b, 0.10 * life_ratio))
+			draw_arc(pos, radius, 0.0, TAU, 36, Color(color.r, color.g, color.b, 0.82 * life_ratio), 4.0)
+			draw_line(pos + Vector2(-radius * 0.45, 0.0), pos + Vector2(radius * 0.45, 0.0), Color(color.r, color.g, color.b, 0.65 * life_ratio), 2.0)
+			draw_line(pos + Vector2(0.0, -radius * 0.45), pos + Vector2(0.0, radius * 0.45), Color(color.r, color.g, color.b, 0.65 * life_ratio), 2.0)
+	for effect in _boss_transition_fx:
+		var pos := effect.get("pos", Vector2.ZERO) as Vector2
+		var progress := 1.0 - clampf(float(effect.get("life", 0.0)) / maxf(float(effect.get("max_life", 1.0)), 0.01), 0.0, 1.0)
+		var color := effect.get("color", Color.WHITE) as Color
+		for ring_index in 3:
+			var radius := 55.0 + progress * (155.0 + float(ring_index) * 42.0)
+			draw_arc(pos, radius, 0.0, TAU, 42, Color(color.r, color.g, color.b, (1.0 - progress) * (0.76 - float(ring_index) * 0.16)), 6.0 - float(ring_index))
 
 func _draw() -> void:
 	var view_size: Vector2 = get_viewport_rect().size
@@ -10414,7 +12988,10 @@ func _draw() -> void:
 	_draw_world_rect = Rect2(draw_center - view_size * 0.5, view_size)
 	_draw_bg()
 	_draw_adventure_objectives()
-	_draw_story_objective_indicators()
+	# The readability overlay selects and emphasizes one objective and one urgent
+	# threat, avoiding equal-arrow spam in multi-objective stages.
+	_draw_story_mutator_effects()
+	_draw_boss_presentation()
 
 	# XP orbs
 	for orb in _xp_orbs:
@@ -10947,6 +13524,23 @@ func _draw() -> void:
 			draw_rect(Rect2(bar_x, bar_y, bar_w * sc_hp, 5.0), Color(0.60, 0.28, 0.92, 0.92))
 		# Keep assassin clone fade clean (no extra fade circles).
 
+	# Bounded enemy-role entities. Hazards never interact with Story props.
+	for hazard in _enemy_role_hazards:
+		var hazard_pos := hazard.get("pos", Vector2.ZERO) as Vector2
+		if not _is_world_pos_visible(hazard_pos, 180.0):
+			continue
+		var hazard_life_ratio := clampf(float(hazard.get("life", 0.0)) / maxf(float(hazard.get("max_life", 1.0)), 0.01), 0.0, 1.0)
+		var hazard_radius := float(hazard.get("r", 100.0))
+		draw_circle(hazard_pos, hazard_radius, Color(0.34, 0.82, 0.28, 0.14 * hazard_life_ratio))
+		draw_arc(hazard_pos, hazard_radius, 0.0, TAU, 32, Color(0.56, 1.0, 0.42, 0.82 * hazard_life_ratio), 3.0)
+	for projectile in _enemy_role_projectiles:
+		var projectile_pos := projectile.get("pos", Vector2.ZERO) as Vector2
+		if not _is_world_pos_visible(projectile_pos, 80.0):
+			continue
+		var projectile_color := Color(0.46, 0.78, 1.0) if str(projectile.get("kind", "")) == "controller" else Color(1.0, 0.32, 0.18)
+		draw_circle(projectile_pos, 10.0, Color(projectile_color.r, projectile_color.g, projectile_color.b, 0.28))
+		draw_circle(projectile_pos, 5.0, projectile_color)
+
 	# Enemies
 	for e in _enemies:
 		var ep: Vector2    = e["pos"] as Vector2
@@ -10955,10 +13549,12 @@ func _draw() -> void:
 		var er: float      = (e["r"] as float) * ENEMY_DRAW_SCALE
 		var ec: Color      = e["col"] as Color
 		var ekind: String  = e.get("kind", "normal") as String
+		var e_visual_kind: String = str(e.get("visual_kind", ekind))
 		var efrozen: bool  = (e.get("iframes", 0.0) as float) > 0.0 and _has_skill("ice_orb")
 		var enraged: bool  = (e.get("alive_t", 0.0) as float) >= 8.0
 		var marked: bool   = (e.get("tg_mark_t", 0.0) as float) > 0.0
 		var poisoned: bool = (e.get("poison_t", 0.0) as float) > 0.0
+		var hit_flash: bool = float(e.get("hit_flash_t", 0.0)) > 0.0
 		# Walk animation — normals bob; bosses stay planted
 		var e_alive_t: float = e.get("alive_t", 0.0) as float
 		var e_facing_x: int  = e.get("facing_x", 1) as int
@@ -10967,6 +13563,8 @@ func _draw() -> void:
 		var e_walk: float    = e_alive_t * 9.0
 		var e_bob: float     = 0.0 if e_is_boss else sin(e_walk) * 2.5
 		var edp: Vector2     = ep + Vector2(0.0, e_bob)
+		if bool(e.get("role_enabled", false)):
+			_draw_enemy_role_telegraph(e, edp, er)
 		# Stubby legs behind body (normals without texture only)
 		if not e_is_boss and not _enemy_tex.has(ekind) and e_story_tex == null:
 			var e_leg_col: Color = ec.darkened(0.30)
@@ -10978,19 +13576,21 @@ func _draw() -> void:
 		var draw_col: Color = Color(0.62, 0.82, 0.95) if efrozen else ec
 		if enraged and not efrozen:
 			draw_col = ec.lerp(Color(1.0, 0.18, 0.05), 0.55)
+		if hit_flash:
+			draw_col = draw_col.lerp(Color.WHITE, 0.38)
 		# Draw PNG sprite when an imported enemy or boss image exists, otherwise fallback to shape art.
-		var e_has_tex: bool = _enemy_tex.has(ekind) or e_story_tex != null
+		var e_has_tex: bool = _enemy_tex.has(e_visual_kind) or e_story_tex != null
 		if e_has_tex:
 			var e_tex_size: float = er * 2.4
 			var enemy_squash := 1.0 + sin(e_walk * 2.0) * 0.035 if not e_is_boss else 1.0
 			var enemy_tilt := sin(e_walk) * 0.035 if not e_is_boss else 0.0
 			draw_set_transform(edp, enemy_tilt * float(e_facing_x), Vector2(float(e_facing_x) / enemy_squash, enemy_squash))
-			var enemy_modulate := Color(1, 1, 1, 0.55) if efrozen else Color.WHITE
+			var enemy_modulate := Color(1, 1, 1, 0.55) if efrozen else (Color(1.20, 1.20, 1.20, 1.0) if hit_flash else Color.WHITE)
 			if e_story_tex != null:
 				draw_texture_rect(e_story_tex, Rect2(Vector2(-e_tex_size * 0.65, -e_tex_size * 0.65), Vector2(e_tex_size * 1.3, e_tex_size * 1.3)), false, enemy_modulate)
-			elif not e_is_boss and _enemy_walk_tex.has(ekind):
-				var walk_tex := _enemy_walk_tex[ekind] as Texture2D
-				var frame := posmod(int(floor(e_alive_t * (11.0 if ekind == "normal_fast" else 7.0))), 4)
+			elif not e_is_boss and _enemy_walk_tex.has(e_visual_kind):
+				var walk_tex := _enemy_walk_tex[e_visual_kind] as Texture2D
+				var frame := posmod(int(floor(e_alive_t * (11.0 if e_visual_kind == "normal_fast" else 7.0))), 4)
 				var source_size := walk_tex.get_size()
 				var frame_width := source_size.x / 4.0
 				var frame_y := maxf((source_size.y - frame_width) * 0.5, 0.0)
@@ -11002,7 +13602,7 @@ func _draw() -> void:
 				)
 			else:
 				draw_texture_rect(
-					_enemy_tex[ekind] as Texture2D,
+					_enemy_tex[e_visual_kind] as Texture2D,
 					Rect2(Vector2(-e_tex_size * 0.5, -e_tex_size * 0.5), Vector2(e_tex_size, e_tex_size)),
 					false,
 					enemy_modulate
@@ -11019,6 +13619,16 @@ func _draw() -> void:
 			draw_arc(edp, er + 4.0, 0.0, TAU, 20, Color(1.0, 0.10, 0.05, pulse), 2.5)
 		if marked:
 			draw_circle(edp, er + 9.0, Color(1.0, 0.96, 0.55, 0.20))
+		if bool(e.get("mutator_elite", false)):
+			var elite_color := Color(1.0, 0.20, 0.10, 0.94) if bool(e.get("mutator_berserk", false)) else Color(1.0, 0.72, 0.18, 0.92)
+			draw_arc(edp, er + 11.0, 0.0, TAU, 28, elite_color, 4.0)
+		if bool(e.get("mutator_hunters_mark", false)):
+			draw_arc(edp, er + 18.0, 0.0, TAU, 28, Color(0.82, 0.28, 1.0, 0.96), 4.0)
+			draw_line(edp + Vector2(-10.0, -er - 26.0), edp + Vector2(10.0, -er - 6.0), Color(0.94, 0.58, 1.0), 3.0)
+			draw_line(edp + Vector2(10.0, -er - 26.0), edp + Vector2(-10.0, -er - 6.0), Color(0.94, 0.58, 1.0), 3.0)
+		if bool(e.get("mutator_volatile", false)):
+			var volatile_pulse := 0.55 + sin(_elapsed * 8.0) * 0.30
+			draw_circle(edp, er + 6.0, Color(1.0, 0.34, 0.08, volatile_pulse * 0.22))
 		if poisoned:
 			draw_circle(edp, er + 4.0, Color(0.34, 1.0, 0.35, 0.14))
 			draw_circle(edp, er + 6.0, Color(0.52, 1.0, 0.40, 0.12))
@@ -11089,7 +13699,8 @@ func _draw() -> void:
 				for ti in 5:
 					var tang: float = float(ti) / 5.0 * TAU + _elapsed * 3.2
 					draw_circle(edp + Vector2(cos(tang), sin(tang)) * (er + 9.0), 5.0, Color(0.45, 0.95, 0.32, 0.68))
-				_draw_boss_name(edp, er, "Blight Vine Tyrant", Color(0.40, 0.92, 0.30))
+				var blight_name := "Crestkeeper" if str(e.get("story_tag", "")) == "crestkeeper" else "Blight Vine Tyrant"
+				_draw_boss_name(edp, er, blight_name, Color(1.0, 0.52, 0.16) if blight_name == "Crestkeeper" else Color(0.40, 0.92, 0.30))
 			"thunderforge_behemoth":
 				# Yellow/gold electric aura
 				draw_arc(edp, er + 6.0, 0.0, TAU, 32, Color(0.95, 0.75, 0.20, 0.80), 4.0)
@@ -11112,7 +13723,15 @@ func _draw() -> void:
 					draw_circle(edp, er + 8.0, Color(0.28, 0.82, 1.0, 0.18))
 				else:
 					draw_arc(edp, er + 4.0, 0.0, TAU, 24, Color(0.18, 0.60, 0.88, 0.60), 2.0)
-				_draw_boss_name(edp, er, "Shield Boss", Color(0.28, 0.85, 1.0))
+				_draw_boss_name(edp, er, "Frostbound Colossus" if str(e.get("story_tag", "")) == "frost_colossus" else "Shield Boss", Color(0.28, 0.85, 1.0))
+			"abyss_king_boss":
+				var ritual_protected: bool = _chapter_five != null and not _chapter_five.flag("final_phase_entered")
+				var king_pulse: float = 0.70 + sin(_elapsed * 5.0) * 0.22
+				draw_circle(edp, er + 15.0, Color(0.54, 0.16, 0.82, 0.18 if ritual_protected else 0.08))
+				draw_arc(edp, er + 15.0, 0.0, TAU, 40, Color(0.82, 0.42, 1.0, king_pulse), 6.0 if ritual_protected else 3.0)
+				if _chapter_five != null and _chapter_five.phase == "desperation":
+					draw_arc(edp, er + 25.0, -_elapsed * 2.8, -_elapsed * 2.8 + PI * 1.55, 34, Color(1.0, 0.18, 0.34, 0.92), 6.0)
+				_draw_boss_name(edp, er, "Abyss King", Color(0.82, 0.54, 1.0))
 			"shooter_boss":
 				# Orange/fire aura with projectile indicators
 				draw_arc(edp, er + 5.0, 0.0, TAU, 28, Color(1.0, 0.55, 0.10, 0.75), 3.2)
@@ -11131,6 +13750,18 @@ func _draw() -> void:
 				# Eye (fallback for any future boss or unknown kind)
 				if not e_has_tex:
 					draw_circle(edp + Vector2(er * 0.28 * float(e_facing_x), -er * 0.22), er * 0.22, Color(1, 0.9, 0.8))
+		var story_tag := str(e.get("story_tag", ""))
+		if story_tag == "frost_colossus" and _chapter_two != null:
+			for crystal_index in range(_chapter_two.count("crystals_broken"), 3):
+				var crystal_angle := -PI * 0.5 + TAU * float(crystal_index) / 3.0 + _elapsed * 0.18
+				var crystal_color: Color = [Color(0.42, 0.86, 1.0), Color(0.28, 0.64, 1.0), Color(0.74, 0.92, 1.0)][crystal_index]
+				draw_line(edp, edp + Vector2.from_angle(crystal_angle) * (er + 32.0), Color(crystal_color.r, crystal_color.g, crystal_color.b, 0.64), 4.0)
+		if story_tag == "c4_thunderforge_behemoth" and _chapter_four != null:
+			for system_index in 4:
+				if _chapter_four.flag("boss_system_%d_disabled" % system_index):
+					continue
+				var system_angle := -PI * 0.75 + float(system_index) * PI * 0.5
+				draw_arc(edp + Vector2.from_angle(system_angle) * (er + 18.0), 9.0, 0.0, TAU, 12, Color(1.0, 0.72, 0.18, 0.90), 3.0)
 		var ehp: float  = e["hp"] as float
 		var emhp: float = e["max_hp"] as float
 		var bw: float = er * 2.6
@@ -11138,14 +13769,21 @@ func _draw() -> void:
 		var by: float = edp.y - er - 18.0
 		draw_rect(Rect2(bx, by, bw, 8), Color(0.15, 0.06, 0.06, 0.85))
 		var bar_col: Color
-		match ekind:
-			"abyss_gate_warden":    bar_col = Color(0.28, 0.90, 1.0)
-			"prism_triarch":        bar_col = Color(0.88, 0.50, 1.0)
-			"blight_vine_tyrant":   bar_col = Color(0.40, 0.92, 0.30)
-			"thunderforge_behemoth": bar_col = Color(1.0, 0.85, 0.25)
-			"normal_tank":          bar_col = Color(0.88, 0.55, 0.12)
-			"normal_fast":          bar_col = Color(0.18, 0.72, 0.98)
-			_:                      bar_col = Color(0.88, 0.15, 0.15)
+		match str(e.get("primary_role", "")):
+			"zoner": bar_col = Color(0.34, 0.88, 0.38)
+			"sniper": bar_col = Color(1.0, 0.42, 0.28)
+			"support": bar_col = Color(0.36, 1.0, 0.58)
+			"controller": bar_col = Color(0.42, 0.68, 1.0)
+			"summoner": bar_col = Color(0.76, 0.42, 1.0)
+			_:
+				match ekind:
+					"abyss_gate_warden":    bar_col = Color(0.28, 0.90, 1.0)
+					"prism_triarch":        bar_col = Color(0.88, 0.50, 1.0)
+					"blight_vine_tyrant":   bar_col = Color(0.40, 0.92, 0.30)
+					"thunderforge_behemoth": bar_col = Color(1.0, 0.85, 0.25)
+					"normal_tank":          bar_col = Color(0.88, 0.55, 0.12)
+					"normal_fast":          bar_col = Color(0.18, 0.72, 0.98)
+					_:                      bar_col = Color(0.88, 0.15, 0.15)
 		draw_rect(Rect2(bx, by, bw * clamp(ehp / emhp, 0.0, 1.0), 8), bar_col)
 		if poisoned:
 			var pi_c: Vector2 = Vector2(edp.x, by - 10.0)
@@ -11234,6 +13872,8 @@ func _draw() -> void:
 
 	# Boss projectiles
 	for bproj in _boss_projs:
+		if float(bproj.get("delay", 0.0)) > 0.0:
+			continue
 		var bpp: Vector2 = bproj["pos"] as Vector2
 		var proj_kind: String = bproj.get("kind", "straight") as String
 		var outer_col: Color = Color(1.0, 0.08, 0.02, 0.92) if proj_kind == "lava_reflect" else Color(1.0, 0.25, 0.05, 0.88) if proj_kind == "homing" else Color(1.0, 0.55, 0.05, 0.85)
@@ -12154,7 +14794,14 @@ func _draw_revamped_skill_effects() -> void:
 	_draw_revamped_skill_zones()
 	_draw_revamped_aoe()
 
+func _readability_player_effect_scale() -> float:
+	return _combat_readability.player_effect_scale() if _combat_readability != null else 1.0
+
+func _readability_decorative_count(full_count: int, minimum: int = 0) -> int:
+	return _combat_readability.decorative_count(full_count, minimum) if _combat_readability != null else full_count
+
 func _draw_revamped_persistent_skills() -> void:
+	var effect_scale := _readability_player_effect_scale()
 	if _has_skill("orb"):
 		var orb_def := _slvl("orb", int(_get_skill("orb")["level"]))
 		var orb_count := int(orb_def.get("orbs", 3))
@@ -12163,8 +14810,8 @@ func _draw_revamped_persistent_skills() -> void:
 		for orb_index in orb_count:
 			var angle := _orb_angle + float(orb_index) * TAU / float(orb_count)
 			var orb_pos := _player_pos + Vector2.from_angle(angle) * orbit_radius
-			draw_circle(orb_pos, orb_radius * 1.55, Color(1.0, 0.58, 0.06, 0.14))
-			draw_circle(orb_pos, orb_radius, Color(1.0, 0.68, 0.08, 0.96))
+			draw_circle(orb_pos, orb_radius * 1.55, Color(1.0, 0.58, 0.06, 0.14 * effect_scale))
+			draw_circle(orb_pos, orb_radius, Color(1.0, 0.68, 0.08, 0.72 + 0.24 * effect_scale))
 			draw_arc(orb_pos, orb_radius * 0.72, angle, angle + PI * 1.35, 18, Color(1.0, 0.94, 0.52, 0.95), 3.0)
 			draw_circle(orb_pos - Vector2(orb_radius * 0.25, orb_radius * 0.28), orb_radius * 0.22, Color(1, 1, 0.88, 0.95))
 	var fields: Array[Dictionary] = [
@@ -12182,24 +14829,26 @@ func _draw_revamped_persistent_skills() -> void:
 		var color: Color = field["color"] as Color
 		var speed := float(field["speed"])
 		var pulse := 0.94 + sin(_elapsed * 3.0) * 0.035
-		draw_circle(_player_pos, radius * pulse, Color(color.r, color.g, color.b, 0.055))
-		for ring in 3:
+		draw_circle(_player_pos, radius * pulse, Color(color.r, color.g, color.b, 0.055 * effect_scale))
+		for ring in _readability_decorative_count(3, 1):
 			var rr := radius * (0.48 + float(ring) * 0.24)
 			var start := _elapsed * speed * (-1.0 if ring % 2 else 1.0) + float(ring)
 			for arc_index in 4:
 				var a := start + float(arc_index) * TAU / 4.0
-				draw_arc(_player_pos, rr, a, a + 0.62, 14, Color(color.r, color.g, color.b, 0.38 - float(ring) * 0.07), 3.6 - float(ring) * 0.6)
-		for mote in 10:
-			var angle := float(mote) / 10.0 * TAU + _elapsed * speed * 0.7
+				draw_arc(_player_pos, rr, a, a + 0.62, 14, Color(color.r, color.g, color.b, (0.38 - float(ring) * 0.07) * effect_scale), 3.6 - float(ring) * 0.6)
+		var mote_count := _readability_decorative_count(10, 3)
+		for mote in mote_count:
+			var angle := float(mote) / float(mote_count) * TAU + _elapsed * speed * 0.7
 			var distance := radius * (0.35 + 0.55 * fmod(float(mote) * 0.618, 1.0))
 			var pos := _player_pos + Vector2.from_angle(angle) * distance
 			if sid == "knife_storm":
 				var tangent := Vector2.from_angle(angle + PI * 0.5) * 11.0
-				draw_line(pos - tangent, pos + tangent, Color(1.0, 0.82, 1.0, 0.78), 2.4)
+				draw_line(pos - tangent, pos + tangent, Color(1.0, 0.82, 1.0, 0.78 * effect_scale), 2.4)
 			else:
-				draw_circle(pos, 3.5 + sin(_elapsed * 5.0 + float(mote)) * 1.0, Color(color.r, color.g, color.b, 0.72))
+				draw_circle(pos, 3.5 + sin(_elapsed * 5.0 + float(mote)) * 1.0, Color(color.r, color.g, color.b, 0.72 * effect_scale))
 
 func _draw_revamped_waves() -> void:
+	var effect_scale := _readability_player_effect_scale()
 	for wave in _waves:
 		var ratio := clampf(float(wave["life"]) / float(wave["max_life"]), 0.0, 1.0)
 		var radius := float(wave["r"])
@@ -12208,15 +14857,16 @@ func _draw_revamped_waves() -> void:
 			continue
 		var kind := String(wave.get("kind", "wave"))
 		var color := _revamped_skill_color(kind)
-		draw_circle(pos, radius * 0.94, Color(color.r, color.g, color.b, 0.07 * ratio))
+		draw_circle(pos, radius * 0.94, Color(color.r, color.g, color.b, 0.07 * ratio * effect_scale))
 		for ring in 3:
 			var rr := maxf(radius - float(ring) * 13.0, 2.0)
 			draw_arc(pos, rr, 0.0, TAU, 56, Color(color.r, color.g, color.b, ratio * (0.88 - float(ring) * 0.22)), maxf(1.0, (5.2 - float(ring)) * ratio))
-		for ray in 12:
-			var angle := float(ray) / 12.0 * TAU + _elapsed * 0.7
+		var ray_count := _readability_decorative_count(12, 4)
+		for ray in ray_count:
+			var angle := float(ray) / float(ray_count) * TAU + _elapsed * 0.7
 			var inner := pos + Vector2.from_angle(angle) * radius * 0.76
 			var outer := pos + Vector2.from_angle(angle) * (radius + 14.0 * ratio)
-			draw_line(inner, outer, Color(1.0, 1.0, 1.0, 0.42 * ratio), 1.5)
+			draw_line(inner, outer, Color(1.0, 1.0, 1.0, 0.42 * ratio * effect_scale), 1.5)
 		if kind.contains("lightning") or kind.contains("thunder") or kind.contains("elec"):
 			for arc_index in 8:
 				var a := float(arc_index) * TAU / 8.0 + _elapsed * 4.0
@@ -12304,10 +14954,12 @@ func _draw_energy_projectile(projectile: Dictionary, color: Color, radius: float
 	var direction := velocity.normalized()
 	if direction.length_squared() < 0.01: direction = Vector2.RIGHT
 	if shape in ["lightning", "arcane_orb", "poison_orb", "spirit", "fire_orb", "plasma", "ice_orb", "ice_spear", "magic_dart"]:
-		for trail in 6:
-			var t := float(trail + 1) / 6.0
+		var trail_count := _combat_readability.trail_steps(6) if _combat_readability != null else 6
+		var trail_alpha := _readability_player_effect_scale()
+		for trail in trail_count:
+			var t := float(trail + 1) / float(trail_count)
 			var p := pos - direction * t * radius * 5.0
-			draw_circle(p, radius * (1.0 - t) * 0.70, Color(color.r, color.g, color.b, (1.0 - t) * 0.42))
+			draw_circle(p, radius * (1.0 - t) * 0.70, Color(color.r, color.g, color.b, (1.0 - t) * 0.42 * trail_alpha))
 	match shape:
 		"arrow":
 			var side := Vector2(-direction.y, direction.x)
@@ -12474,12 +15126,14 @@ func _draw_zone(zone: Dictionary, color: Color) -> void:
 	if not _is_world_pos_visible(pos, radius + 40.0):
 		return
 	var alpha := clampf(float(zone.get("life", 1.0)) / float(zone.get("max_life", zone.get("life", 1.0))), 0.0, 1.0)
+	var effect_scale := _readability_player_effect_scale()
 	var pulse := 0.96 + sin(_elapsed * 4.0 + pos.x * 0.01) * 0.04
-	draw_circle(pos, radius * pulse, Color(color.r, color.g, color.b, 0.12 * alpha))
-	for ring in 3:
+	draw_circle(pos, radius * pulse, Color(color.r, color.g, color.b, 0.12 * alpha * effect_scale))
+	for ring in _readability_decorative_count(3, 1):
 		draw_arc(pos, radius * (0.55 + float(ring) * 0.20), _elapsed * (0.7 + float(ring) * 0.2), _elapsed * (0.7 + float(ring) * 0.2) + PI * 1.3, 24, Color(color.r, color.g, color.b, (0.58 - float(ring) * 0.12) * alpha), 2.4)
 
 func _draw_revamped_aoe() -> void:
+	var effect_scale := _readability_player_effect_scale()
 	for flash in _aoe_flashes:
 		var ratio := clampf(float(flash["life"]) / float(flash["max_life"]), 0.0, 1.0)
 		var kind := String(flash.get("kind", "wave"))
@@ -12488,17 +15142,18 @@ func _draw_revamped_aoe() -> void:
 		var radius := lerpf(70.0, 720.0, 1.0 - ratio)
 		if not _is_world_pos_visible(pos, radius + 60.0):
 			continue
-		draw_circle(pos, radius, Color(color.r, color.g, color.b, 0.075 * ratio))
-		for ring in 4:
+		draw_circle(pos, radius, Color(color.r, color.g, color.b, 0.075 * ratio * effect_scale))
+		for ring in _readability_decorative_count(4, 2):
 			var rr := radius * (0.42 + float(ring) * 0.18)
 			var start := _elapsed * (1.4 + float(ring) * 0.25) + float(ring)
 			for arc_index in 5:
 				var a := start + float(arc_index) * TAU / 5.0
 				draw_arc(pos, rr, a, a + 0.44, 12, Color(color.r, color.g, color.b, ratio * (0.62 - float(ring) * 0.09)), 4.0 - float(ring) * 0.55)
-		for spark in 24:
-			var angle := float(spark) / 24.0 * TAU + _elapsed * 0.8
+		var spark_count := _readability_decorative_count(24, 6)
+		for spark in spark_count:
+			var angle := float(spark) / float(spark_count) * TAU + _elapsed * 0.8
 			var distance := radius * (0.28 + 0.70 * fmod(float(spark) * 0.618, 1.0))
-			draw_circle(pos + Vector2.from_angle(angle) * distance, 4.0 * ratio, Color(1, 1, 1, 0.72 * ratio))
+			draw_circle(pos + Vector2.from_angle(angle) * distance, 4.0 * ratio, Color(1, 1, 1, 0.72 * ratio * effect_scale))
 
 func _revamped_skill_color(kind: String) -> Color:
 	var key := kind.to_lower()
@@ -12745,6 +15400,56 @@ func _draw_spike_overlay(view_rect: Rect2) -> void:
 	# Keep spike overlay stationary in screen-space so only the tile background moves.
 	_draw_stationary_overlay(_spike_room_bg_tex, view_rect)
 
+func _draw_enemy_role_telegraph(enemy: Dictionary, pos: Vector2, radius: float) -> void:
+	var role := str(enemy.get("primary_role", ""))
+	var state := str(enemy.get("role_state", "idle"))
+	var role_color := {
+		"tank":Color(1.0, 0.64, 0.18), "zoner":Color(0.46, 1.0, 0.36),
+		"sniper":Color(1.0, 0.26, 0.16), "charger":Color(1.0, 0.72, 0.18),
+		"support":Color(0.38, 1.0, 0.58), "controller":Color(0.42, 0.72, 1.0),
+		"summoner":Color(0.78, 0.42, 1.0), "disruptor":Color(1.0, 0.38, 0.72),
+		"thief":Color(1.0, 0.86, 0.24),
+	}.get(role, Color.WHITE) as Color
+	if role == "tank" and state == "guard":
+		var facing_angle := 0.0 if int(enemy.get("facing_x", 1)) > 0 else PI
+		draw_arc(pos, radius + 14.0, facing_angle - PI * 0.48, facing_angle + PI * 0.48, 18, role_color, 6.0)
+	elif role == "charger" and state == "windup":
+		var charge_dir := enemy.get("role_charge_dir", Vector2.RIGHT) as Vector2
+		draw_line(pos, pos + charge_dir * 330.0, Color(role_color.r, role_color.g, role_color.b, 0.72), 9.0)
+		draw_circle(pos + charge_dir * 330.0, 18.0, Color(role_color.r, role_color.g, role_color.b, 0.34))
+	elif role == "sniper" and state == "aiming":
+		var sniper_target := enemy.get("role_target", _player_pos) as Vector2
+		draw_line(pos, sniper_target, Color(0.20, 0.02, 0.02, 0.88), 8.0)
+		draw_line(pos, sniper_target, Color(role_color.r, role_color.g, role_color.b, 0.90), 3.0)
+		draw_circle(sniper_target, 18.0, Color(role_color.r, role_color.g, role_color.b, 0.24))
+	elif role == "zoner" and state == "casting":
+		var zone_target := enemy.get("role_target", _player_pos) as Vector2
+		draw_circle(zone_target, 108.0, Color(role_color.r, role_color.g, role_color.b, 0.10))
+		draw_arc(zone_target, 108.0, 0.0, TAU, 32, Color(role_color.r, role_color.g, role_color.b, 0.82), 3.0)
+	elif role == "support" and state == "casting":
+		draw_circle(pos, 350.0, Color(role_color.r, role_color.g, role_color.b, 0.05))
+		draw_arc(pos, 350.0, 0.0, TAU, 40, Color(role_color.r, role_color.g, role_color.b, 0.48), 2.5)
+	elif role == "controller" and state == "casting":
+		var control_target := enemy.get("role_target", _player_pos) as Vector2
+		draw_line(pos, control_target, Color(role_color.r, role_color.g, role_color.b, 0.62), 3.0)
+		draw_arc(control_target, 32.0, 0.0, TAU, 20, role_color, 3.0)
+	elif role == "summoner" and state == "casting":
+		var cast_radius := radius + 28.0 + sin(_elapsed * 12.0) * 7.0
+		draw_circle(pos, cast_radius, Color(role_color.r, role_color.g, role_color.b, 0.12))
+		draw_arc(pos, cast_radius, 0.0, TAU, 28, role_color, 4.0)
+	elif role == "disruptor":
+		draw_arc(pos, radius + 10.0, 0.0, TAU, 24, role_color, 3.0)
+		if enemy.has("role_target"):
+			var disruption_target := enemy.get("role_target", pos) as Vector2
+			draw_line(pos, disruption_target, Color(role_color.r, role_color.g, role_color.b, 0.54), 3.0)
+	elif role == "thief":
+		var icon_pos := pos + Vector2(0.0, -radius - 14.0)
+		draw_colored_polygon(PackedVector2Array([icon_pos + Vector2(0.0, -9.0), icon_pos + Vector2(9.0, 0.0), icon_pos + Vector2(0.0, 9.0), icon_pos + Vector2(-9.0, 0.0)]), role_color)
+		if int(enemy.get("stolen_ore", 0)) > 0:
+			draw_arc(pos, radius + 14.0, 0.0, TAU, 24, role_color, 5.0)
+	if is_story_test_run and _story_debug_overlay_visible and not role.is_empty():
+		draw_string(ThemeDB.fallback_font, pos + Vector2(-70.0, -radius - 30.0), "%s · %s" % [role.to_upper(), state.to_upper()], HORIZONTAL_ALIGNMENT_CENTER, 140.0, 18, role_color)
+
 func _draw_boss_name(pos: Vector2, boss_r: float, boss_name: String, color: Color) -> void:
 	var label_w: float = min(get_viewport_rect().size.x - 48.0, 620.0)
 	var font_size: int = 28
@@ -12759,7 +15464,11 @@ func _draw_boss_name(pos: Vector2, boss_r: float, boss_name: String, color: Colo
 
 func _build_hud() -> void:
 	var view: Vector2 = get_viewport_rect().size
+	var safe := SettingsStore.safe_area(view)
+	_hud_safe_top = maxf(0.0, safe.position.y - 12.0)
+	_hud_safe_bottom = maxf(0.0, view.y - safe.end.y)
 	var hud := CanvasLayer.new()
+	_hud_layer = hud
 	add_child(hud)
 
 	# HP bar
@@ -12769,7 +15478,7 @@ func _build_hud() -> void:
 	hp_bg_s.corner_radius_top_left = 12; hp_bg_s.corner_radius_top_right = 12
 	hp_bg_s.corner_radius_bottom_right = 12; hp_bg_s.corner_radius_bottom_left = 12
 	hp_bg.add_theme_stylebox_override("panel", hp_bg_s)
-	hp_bg.position = Vector2(28, 40); hp_bg.size = Vector2(390, 40)
+	hp_bg.position = Vector2(28, 40 + _hud_safe_top); hp_bg.size = Vector2(390, 40)
 	hud.add_child(hp_bg)
 
 	_hp_fill = Panel.new()
@@ -12796,7 +15505,7 @@ func _build_hud() -> void:
 	xp_bg_s.corner_radius_top_left = 8; xp_bg_s.corner_radius_top_right = 8
 	xp_bg_s.corner_radius_bottom_right = 8; xp_bg_s.corner_radius_bottom_left = 8
 	xp_bg.add_theme_stylebox_override("panel", xp_bg_s)
-	xp_bg.position = Vector2(28, 88); xp_bg.size = Vector2(390, 22)
+	xp_bg.position = Vector2(28, 88 + _hud_safe_top); xp_bg.size = Vector2(390, 22)
 	hud.add_child(xp_bg)
 
 	_xp_fill = Panel.new()
@@ -12814,7 +15523,7 @@ func _build_hud() -> void:
 	_level_lbl.text = "LV 1"
 	_level_lbl.add_theme_font_size_override("font_size", 40)
 	_level_lbl.add_theme_color_override("font_color", Color(0.98, 0.88, 0.50))
-	_level_lbl.position = Vector2(436, 38)
+	_level_lbl.position = Vector2(436, 38 + _hud_safe_top)
 	hud.add_child(_level_lbl)
 
 	var info_chip_tex: Texture2D = load(HUD_LABEL_ICON_PATH) as Texture2D
@@ -12824,7 +15533,7 @@ func _build_hud() -> void:
 	_time_chip.texture = info_chip_tex
 	_time_chip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_time_chip.stretch_mode = TextureRect.STRETCH_SCALE
-	_time_chip.position = Vector2(24, 120)
+	_time_chip.position = Vector2(24, 120 + _hud_safe_top)
 	_time_chip.size = Vector2(520, 58)
 	hud.add_child(_time_chip)
 
@@ -12833,7 +15542,7 @@ func _build_hud() -> void:
 	_time_lbl.text = "0:00   |   Kills: 0"
 	_time_lbl.add_theme_font_size_override("font_size", 36)
 	_time_lbl.add_theme_color_override("font_color", Color(0.90, 0.86, 0.76))
-	_time_lbl.position = Vector2(52, 126); _time_lbl.size = Vector2(456, 44)
+	_time_lbl.position = Vector2(52, 126 + _hud_safe_top); _time_lbl.size = Vector2(456, 44)
 	hud.add_child(_time_lbl)
 
 	# Wave label (hidden; merged into time chip)
@@ -12841,12 +15550,46 @@ func _build_hud() -> void:
 	_wave_lbl.visible = false
 	hud.add_child(_wave_lbl)
 
+	# Compact Chapter Boss bar. It is hidden outside the five Chapter Boss stages.
+	_story_boss_panel = Panel.new()
+	_story_boss_panel.position = Vector2(24.0, 320.0 + _hud_safe_top)
+	_story_boss_panel.size = Vector2(view.x - 48.0, 82.0)
+	_story_boss_panel.visible = false
+	var boss_panel_style := StyleBoxFlat.new()
+	boss_panel_style.bg_color = Color(0.035, 0.025, 0.05, 0.92)
+	boss_panel_style.border_color = Color(0.72, 0.52, 0.30, 0.82)
+	boss_panel_style.set_border_width_all(3)
+	boss_panel_style.set_corner_radius_all(12)
+	_story_boss_panel.add_theme_stylebox_override("panel", boss_panel_style)
+	hud.add_child(_story_boss_panel)
+	_story_boss_fill = ColorRect.new()
+	_story_boss_fill.position = Vector2(6.0, 36.0)
+	_story_boss_fill.size = Vector2(0.0, 16.0)
+	_story_boss_fill.color = Color(0.76, 0.30, 0.20, 0.92)
+	_story_boss_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_story_boss_panel.add_child(_story_boss_fill)
+	_story_boss_name_lbl = Label.new()
+	_story_boss_name_lbl.position = Vector2(12.0, 2.0)
+	_story_boss_name_lbl.size = Vector2(view.x - 72.0, 34.0)
+	_story_boss_name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_story_boss_name_lbl.add_theme_font_size_override("font_size", 23)
+	_story_boss_name_lbl.add_theme_color_override("font_outline_color", Color.BLACK)
+	_story_boss_name_lbl.add_theme_constant_override("outline_size", 4)
+	_story_boss_panel.add_child(_story_boss_name_lbl)
+	_story_boss_status_lbl = Label.new()
+	_story_boss_status_lbl.position = Vector2(12.0, 54.0)
+	_story_boss_status_lbl.size = Vector2(view.x - 72.0, 24.0)
+	_story_boss_status_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_story_boss_status_lbl.add_theme_font_size_override("font_size", 17)
+	_story_boss_status_lbl.add_theme_color_override("font_color", Color(0.94, 0.92, 0.86))
+	_story_boss_panel.add_child(_story_boss_status_lbl)
+
 	# Room detail chip
 	_room_chip = TextureRect.new()
 	_room_chip.texture = info_chip_tex
 	_room_chip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_room_chip.stretch_mode = TextureRect.STRETCH_SCALE
-	_room_chip.position = Vector2(24, 186)
+	_room_chip.position = Vector2(24, 186 + _hud_safe_top)
 	_room_chip.size = Vector2(520, 58)
 	hud.add_child(_room_chip)
 
@@ -12855,7 +15598,7 @@ func _build_hud() -> void:
 	_room_detail_lbl.text = ""
 	_room_detail_lbl.add_theme_font_size_override("font_size", 36)
 	_room_detail_lbl.add_theme_color_override("font_color", Color(0.80, 0.76, 0.65))
-	_room_detail_lbl.position = Vector2(56, 192); _room_detail_lbl.size = Vector2(456, 44)
+	_room_detail_lbl.position = Vector2(56, 192 + _hud_safe_top); _room_detail_lbl.size = Vector2(456, 44)
 	_room_detail_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hud.add_child(_room_detail_lbl)
 
@@ -12864,7 +15607,7 @@ func _build_hud() -> void:
 	_keys_chip.texture = info_chip_tex
 	_keys_chip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_keys_chip.stretch_mode = TextureRect.STRETCH_SCALE
-	_keys_chip.position = Vector2(24, 252)
+	_keys_chip.position = Vector2(24, 252 + _hud_safe_top)
 	_keys_chip.size = Vector2(260, 58)
 	hud.add_child(_keys_chip)
 
@@ -12873,10 +15616,10 @@ func _build_hud() -> void:
 	_kill_lbl.text = "Keys: 0"
 	_kill_lbl.add_theme_font_size_override("font_size", 36)
 	_kill_lbl.add_theme_color_override("font_color", Color(0.95, 0.80, 0.36))
-	_kill_lbl.position = Vector2(56, 258); _kill_lbl.size = Vector2(196, 44)
+	_kill_lbl.position = Vector2(56, 258 + _hud_safe_top); _kill_lbl.size = Vector2(196, 44)
 	hud.add_child(_kill_lbl)
 
-	var bottom_left_y: float = view.y - 168.0
+	var bottom_left_y: float = view.y - 168.0 - _hud_safe_bottom
 
 	# Room effect chip
 	_room_effect_chip = TextureRect.new()
@@ -12929,6 +15672,7 @@ func _build_hud() -> void:
 	hud.add_child(_skill_icon_scroll)
 
 	_skill_icon_row = HBoxContainer.new()
+	_skill_icon_row.set_meta("accessibility_no_scale", true)
 	_skill_icon_row.add_theme_constant_override("separation", 10)
 	_skill_icon_row.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_skill_icon_row.custom_minimum_size = Vector2(view.x - 48.0, 104.0)
@@ -12940,7 +15684,7 @@ func _build_hud() -> void:
 	var pause_btn := Button.new()
 	pause_btn.text = "II"
 	pause_btn.add_theme_font_size_override("font_size", 42)
-	pause_btn.position = Vector2(view.x - 112, 14)
+	pause_btn.position = Vector2(view.x - 112, 14 + _hud_safe_top)
 	pause_btn.size     = Vector2(96, 96)
 	pause_btn.focus_mode = Control.FOCUS_NONE
 	var pause_s := StyleBoxFlat.new()
@@ -12957,9 +15701,43 @@ func _build_hud() -> void:
 	hud.add_child(pause_btn)
 
 	# Story objectives begin only when the player confirms they are prepared.
-	var objective_layer := CanvasLayer.new(); objective_layer.layer = 30; add_child(objective_layer)
+	var objective_layer := CanvasLayer.new(); objective_layer.layer = 30; add_child(objective_layer); _objective_hud_layer = objective_layer
+	if not story_stage.is_empty():
+		if not _story_mutator_ids.is_empty():
+			var mutator_indicator := Button.new()
+			mutator_indicator.text = "⚠ ×%d" % _story_mutator_ids.size()
+			mutator_indicator.position = Vector2(view.x - 330.0, 122.0 + _hud_safe_top)
+			mutator_indicator.size = Vector2(300.0, 58.0)
+			mutator_indicator.add_theme_font_size_override("font_size", 22)
+			mutator_indicator.add_theme_color_override("font_color", Color(1.0, 0.76, 0.28))
+			mutator_indicator.focus_mode = Control.FOCUS_NONE
+			mutator_indicator.pressed.connect(_show_active_story_mutators)
+			objective_layer.add_child(mutator_indicator)
+		_story_mastery_label = Label.new()
+		_story_mastery_label.position = Vector2(22.0, 238.0 + _hud_safe_top)
+		_story_mastery_label.size = Vector2(390.0, 44.0)
+		_story_mastery_label.add_theme_font_size_override("font_size", 22)
+		_story_mastery_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.30, 0.96))
+		_story_mastery_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
+		_story_mastery_label.add_theme_constant_override("outline_size", 5)
+		_story_mastery_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		objective_layer.add_child(_story_mastery_label)
+		_story_mastery_notice_label = Label.new()
+		_story_mastery_notice_label.position = Vector2(22.0, 278.0 + _hud_safe_top)
+		_story_mastery_notice_label.size = Vector2(600.0, 42.0)
+		_story_mastery_notice_label.add_theme_font_size_override("font_size", 21)
+		_story_mastery_notice_label.add_theme_color_override("font_color", Color(1.0, 0.48, 0.36, 0.98))
+		_story_mastery_notice_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
+		_story_mastery_notice_label.add_theme_constant_override("outline_size", 5)
+		_story_mastery_notice_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_story_mastery_notice_label.modulate.a = 0.0
+		objective_layer.add_child(_story_mastery_notice_label)
+		_update_story_mastery_label()
+		if _is_boss_practice():
+			_story_mastery_label.visible = false
+			_story_mastery_notice_label.visible = false
 	_objective_start_btn = Button.new()
-	_objective_start_btn.position = Vector2((view.x - 420.0) * 0.5, 330)
+	_objective_start_btn.position = Vector2((view.x - 420.0) * 0.5, 330 + _hud_safe_top)
 	_objective_start_btn.size = Vector2(420, 82)
 	_objective_start_btn.visible = false
 	_objective_start_btn.add_theme_font_size_override("font_size", 28)
@@ -12983,12 +15761,24 @@ func _build_hud() -> void:
 		test_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		objective_layer.add_child(test_label)
 		_setup_story_debug_overlay(objective_layer)
+	elif _is_boss_practice():
+		var practice_label := Label.new()
+		practice_label.text = "BOSS PRACTICE · %s\nRewards and Story progress disabled" % str(story_stage.get("practice_phase_name", "Full Fight"))
+		practice_label.position = Vector2(22.0, 160.0)
+		practice_label.size = Vector2(470.0, 72.0)
+		practice_label.add_theme_font_size_override("font_size", 20)
+		practice_label.add_theme_color_override("font_color", Color(0.46, 0.92, 1.0, 0.96))
+		practice_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
+		practice_label.add_theme_constant_override("outline_size", 5)
+		practice_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		objective_layer.add_child(practice_label)
 
 	# Passive attributes panel (top-right, collapsible)
 	var passive_w: float = clamp(view.x * 0.33, 320.0, 420.0)
 	_passive_panel = PanelContainer.new()
+	_passive_panel.set_meta("accessibility_no_scale", true)
 	_passive_panel.custom_minimum_size = Vector2(passive_w, 0)
-	_passive_panel.position = Vector2(view.x - passive_w - 46.0, 126)
+	_passive_panel.position = Vector2(view.x - passive_w - 46.0, 126 + _hud_safe_top)
 	var pass_panel_style := StyleBoxFlat.new()
 	pass_panel_style.bg_color = Color(0.06, 0.05, 0.04, 0.92)
 	pass_panel_style.border_color = Color(0.78, 0.58, 0.22, 0.88)
@@ -13073,6 +15863,29 @@ func _build_hud() -> void:
 	_joy_vis = JoystickVisual.new()
 	hud.add_child(_joy_vis)
 
+func _show_active_story_mutators() -> void:
+	if _story_mutator_hud_layer != null or _story_mutator_ids.is_empty():
+		return
+	_paused = true
+	var layer := CanvasLayer.new(); layer.layer = 170; add_child(layer); _story_mutator_hud_layer = layer
+	var view := get_viewport_rect().size
+	var shade := ColorRect.new(); shade.color = Color(0.01, 0.02, 0.03, 0.90); shade.size = view; shade.mouse_filter = Control.MOUSE_FILTER_STOP; layer.add_child(shade)
+	var panel := PanelContainer.new(); panel.position = Vector2(55.0, view.y * 0.20); panel.size = Vector2(view.x - 110.0, minf(720.0, view.y * 0.58)); panel.add_theme_stylebox_override("panel", _adventure_choice_panel_style()); layer.add_child(panel)
+	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 18); panel.add_child(box)
+	var title := Label.new(); title.text = "ACTIVE MUTATORS · ×%d" % _story_mutator_ids.size(); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 42); title.add_theme_color_override("font_color", Color("ffd66b")); box.add_child(title)
+	for mutator_id in _story_mutator_ids:
+		var configured := StoryStore.apply_mutators(story_stage, [mutator_id], {}, true)
+		var mutator_name := str((configured.get("mutator_names", []) as Array)[0]) if not (configured.get("mutator_names", []) as Array).is_empty() else mutator_id
+		var row := Label.new(); row.text = "• %s" % mutator_name; row.add_theme_font_size_override("font_size", 30); row.add_theme_color_override("font_color", Color("ffcb83")); box.add_child(row)
+	var bonus := Label.new(); bonus.text = "Challenge Bonus: +%d%%" % roundi(float(story_stage.get("mutator_reward_bonus", 0.0)) * 100.0); bonus.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; bonus.add_theme_font_size_override("font_size", 28); box.add_child(bonus)
+	var close := _pause_btn("Resume", Color(0.22, 0.38, 0.30), Color.WHITE); close.custom_minimum_size = Vector2(0.0, 82.0); close.pressed.connect(_close_active_story_mutators); box.add_child(close)
+
+func _close_active_story_mutators() -> void:
+	if _story_mutator_hud_layer != null:
+		_story_mutator_hud_layer.queue_free()
+		_story_mutator_hud_layer = null
+	_paused = false
+
 func _setup_story_debug_overlay(layer: CanvasLayer) -> void:
 	if not OS.is_debug_build() or not is_story_test_run:
 		return
@@ -13150,6 +15963,12 @@ func _refresh_story_debug_overlay(force: bool = false) -> void:
 	if bool(state.get("boss_required", false)):
 		lines.append("Boss required: true")
 		lines.append("Boss defeated: %s" % str(state.get("boss_defeated", false)))
+	var perf := debug_performance_snapshot()
+	lines.append("Perf: %d FPS · %.2f ms process · %.2f ms physics" % [int(perf["fps"]), float(perf["process_ms"]), float(perf["physics_ms"])])
+	lines.append("Entities: %d enemies · %d player shots · %d boss shots" % [int(perf["enemies"]), int(perf["player_projectiles"]), int(perf["boss_projectiles"])])
+	lines.append("Render: %d draws · %d VFX · %d damage labels" % [int(perf["draw_calls"]), int(perf["vfx"]), int(perf["damage_labels"])])
+	lines.append("Roles: %s" % _active_enemy_role_summary())
+	lines.append("Role entities: hazards %d/%d · summons %d/%d" % [_enemy_role_hazards.size(), StoryEnemyRolesClass.max_hazards(_story_difficulty_rank()), _role_summon_count(), StoryEnemyRolesClass.max_summons(_story_difficulty_rank())])
 	lines.append("")
 	lines.append("Last victory request:")
 	lines.append(_story_last_victory_request)
@@ -13160,6 +15979,21 @@ func _refresh_story_debug_overlay(force: bool = false) -> void:
 	if force or text_value != _story_debug_signature:
 		_story_debug_signature = text_value
 		_story_debug_label.text = text_value
+
+func _active_enemy_role_summary() -> String:
+	var counts: Dictionary = {}
+	for enemy in _enemies:
+		var role := str(enemy.get("primary_role", ""))
+		if not role.is_empty() and not _is_boss_kind(str(enemy.get("kind", ""))):
+			counts[role] = int(counts.get(role, 0)) + 1
+	if counts.is_empty():
+		return "none"
+	var parts: Array[String] = []
+	for role_variant in StoryEnemyRolesClass.ROLES:
+		var role := str(role_variant)
+		if counts.has(role):
+			parts.append("%s:%d" % [role, int(counts[role])])
+	return ", ".join(parts)
 
 func _story_debug_phase() -> String:
 	if _chapter_one != null and int(story_stage.get("chapter", 0)) == 1:
@@ -13199,6 +16033,7 @@ func _show_pause_menu() -> void:
 	layer.name = "pause_menu"
 	layer.layer = 90
 	add_child(layer)
+	_pause_layer = layer
 
 	var overlay := ColorRect.new()
 	overlay.color = Color(0.0, 0.0, 0.0, 0.62)
@@ -13207,6 +16042,7 @@ func _show_pause_menu() -> void:
 	layer.add_child(overlay)
 
 	var panel := PanelContainer.new()
+	panel.set_meta("accessibility_no_scale", true)
 	var ps := StyleBoxFlat.new()
 	ps.bg_color = Color(0.12, 0.09, 0.06, 0.96)
 	ps.corner_radius_top_left    = 28
@@ -13274,6 +16110,7 @@ func _show_pause_menu() -> void:
 		s.logout_requested.connect(func() -> void:
 			s.queue_free()
 			layer.queue_free()
+			_record_story_abandon("settings_logout")
 			match_ended.emit("lobby")
 		)
 		add_child(s)
@@ -13286,11 +16123,13 @@ func _show_pause_menu() -> void:
 	menu_btn.pressed.connect(func() -> void:
 		_show_return_to_menu_confirm(layer)
 	)
+	SettingsStore.apply_ui_scale(layer, _ui_scale)
 
 func _show_return_to_menu_confirm(parent_layer: CanvasLayer) -> void:
 	var view: Vector2 = get_viewport_rect().size
 	var confirm := PanelContainer.new()
 	confirm.name = "ReturnToMenuConfirm"
+	confirm.set_meta("accessibility_no_scale", true)
 	var cs := StyleBoxFlat.new()
 	cs.bg_color = Color(0.12, 0.07, 0.07, 0.98)
 	cs.corner_radius_top_left = 18
@@ -13348,9 +16187,13 @@ func _show_return_to_menu_confirm(parent_layer: CanvasLayer) -> void:
 		parent_layer.queue_free()
 		if is_story_test_run:
 			_finish_story_test("story_test_exit")
+		elif _is_boss_practice():
+			_finish_boss_practice("boss_practice_exit")
 		else:
+			_record_story_abandon("pause_menu_exit")
 			match_ended.emit("lobby")
 	)
+	SettingsStore.apply_ui_scale(confirm, _ui_scale)
 
 func _pause_btn(label: String, bg: Color, fg: Color) -> Button:
 	var btn := Button.new()
@@ -13377,10 +16220,69 @@ func _pause_btn(label: String, bg: Color, fg: Color) -> Button:
 	btn.add_theme_color_override("font_color", fg)
 	return btn
 
+func _update_story_boss_hud() -> void:
+	if _story_boss_panel == null:
+		return
+	var stage_id := str(story_stage.get("id", ""))
+	if stage_id not in ["ch1_5", "ch2_5", "ch3_5", "ch4_5", "ch5_5"]:
+		_story_boss_panel.visible = false
+		return
+	if stage_id == "ch3_5" and (_chapter_three == null or _chapter_three.phase != "blight_tyrant"):
+		_story_boss_panel.visible = false
+		return
+	if stage_id == "ch4_5" and (_chapter_four == null or not _chapter_four.flag("boss_spawned")):
+		_story_boss_panel.visible = false
+		return
+	var state := _story_boss_presentation_state(stage_id)
+	var profile := StoryBossPresentationClass.profile(stage_id, state)
+	if profile.is_empty():
+		_story_boss_panel.visible = false
+		return
+	_story_boss_panel.visible = true
+	var accent := profile.get("accent", Color(0.86, 0.24, 0.18)) as Color
+	_story_boss_fill.color = accent
+	_story_boss_name_lbl.text = "%s · %s" % [str(profile.get("name", "CHAPTER BOSS")), str(profile.get("phase", "BOSS"))]
+	_story_boss_name_lbl.add_theme_color_override("font_color", accent.lightened(0.22))
+	_story_boss_status_lbl.text = str(profile.get("status", ""))
+	var ratio := _story_boss_health_ratio(stage_id)
+	_story_boss_fill.size = Vector2((_story_boss_panel.size.x - 12.0) * ratio, 16.0)
+
+func _story_boss_presentation_state(stage_id: String) -> Dictionary:
+	match stage_id:
+		"ch1_5":
+			return {"phase":_chapter_one.phase if _chapter_one != null else "setup", "barrage_phases_completed":_adventure_progress}
+		"ch2_5":
+			return _chapter_two.completion_state() if _chapter_two != null else {}
+		"ch3_5":
+			return {"purity":_chapter_three.meter("purity") if _chapter_three != null else 0.0}
+		"ch4_5":
+			return _chapter_four.completion_state() if _chapter_four != null else {}
+		"ch5_5":
+			var state: Dictionary = _chapter_five.completion_state() if _chapter_five != null else {}
+			state["phase"] = _chapter_five.phase if _chapter_five != null else "ritual_anchors"
+			state["crown_vulnerable"] = _chapter_five.timer("crown_vulnerable") > 0.0 if _chapter_five != null else false
+			return state
+	return {}
+
+func _story_boss_health_ratio(stage_id: String) -> float:
+	if stage_id == "ch1_5" and _chapter_one != null and _chapter_one.phase != "crestkeeper_boss":
+		return clampf(1.0 - float(_adventure_progress) / 3.0, 0.0, 1.0)
+	if stage_id == "ch5_5" and _chapter_five != null and _chapter_five.phase == "abyss_crown":
+		var crown_index := _find_adventure_prop("abyss_crown")
+		if crown_index >= 0:
+			return clampf(float(_adventure_props[crown_index].get("hp", 0.0)) / maxf(float(_adventure_props[crown_index].get("max_hp", 1.0)), 1.0), 0.0, 1.0)
+	var tag := str({"ch1_5":"crestkeeper", "ch2_5":"frost_colossus", "ch3_5":"c3_blight_tyrant", "ch4_5":"c4_thunderforge_behemoth", "ch5_5":"abyss_king"}.get(stage_id, ""))
+	var boss_index := _find_story_enemy(tag)
+	if boss_index < 0:
+		return 0.0
+	var boss := _enemies[boss_index] as Dictionary
+	return clampf(float(boss.get("hp", 0.0)) / maxf(float(boss.get("objective_max_hp", boss.get("max_hp", 1.0))), 1.0), 0.0, 1.0)
+
 func _update_hud() -> void:
 	_hp_fill.size = Vector2(384.0 * clamp(_player_hp / _player_max_hp, 0.0, 1.0), 34)
 	_xp_fill.size = Vector2(386.0 * clamp(float(_xp) / float(_xp_next), 0.0, 1.0), 18)
 	_level_lbl.text = "LV %d" % _level
+	_update_story_boss_hud()
 
 	var room: Dictionary = _current_room()
 	var room_name: String = room.get("name", "Room") as String
@@ -13409,13 +16311,15 @@ func _update_hud() -> void:
 	if _enemy_mod_lbl != null:
 		var mode_objective: String = _mode_objective_text()
 		if not mode_objective.is_empty():
+			var objective_layout_scale := maxf(1.0, _ui_scale * _objective_text_scale)
+			var objective_height := 88.0 * objective_layout_scale
 			_enemy_mod_lbl.text = mode_objective
 			_enemy_mod_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			_enemy_mod_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			_enemy_mod_lbl.position = Vector2(56.0, get_viewport_rect().size.y - 98.0)
-			_enemy_mod_lbl.size = Vector2(get_viewport_rect().size.x - 112.0, 88.0)
-			_affix_chip.position = Vector2(24.0, get_viewport_rect().size.y - 104.0)
-			_affix_chip.size = Vector2(get_viewport_rect().size.x - 48.0, 98.0)
+			_enemy_mod_lbl.position = Vector2(56.0, get_viewport_rect().size.y - _hud_safe_bottom - objective_height - 10.0)
+			_enemy_mod_lbl.size = Vector2(get_viewport_rect().size.x - 112.0, objective_height)
+			_affix_chip.position = Vector2(24.0, get_viewport_rect().size.y - _hud_safe_bottom - objective_height - 16.0)
+			_affix_chip.size = Vector2(get_viewport_rect().size.x - 48.0, objective_height + 10.0)
 		elif _wave >= 10 and not _active_enemy_mod.is_empty():
 			var affix_text: String = "Floor affix: %s" % _active_enemy_mod_name
 			if affix_text.length() > 40:
@@ -13426,9 +16330,9 @@ func _update_hud() -> void:
 		if mode_objective.is_empty():
 			_enemy_mod_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
 			_enemy_mod_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-			_enemy_mod_lbl.position = Vector2(56.0, get_viewport_rect().size.y - 96.0)
+			_enemy_mod_lbl.position = Vector2(56.0, get_viewport_rect().size.y - _hud_safe_bottom - 96.0)
 			_enemy_mod_lbl.size.y = 44.0
-			_affix_chip.position = Vector2(24.0, get_viewport_rect().size.y - 102.0)
+			_affix_chip.position = Vector2(24.0, get_viewport_rect().size.y - _hud_safe_bottom - 102.0)
 			_affix_chip.size.y = 58.0
 			_fit_hud_chip(_affix_chip, _enemy_mod_lbl, 260.0, get_viewport_rect().size.x - 48.0)
 
@@ -13769,21 +16673,24 @@ func _update_skill_icons() -> void:
 		var sdef: Dictionary = SKILL_DEFS[sid] as Dictionary
 		var skill_col: Color = sdef["col"] as Color
 		var tex: Texture2D = _skill_icon_texture(sid)
+		var is_ultimate: bool = str(ULTI_SKILLS.get(_char_id, "")) == sid
+		var is_evolved: bool = not str(sk.get("evolution", "")).is_empty()
 
 		var slot := Panel.new()
 		slot.custom_minimum_size = Vector2(96, 104)
+		slot.set_meta("accessibility_no_scale", true)
 		slot.size = Vector2(96, 104)
 		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot.tooltip_text = "%s — Level %d" % [String(sdef.get("name", sid)), lvl]
 
 		var slot_style := StyleBoxFlat.new()
-		slot_style.bg_color = Color(0.055, 0.045, 0.035, 0.94)
-		slot_style.border_color = skill_col.darkened(0.22)
-		slot_style.set_border_width_all(2)
-		slot_style.corner_radius_top_left = 14
-		slot_style.corner_radius_top_right = 14
-		slot_style.corner_radius_bottom_left = 14
-		slot_style.corner_radius_bottom_right = 14
+		slot_style.bg_color = Color(0.12, 0.075, 0.015, 0.96) if is_ultimate else Color(0.055, 0.045, 0.035, 0.94)
+		slot_style.border_color = Color(1.0, 0.78, 0.12) if is_ultimate else (skill_col.lightened(0.12) if is_evolved else skill_col.darkened(0.22))
+		slot_style.set_border_width_all(4 if is_ultimate or is_evolved else 2)
+		slot_style.corner_radius_top_left = 24 if is_ultimate else 14
+		slot_style.corner_radius_top_right = 5 if is_evolved else 14
+		slot_style.corner_radius_bottom_left = 5 if is_evolved else 14
+		slot_style.corner_radius_bottom_right = 24 if is_ultimate else 14
 		slot_style.shadow_color = Color(0.0, 0.0, 0.0, 0.38)
 		slot_style.shadow_size = 7
 		slot_style.shadow_offset = Vector2(0, 3)
@@ -13797,8 +16704,8 @@ func _update_skill_icons() -> void:
 		icon_frame.clip_contents = true
 		var frame_style := StyleBoxFlat.new()
 		frame_style.bg_color = Color(0.03, 0.03, 0.03, 0.96)
-		frame_style.border_color = Color(skill_col.r, skill_col.g, skill_col.b, 0.72)
-		frame_style.set_border_width_all(2)
+		frame_style.border_color = Color(1.0, 0.82, 0.18) if is_ultimate else Color(skill_col.r, skill_col.g, skill_col.b, 0.82 if is_evolved else 0.72)
+		frame_style.set_border_width_all(4 if is_ultimate else (3 if is_evolved else 2))
 		frame_style.corner_radius_top_left = 10
 		frame_style.corner_radius_top_right = 10
 		frame_style.corner_radius_bottom_left = 10
@@ -13837,8 +16744,12 @@ func _update_skill_icons() -> void:
 				"reveal": reveal,
 				"cooldown_label": null,
 				"level_label": null,
+				"ready_marker": null,
+				"charge_bar": null,
 				"slot": slot,
 				"icon_height": 74.0,
+				"was_ready":float(sk.get("timer", 0.0)) <= 0.05,
+				"is_ultimate":is_ultimate,
 			}
 		else:
 			var fallback := Label.new()
@@ -13854,8 +16765,12 @@ func _update_skill_icons() -> void:
 				"reveal": null,
 				"cooldown_label": null,
 				"level_label": null,
+				"ready_marker": null,
+				"charge_bar": null,
 				"slot": slot,
 				"icon_height": 74.0,
+				"was_ready":float(sk.get("timer", 0.0)) <= 0.05,
+				"is_ultimate":is_ultimate,
 			}
 
 		var cooldown_lbl := Label.new()
@@ -13872,7 +16787,7 @@ func _update_skill_icons() -> void:
 		slot.add_child(cooldown_lbl)
 
 		var level_lbl := Label.new()
-		level_lbl.text = "Lv%d" % lvl
+		level_lbl.text = "◆" if is_evolved else ("ULT" if is_ultimate else "Lv%d" % lvl)
 		level_lbl.position = Vector2(44, 78)
 		level_lbl.size = Vector2(46, 22)
 		level_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -13884,11 +16799,47 @@ func _update_skill_icons() -> void:
 		level_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot.add_child(level_lbl)
 
+		var ready_marker := Label.new()
+		ready_marker.text = "✓"
+		ready_marker.position = Vector2(7.0, 76.0)
+		ready_marker.size = Vector2(34.0, 24.0)
+		ready_marker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		ready_marker.add_theme_font_size_override("font_size", 17)
+		ready_marker.add_theme_color_override("font_color", Color("fff2a8") if is_ultimate else Color("d9ffd8"))
+		ready_marker.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
+		ready_marker.add_theme_constant_override("outline_size", 4)
+		ready_marker.visible = false
+		ready_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(ready_marker)
+
+		var charge_bar: ProgressBar = null
+		if is_ultimate:
+			charge_bar = ProgressBar.new()
+			charge_bar.position = Vector2(8.0, 98.0)
+			charge_bar.size = Vector2(80.0, 5.0)
+			charge_bar.min_value = 0.0
+			charge_bar.max_value = 1.0
+			charge_bar.value = 1.0
+			charge_bar.show_percentage = false
+			var charge_bg := StyleBoxFlat.new()
+			charge_bg.bg_color = Color(0.05, 0.04, 0.02, 0.94)
+			charge_bg.set_corner_radius_all(2)
+			var charge_fill := StyleBoxFlat.new()
+			charge_fill.bg_color = Color(1.0, 0.78, 0.12)
+			charge_fill.set_corner_radius_all(2)
+			charge_bar.add_theme_stylebox_override("background", charge_bg)
+			charge_bar.add_theme_stylebox_override("fill", charge_fill)
+			charge_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			slot.add_child(charge_bar)
+
 		var widget: Dictionary = _skill_hud_widgets[sid] as Dictionary
 		widget["cooldown_label"] = cooldown_lbl
 		widget["level_label"] = level_lbl
+		widget["ready_marker"] = ready_marker
+		widget["charge_bar"] = charge_bar
 		_skill_hud_widgets[sid] = widget
 
+	SettingsStore.apply_ui_scale(_skill_icon_row, _ui_scale)
 	_update_skill_cooldown_hud()
 
 func _update_skill_cooldown_hud() -> void:
@@ -13903,6 +16854,8 @@ func _update_skill_cooldown_hud() -> void:
 		var reveal: Control = widget.get("reveal", null) as Control
 		var cooldown_lbl: Label = widget.get("cooldown_label", null) as Label
 		var level_lbl: Label = widget.get("level_label", null) as Label
+		var ready_marker: Label = widget.get("ready_marker", null) as Label
+		var charge_bar: ProgressBar = widget.get("charge_bar", null) as ProgressBar
 		var slot: Panel = widget.get("slot", null) as Panel
 		var icon_height: float = float(widget.get("icon_height", 74.0))
 		var lvl: int = int(sk.get("level", 1))
@@ -13920,18 +16873,31 @@ func _update_skill_cooldown_hud() -> void:
 		if reveal != null:
 			reveal.size.y = icon_height * progress
 
+		var is_ready := total_cd <= 0.0 or is_temporarily_active or remaining <= 0.05
 		if cooldown_lbl != null:
 			if is_temporarily_active:
 				cooldown_lbl.text = "ACTIVE"
 				cooldown_lbl.add_theme_font_size_override("font_size", 16)
 			elif total_cd > 0.0 and remaining > 0.05:
-				cooldown_lbl.text = "%.1fs" % remaining
+				cooldown_lbl.text = "%d" % ceili(remaining) if remaining >= 10.0 else "%.1f" % remaining
 				cooldown_lbl.add_theme_font_size_override("font_size", 23)
 			else:
 				cooldown_lbl.text = ""
 
 		if level_lbl != null:
-			level_lbl.text = "★" if not String(sk.get("evolution", "")).is_empty() else "Lv%d" % lvl
+			level_lbl.text = "◆" if not String(sk.get("evolution", "")).is_empty() else ("ULT" if bool(widget.get("is_ultimate", false)) else "Lv%d" % lvl)
+		if ready_marker != null:
+			ready_marker.visible = is_ready and total_cd > 0.0
+		if charge_bar != null:
+			charge_bar.value = progress
+
+		var was_ready := bool(widget.get("was_ready", is_ready))
+		if slot != null and not was_ready and is_ready:
+			_animate_skill_hud_ready(slot, bool(widget.get("is_ultimate", false)))
+		elif slot != null and was_ready and not is_ready and bool(widget.get("is_ultimate", false)):
+			_animate_skill_hud_activation(slot)
+		widget["was_ready"] = is_ready
+		_skill_hud_widgets[sid] = widget
 
 		if slot != null and SKILL_DEFS.has(sid):
 			var sdef: Dictionary = SKILL_DEFS[sid] as Dictionary
@@ -13943,6 +16909,25 @@ func _update_skill_cooldown_hud() -> void:
 				slot.tooltip_text = "%s — Level %d — Cooldown %.1fs" % [name, lvl, total_cd]
 			else:
 				slot.tooltip_text = "%s — Level %d — Always active" % [name, lvl]
+
+func _animate_skill_hud_ready(slot: Control, is_ultimate: bool) -> void:
+	if slot == null or not is_instance_valid(slot):
+		return
+	slot.pivot_offset = slot.size * 0.5
+	var tween := slot.create_tween().set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	var peak := 1.10 if is_ultimate else 1.06
+	tween.tween_property(slot, "scale", Vector2.ONE * peak, 0.11)
+	tween.parallel().tween_property(slot, "modulate", Color(1.18, 1.18, 1.18), 0.11)
+	tween.tween_property(slot, "scale", Vector2.ONE, 0.17)
+	tween.parallel().tween_property(slot, "modulate", Color.WHITE, 0.17)
+
+func _animate_skill_hud_activation(slot: Control) -> void:
+	if slot == null or not is_instance_valid(slot):
+		return
+	slot.pivot_offset = slot.size * 0.5
+	var tween := slot.create_tween().set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(slot, "scale", Vector2.ONE * 0.92, 0.08)
+	tween.tween_property(slot, "scale", Vector2.ONE, 0.14)
 
 func _skill_cooldown_total_for_hud(sk: Dictionary) -> float:
 	var sid: String = String(sk.get("id", ""))
@@ -14044,54 +17029,6 @@ func _skill_icon_abbrev(sid: String) -> String:
 		out = name.substr(0, 1).to_upper()
 	return out
 
-func _make_skill_card_icon(sid: String, icon_color: Color, size: float, is_ulti: bool = false, is_combo: bool = false) -> Control:
-	var panel := Panel.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.10, 0.08, 0.06, 0.96).lerp(icon_color, 0.16 if not is_ulti else 0.24)
-	style.corner_radius_top_left = 18
-	style.corner_radius_top_right = 18
-	style.corner_radius_bottom_right = 18
-	style.corner_radius_bottom_left = 18
-	style.set_border_width_all(3 if is_ulti else 2)
-	style.border_color = Color(1.0, 0.82, 0.18) if is_ulti else (Color(0.46, 0.98, 0.90) if is_combo else icon_color)
-	panel.add_theme_stylebox_override("panel", style)
-	panel.custom_minimum_size = Vector2(size, size)
-	panel.size = Vector2(size, size)
-	panel.clip_contents = true
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	var tex: Texture2D = _skill_icon_texture(sid)
-	if tex != null:
-		var inset: float = max(6.0, floor(size * 0.08))
-		var icon := TextureRect.new()
-		icon.texture = tex
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		icon.position = Vector2(inset, inset)
-		icon.size = Vector2(size - inset * 2.0, size - inset * 2.0)
-		panel.add_child(icon)
-		return panel
-
-	var glow := ColorRect.new()
-	glow.color = Color(icon_color.r, icon_color.g, icon_color.b, 0.18)
-	glow.position = Vector2(10, 10)
-	glow.size = Vector2(size - 20.0, size - 20.0)
-	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(glow)
-
-	var label := Label.new()
-	label.text = _skill_icon_abbrev(sid)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.set_anchors_preset(Control.PRESET_FULL_RECT)
-	label.add_theme_font_size_override("font_size", 34 if not is_ulti else 38)
-	label.add_theme_color_override("font_color", Color(1.0, 0.96, 0.88) if is_ulti else Color(0.96, 0.93, 0.86))
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(label)
-
-	return panel
-
 # ═════════════════════════════════════════════════════════════════════════════
 # SKILL SELECT UI
 # ═════════════════════════════════════════════════════════════════════════════
@@ -14103,165 +17040,64 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 	var choices: Array[Dictionary] = _build_skill_choices()
 	var view: Vector2 = get_viewport_rect().size
 	var layer := CanvasLayer.new()
+	layer.name = "SkillChoiceLayer"
+	layer.layer = 190
 	add_child(layer)
 
-	# Dark overlay
 	var overlay := ColorRect.new()
-	overlay.color = Color(0.0, 0.0, 0.0, 0.72)
+	overlay.color = Color(0.0, 0.0, 0.0, 0.82)
 	overlay.size  = view
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	layer.add_child(overlay)
 
-	# Title
 	var title := Label.new()
-	title.text = "Choose a Bonus Skill!" if is_initial else "Level Up! Pick a Skill"
+	title.text = "CHOOSE A POWER"
 	title.add_theme_font_size_override("font_size", 46)
 	title.add_theme_color_override("font_color", Color(0.98, 0.88, 0.50))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.position = Vector2(0, view.y * 0.14); title.size = Vector2(view.x, 65)
+	title.position = Vector2(0, maxf(34.0, view.y * 0.075)); title.size = Vector2(view.x, 65)
 	layer.add_child(title)
 
-	# Level label (during level-up)
-	if not is_initial:
-		var lv_lbl := Label.new()
-		lv_lbl.text = "Now Level %d" % _level
-		lv_lbl.add_theme_font_size_override("font_size", 28)
-		lv_lbl.add_theme_color_override("font_color", Color(0.72, 0.66, 0.50))
-		lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		lv_lbl.position = Vector2(0, view.y * 0.14 + 58); lv_lbl.size = Vector2(view.x, 36)
-		layer.add_child(lv_lbl)
+	var context_label := Label.new()
+	context_label.text = "STARTING BONUS" if is_initial else "LV %d" % _level
+	context_label.add_theme_font_size_override("font_size", 22)
+	context_label.add_theme_color_override("font_color", Color(0.72, 0.76, 0.78))
+	context_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	context_label.position = Vector2(0, title.position.y + 58.0)
+	context_label.size = Vector2(view.x, 34.0)
+	layer.add_child(context_label)
 
-	# 3 skill cards
-	var card_w: float = view.x - 80.0
-	var card_h: float = 242.0
-	var gap: float    = 18.0
+	var card_w: float = view.x - 64.0
+	var card_h: float = 220.0
+	var gap: float = 14.0
 	var card_count: int = mini(choices.size(), 3)
 	var total_h: float = float(card_count) * card_h + float(max(card_count - 1, 0)) * gap
-	var start_y: float = (view.y - total_h) * 0.5
+	var start_y: float = maxf(title.position.y + 104.0, (view.y - total_h - 90.0) * 0.5)
+	var cards: Array = []
+	var commit_state := {"done":false}
+	var motion_scale := _skill_choice_motion_scale()
 
 	for i in card_count:
-		var ch: Dictionary  = choices[i]
-		var sid: String     = ch["id"] as String
-		var new_lvl: int    = ch["lvl"] as int
-		var is_up: bool     = (ch["type"] as String) == "upgrade"
-		var evolution_id: String = String(ch.get("evolution", ""))
-		var is_evolution := not evolution_id.is_empty()
-		var is_ulti: bool   = ch.get("is_ulti", false) as bool
-		var is_combo: bool  = ch.get("is_combo", false) as bool
-		var sdef: Dictionary = SKILL_DEFS[sid] as Dictionary
-		var levels: Array    = sdef["lvl"] as Array
-		var level_index := clampi(new_lvl - 1, 0, maxi(levels.size() - 1, 0))
-		var ldata: Dictionary = (levels[level_index] as Dictionary) if not levels.is_empty() else {"note": String(sdef.get("short", "Skill upgrade"))}
-		var scol: Color       = sdef["col"] as Color
-		if is_evolution:
-			ldata = {"note": String(ch.get("note", "Choose this evolution"))}
-			scol = ch.get("color", scol) as Color
-		# Golden override for ulti cards
-		if is_ulti: scol = Color(1.0, 0.78, 0.08)
-
-		var card := Button.new()
-		card.custom_minimum_size = Vector2(card_w, card_h)
-		card.size     = Vector2(card_w, card_h)
-		card.position = Vector2(40, start_y + float(i) * (card_h + gap))
-		card.text     = ""
-		card.focus_mode = Control.FOCUS_NONE
-
-		var bg := StyleBoxFlat.new()
-		bg.bg_color = Color(0.14, 0.10, 0.02, 0.97) if is_ulti else Color(0.11, 0.09, 0.07, 0.96)
-		bg.corner_radius_top_left = 20; bg.corner_radius_top_right = 20
-		bg.corner_radius_bottom_right = 20; bg.corner_radius_bottom_left = 20
-		bg.set_border_width_all(3); bg.border_color = scol.darkened(0.05)
-		bg.shadow_color = Color(scol.r, scol.g, scol.b, 0.38 if is_ulti else 0.28); bg.shadow_size = 16 if is_ulti else 12; bg.shadow_offset = Vector2(0, 4)
-		card.add_theme_stylebox_override("normal", bg)
-		var hov := StyleBoxFlat.new()
-		hov.bg_color = Color(0.20, 0.14, 0.02, 0.98) if is_ulti else Color(0.18, 0.14, 0.10, 0.98)
-		hov.corner_radius_top_left = 20; hov.corner_radius_top_right = 20
-		hov.corner_radius_bottom_right = 20; hov.corner_radius_bottom_left = 20
-		hov.set_border_width_all(4); hov.border_color = scol
-		hov.shadow_color = Color(scol.r, scol.g, scol.b, 0.55 if is_ulti else 0.45); hov.shadow_size = 22 if is_ulti else 18; hov.shadow_offset = Vector2(0, 4)
-		card.add_theme_stylebox_override("hover", hov)
-
-		# Badge
-		var badge := Label.new()
-		if is_ulti:
-			badge.text = "✦ ULTIMATE SKILL"
-			badge.add_theme_color_override("font_color", Color(1.0, 0.82, 0.08))
-		elif is_combo:
-			badge.text = "COMBINATION"
-			badge.add_theme_color_override("font_color", Color(0.46, 0.98, 0.90))
-		elif is_evolution:
-			badge.text = "✦ SKILL EVOLUTION"
-			badge.add_theme_color_override("font_color", Color(1.0, 0.82, 0.22))
-		elif is_up:
-			badge.text = "UPGRADE"
-			badge.add_theme_color_override("font_color", Color(0.90, 0.72, 0.20))
-		else:
-			badge.text = "NEW"
-			badge.add_theme_color_override("font_color", Color(0.32, 0.95, 0.55))
-		badge.add_theme_font_size_override("font_size", 15 if not is_ulti else 17)
-		badge.position = Vector2(202, 16); badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card.add_child(badge)
-
-		var skill_icon := _make_skill_card_icon(sid, scol, 164.0, is_ulti, is_combo)
-		skill_icon.position = Vector2(22, 40)
-		card.add_child(skill_icon)
-
-		if is_ulti:
-			var unlock_lbl := Label.new()
-			unlock_lbl.text = "Unlocked: 2 skills mastered"
-			unlock_lbl.add_theme_font_size_override("font_size", 13)
-			unlock_lbl.add_theme_color_override("font_color", Color(0.82, 0.68, 0.24, 0.80))
-			unlock_lbl.position = Vector2(card_w - 240, 14); unlock_lbl.size = Vector2(228, 20)
-			unlock_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-			unlock_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			card.add_child(unlock_lbl)
-
-		# Name
-		var nm := Label.new()
-		nm.text = String(ch.get("name", sdef["name"]))
-		nm.add_theme_font_size_override("font_size", 40)
-		nm.add_theme_color_override("font_color", scol)
-		nm.position = Vector2(202, 46); nm.size = Vector2(card_w - 320, 54)
-		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card.add_child(nm)
-
-		# Level
-		var lv := Label.new()
-		lv.text = "EVOLVED" if is_evolution else "Level %d" % new_lvl
-		lv.add_theme_font_size_override("font_size", 21)
-		lv.add_theme_color_override("font_color", Color(0.60, 0.55, 0.42))
-		lv.position = Vector2(card_w - 144, 54); lv.size = Vector2(128, 32)
-		lv.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		lv.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card.add_child(lv)
-
-		# Description
-		var desc := Label.new()
-		desc.text = ldata["note"] as String
-		desc.add_theme_font_size_override("font_size", 30)
-		desc.add_theme_color_override("font_color", Color(0.82, 0.76, 0.65))
-		desc.position = Vector2(202, 112); desc.size = Vector2(card_w - 224, 106)
-		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card.add_child(desc)
-
-		var cap_sid: String = sid
-		var cap_lvl: int    = new_lvl
-		var cap_evolution: String = evolution_id
-		var cap_lay: Node   = layer
-		card.pressed.connect(func() -> void:
-			_pick_skill(cap_sid, cap_lvl, cap_evolution)
-			cap_lay.queue_free()
-			_paused = false
-		)
+		var ch: Dictionary = choices[i]
+		var card := SkillChoiceCardClass.new()
+		card.size = Vector2(card_w, card_h)
+		card.position = Vector2(32.0, start_y + float(i) * (card_h + gap))
+		var model := _skill_choice_model(ch)
+		model["motion_scale"] = motion_scale
+		card.configure(model)
+		SettingsStore.apply_ui_scale(card, _ui_scale)
+		var cap_choice := ch.duplicate(true)
+		card.detail_requested.connect(_show_skill_choice_details.bind(layer, cap_choice))
+		card.pressed.connect(_commit_skill_choice.bind(card, cap_choice, model.duplicate(true), layer, cards, commit_state, is_initial, motion_scale))
 		layer.add_child(card)
+		cards.append(card)
+		card.animate_entry(float(i) * 0.06)
 
-	# ── Watch Ad to Reroll button ─────────────────────────────────────────────
 	var reroll_y: float = start_y + float(card_count) * card_h + float(max(card_count - 1, 0)) * gap + 20.0
 	var reroll_btn := Button.new()
 	reroll_btn.custom_minimum_size = Vector2(card_w, 62)
 	reroll_btn.size     = Vector2(card_w, 62)
-	reroll_btn.position = Vector2(40, reroll_y)
+	reroll_btn.position = Vector2(32, reroll_y)
 	reroll_btn.focus_mode = Control.FOCUS_NONE
 
 	if _skill_reroll_used:
@@ -14297,6 +17133,8 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 		var cap_is_initial: bool = is_initial
 		var cap_layer: Node = layer
 		reroll_btn.pressed.connect(func() -> void:
+			if bool(commit_state.get("done", false)):
+				return
 			if _ad_manager == null:
 				reroll_btn.text = "Ad unavailable — tap to retry"
 				return
@@ -14310,6 +17148,7 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 					if bool(ad_state.get("done", false)):
 						return
 					ad_state["done"] = true
+					commit_state["done"] = true
 					_skill_reroll_used = true
 					if is_instance_valid(cap_layer):
 						cap_layer.queue_free()
@@ -14351,6 +17190,182 @@ func _show_skill_select(is_initial: bool, _is_reroll: bool = false) -> void:
 			)
 		)
 	layer.add_child(reroll_btn)
+
+func _commit_skill_choice(card, choice: Dictionary, model: Dictionary, layer: CanvasLayer, cards: Array, commit_state: Dictionary, is_initial: bool, motion_scale: float) -> void:
+	if bool(commit_state.get("done", false)) or not card.try_lock_selection():
+		return
+	commit_state["done"] = true
+	var sid := str(choice.get("id", ""))
+	var new_level := int(choice.get("lvl", 1))
+	var evolution_id := str(choice.get("evolution", ""))
+	_pick_skill(sid, new_level, evolution_id)
+	var state := SkillUIPresentationClass.choice_state(choice)
+	var animation_duration := (0.65 if motion_scale < 0.5 else 0.90) if state == "evolved" else (0.16 if motion_scale < 0.5 else 0.20)
+	for candidate in cards:
+		if candidate == card:
+			candidate.animate_selected(animation_duration)
+			candidate.lock_input()
+		else:
+			candidate.set_dimmed(true)
+	if state == "evolved":
+		_show_skill_evolution_flash(layer, str(model.get("title", "EVOLVED")), motion_scale)
+	get_tree().create_timer(animation_duration).timeout.connect(func() -> void:
+		if is_instance_valid(layer):
+			layer.queue_free()
+		_paused = false
+		if is_initial:
+			_begin_story_narrative()
+	)
+
+func _skill_choice_motion_scale() -> float:
+	match str(SettingsStore.load_all().get("player_effects", "high")):
+		"low": return 0.35
+		"medium": return 0.70
+		_: return 1.0
+
+func _skill_choice_model(choice: Dictionary) -> Dictionary:
+	var sid := str(choice.get("id", ""))
+	var definition: Dictionary = SKILL_DEFS.get(sid, {}) as Dictionary
+	var state := SkillUIPresentationClass.choice_state(choice)
+	var levels: Array = definition.get("lvl", []) as Array
+	var new_level := maxi(1, int(choice.get("lvl", 1)))
+	var fallback := str(choice.get("note", ""))
+	if fallback.is_empty() and not levels.is_empty():
+		fallback = str((levels[clampi(new_level - 1, 0, levels.size() - 1)] as Dictionary).get("note", definition.get("short", "")))
+	var accent: Color = choice.get("color", definition.get("col", Color(0.72, 0.78, 0.84))) as Color
+	if state == "ultimate":
+		accent = Color(1.0, 0.78, 0.08)
+	var is_upgrade := str(choice.get("type", "new")) == "upgrade"
+	var tags := SkillUIPresentationClass.tag_labels(StoryBuildCapabilitiesClass.SKILL_TAGS.get(sid, []) as Array, 3)
+	if state == "combo":
+		tags.push_front("✦ COMBO")
+	if not _skill_choice_stage_synergy(sid).is_empty() and tags.size() < 3:
+		tags.append("✦ STAGE")
+	if tags.size() > 3:
+		tags.resize(3)
+	return {
+		"state":state,
+		"title":str(choice.get("name", definition.get("name", sid.replace("_", " ").capitalize()))).to_upper(),
+		"level":SkillUIPresentationClass.level_text(state, new_level, is_upgrade),
+		"primary":SkillUIPresentationClass.primary_change(levels, new_level, "upgrade" if is_upgrade else state, fallback),
+		"tags":tags,
+		"accent":accent,
+		"icon":_skill_icon_texture(sid),
+		"abbreviation":_skill_icon_abbrev(sid),
+	}
+
+func _skill_choice_stage_synergy(sid: String) -> Dictionary:
+	if story_stage.is_empty():
+		return {}
+	var tags: Array = StoryBuildCapabilitiesClass.SKILL_TAGS.get(sid, []) as Array
+	for synergy_variant in StoryBuildCapabilitiesClass.stage_synergies(str(story_stage.get("id", ""))):
+		var synergy: Dictionary = synergy_variant as Dictionary
+		if str(synergy.get("capability", "")) in tags:
+			return synergy
+	return {}
+
+func _show_skill_choice_details(choice_layer: CanvasLayer, choice: Dictionary) -> void:
+	if choice_layer == null or not is_instance_valid(choice_layer):
+		return
+	var old := choice_layer.get_node_or_null("SkillDetails")
+	if old != null:
+		old.queue_free()
+	var view := get_viewport_rect().size
+	var root := Control.new()
+	root.name = "SkillDetails"
+	root.position = Vector2.ZERO
+	root.size = view
+	root.z_index = 80
+	choice_layer.add_child(root)
+	var shade := ColorRect.new()
+	shade.color = Color(0.0, 0.0, 0.0, 0.86)
+	shade.size = view
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.add_child(shade)
+	var panel := PanelContainer.new()
+	panel.position = Vector2(48.0, view.y * 0.19)
+	panel.size = Vector2(view.x - 96.0, minf(720.0, view.y * 0.58))
+	panel.add_theme_stylebox_override("panel", _adventure_choice_panel_style())
+	root.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 14)
+	panel.add_child(box)
+	var model := _skill_choice_model(choice)
+	var title := Label.new()
+	title.text = str(model.get("title", "SKILL"))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.add_theme_font_size_override("font_size", 40)
+	title.add_theme_color_override("font_color", model.get("accent", Color.WHITE) as Color)
+	box.add_child(title)
+	var summary := Label.new()
+	summary.text = "%s\n%s" % [str(model.get("level", "")), str(model.get("primary", ""))]
+	summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	summary.add_theme_font_size_override("font_size", 28)
+	summary.add_theme_color_override("font_color", Color("ffe49a"))
+	box.add_child(summary)
+	var sid := str(choice.get("id", ""))
+	var definition: Dictionary = SKILL_DEFS.get(sid, {}) as Dictionary
+	var lines := SkillUIPresentationClass.detail_lines(definition.get("lvl", []) as Array, int(choice.get("lvl", 1)))
+	var detail := Label.new()
+	detail.text = "\n".join(lines) if not lines.is_empty() else str(definition.get("short", "Skill details unavailable"))
+	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	detail.add_theme_font_size_override("font_size", 24)
+	detail.add_theme_color_override("font_color", Color("d7e8ec"))
+	box.add_child(detail)
+	var relationship_lines: Array[String] = []
+	if COMBO_RECIPES.has(sid):
+		var ingredient_names: Array[String] = []
+		for needed_variant in (COMBO_RECIPES[sid] as Dictionary).get("needs", []) as Array:
+			var needed := str(needed_variant)
+			ingredient_names.append(str((SKILL_DEFS.get(needed, {}) as Dictionary).get("name", needed.replace("_", " ").capitalize())))
+		relationship_lines.append("COMBO  %s" % " + ".join(ingredient_names))
+	var synergy := _skill_choice_stage_synergy(sid)
+	if not synergy.is_empty():
+		relationship_lines.append("STAGE SYNERGY  %s" % str(synergy.get("description", "optional stage interaction")).capitalize())
+	if not relationship_lines.is_empty():
+		var relationship := Label.new()
+		relationship.text = "\n".join(relationship_lines)
+		relationship.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		relationship.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		relationship.add_theme_font_size_override("font_size", 21)
+		relationship.add_theme_color_override("font_color", Color("9fe9d8"))
+		box.add_child(relationship)
+	var close := _pause_btn("Close", Color(0.18, 0.28, 0.36), Color.WHITE)
+	close.custom_minimum_size = Vector2(0.0, 72.0)
+	close.pressed.connect(root.queue_free)
+	box.add_child(close)
+	SettingsStore.apply_ui_scale(root, _ui_scale)
+
+func _show_skill_evolution_flash(layer: CanvasLayer, skill_name: String, motion_scale: float) -> void:
+	if layer == null or not is_instance_valid(layer):
+		return
+	if motion_scale < 0.5:
+		return
+	var view := get_viewport_rect().size
+	var flash := Label.new()
+	flash.text = "◆ EVOLVED ◆\n%s" % skill_name
+	flash.position = Vector2(40.0, view.y * 0.39)
+	flash.size = Vector2(view.x - 80.0, 150.0)
+	flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	flash.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	flash.add_theme_font_size_override("font_size", 44)
+	flash.add_theme_color_override("font_color", Color("fff0a8"))
+	flash.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
+	flash.add_theme_constant_override("outline_size", 8)
+	flash.modulate.a = 0.0
+	flash.scale = Vector2.ONE * (1.0 - 0.08 * motion_scale)
+	flash.pivot_offset = flash.size * 0.5
+	flash.z_index = 60
+	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(flash)
+	var tween := flash.create_tween().set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.set_parallel(true)
+	tween.tween_property(flash, "modulate:a", 1.0, 0.18)
+	tween.tween_property(flash, "scale", Vector2.ONE, 0.28)
+	tween.chain().tween_interval(0.34)
+	tween.chain().tween_property(flash, "modulate:a", 0.0, 0.18)
 
 func _build_skill_choices() -> Array[Dictionary]:
 	# ── Determine which skills this character can use ─────────────────────────
@@ -14454,6 +17469,7 @@ func _pick_skill(sid: String, lvl: int, evolution: String = "") -> void:
 	else:
 		var sk: Dictionary = {"id": sid, "level": 1, "timer": 0.0}
 		_skills.append(sk)
+	_refresh_story_build_profile()
 	_update_skill_icons()
 
 func _build_evolution_choices() -> Array[Dictionary]:
@@ -14585,8 +17601,282 @@ func _consume_combo_requirements(combo_sid: String) -> void:
 # GAME OVER
 # ═════════════════════════════════════════════════════════════════════════════
 
+func _story_skill_snapshot() -> Array[Dictionary]:
+	var output: Array[Dictionary] = []
+	for skill in _skills:
+		var sid := str(skill.get("id", ""))
+		if sid.is_empty():
+			continue
+		var definition: Dictionary = SKILL_DEFS.get(sid, {}) as Dictionary
+		var evolution_id := str(skill.get("evolution", ""))
+		var evolution_name := ""
+		if not evolution_id.is_empty():
+			for option_variant in _evolution_options_for_skill(sid):
+				var option: Dictionary = option_variant as Dictionary
+				if str(option.get("id", "")) == evolution_id:
+					evolution_name = str(option.get("name", evolution_id.replace("_", " ").capitalize()))
+					break
+		output.append({
+			"id":sid,
+			"name":str(definition.get("name", sid.replace("_", " ").capitalize())),
+			"level":maxi(1, int(skill.get("level", 1))),
+			"evolution":evolution_id,
+			"evolution_name":evolution_name,
+		})
+	return output
+
+func _story_ring_snapshot() -> Array[Dictionary]:
+	var output: Array[Dictionary] = []
+	if account_username.is_empty() or _char_id.is_empty():
+		return output
+	var equipped := RingStore.get_equipped_rings(account_username, _char_id)
+	for slot in ["slot_0", "slot_1"]:
+		var value: Variant = equipped.get(slot)
+		if typeof(value) != TYPE_DICTIONARY:
+			continue
+		var ring: Dictionary = value as Dictionary
+		output.append({"id":str(ring.get("id", "")), "name":str(ring.get("name", "Unknown Ring")), "attr":str(ring.get("attr", "")), "value":float(ring.get("value", 0.0)), "rarity":str(ring.get("rarity", "common")), "tier":maxi(1, int(ring.get("tier", 1)))})
+	return output
+
+func _story_artifact_snapshot() -> Array[Dictionary]:
+	var output: Array[Dictionary] = []
+	if account_username.is_empty() or _char_id.is_empty():
+		return output
+	var equipped := ArtifactStore.get_equipped_artifacts(account_username, _char_id)
+	for slot in ["slot_0", "slot_1"]:
+		var value: Variant = equipped.get(slot)
+		if typeof(value) != TYPE_DICTIONARY:
+			continue
+		var artifact: Dictionary = value as Dictionary
+		var artifact_id := str(artifact.get("id", ""))
+		var run_effects: Dictionary = {}
+		if artifact_id.begins_with("artifact_capy_mystery_box"):
+			run_effects = (_artifact_run_effects.get("artifact_capy_mystery_box", {}) as Dictionary).duplicate(true)
+		elif artifact_id.begins_with("artifact_wheel_of_fate"):
+			run_effects = {"active_seconds":maxf(_artifact_wheel_left, 0.0), "skill_dmg":_artifact_wheel_skill_dmg, "move_speed":_artifact_wheel_move_mul, "cooldown":_artifact_wheel_cd}
+		output.append({"id":artifact_id, "name":str(artifact.get("name", "Unknown Artifact")), "rarity":str(artifact.get("rarity", "common")), "desc":str(artifact.get("desc", "")), "effects":(artifact.get("effects", {}) as Dictionary).duplicate(true), "run_effects":run_effects})
+	return output
+
+func _build_story_run_record(completed: bool, duration_override: float = -1.0) -> Dictionary:
+	var collected := _story_run_stats.snapshot()
+	var duration := duration_override if duration_override >= 0.0 else _elapsed
+	return {
+		"record_version":StoryStore.STORY_RUN_RECORD_VERSION,
+		"run_id":StoryStore.make_story_run_id(),
+		"context":run_context,
+		"stage_id":str(story_stage.get("id", "")),
+		"stage_name":str(story_stage.get("name", "Unknown Stage")),
+		"chapter":int(story_stage.get("chapter", 1)),
+		"difficulty":str(story_stage.get("difficulty", "normal")),
+		"timestamp":int(Time.get_unix_time_from_system()),
+		"completed":completed,
+		"duration_seconds":maxf(duration, 0.0),
+		"final_level":_level,
+		"mutator_ids":_story_mutator_ids.duplicate(),
+		"mastery_completed":_story_mastery_result.duplicate(),
+		"mastery_newly_earned":[],
+		"skills":_story_skill_snapshot(),
+		"rings":_story_ring_snapshot(),
+		"artifacts":_story_artifact_snapshot(),
+		"damage_summary":collected.get("damage_summary", []),
+		"total_damage":collected.get("total_damage", 0.0),
+		"damage_taken":collected.get("damage_taken", 0.0),
+		"healing":collected.get("healing", 0.0),
+		"kills":_kills,
+		"boss_damage":collected.get("boss_damage", 0.0),
+		"revives":collected.get("revives", 0),
+		"damage_coverage":collected.get("damage_coverage", 0.0),
+	}
+
+func _run_recap_heading(text: String, color: Color = Color("ffd66b")) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 30)
+	label.add_theme_color_override("font_color", color)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return label
+
+func _run_recap_icon_card(texture: Texture2D, title: String, detail: String) -> Control:
+	var card := VBoxContainer.new()
+	card.custom_minimum_size = Vector2(142.0, 174.0)
+	card.add_theme_constant_override("separation", 4)
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = Vector2(112.0, 112.0)
+	icon.texture = texture
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	card.add_child(icon)
+	var name_label := Label.new()
+	name_label.text = title
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_label.add_theme_font_size_override("font_size", 18)
+	card.add_child(name_label)
+	var detail_label := Label.new()
+	detail_label.text = detail
+	detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	detail_label.add_theme_font_size_override("font_size", 16)
+	detail_label.add_theme_color_override("font_color", Color("b9d8e2"))
+	card.add_child(detail_label)
+	return card
+
+func _show_story_run_recap(record: Dictionary, recap_title: String = "RUN RECAP") -> void:
+	var old := get_node_or_null("StoryRunRecap")
+	if old != null:
+		old.queue_free()
+	var view := get_viewport_rect().size
+	var safe := SettingsStore.safe_area(view)
+	var layer := CanvasLayer.new()
+	layer.name = "StoryRunRecap"
+	layer.layer = 230
+	add_child(layer)
+	var shade := ColorRect.new()
+	shade.color = Color(0.01, 0.02, 0.03, 0.985)
+	shade.size = view
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.add_child(shade)
+	var title := Label.new()
+	title.text = recap_title
+	title.position = Vector2(34.0, safe.position.y + 18.0)
+	title.size = Vector2(view.x - 68.0, 62.0)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 42)
+	title.add_theme_color_override("font_color", Color("ffd66b"))
+	layer.add_child(title)
+	var scroll := ScrollContainer.new()
+	scroll.name = "RunRecapScroll"
+	scroll.position = Vector2(34.0, safe.position.y + 88.0)
+	scroll.size = Vector2(view.x - 68.0, maxf(240.0, safe.end.y - safe.position.y - 198.0))
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	layer.add_child(scroll)
+	var content := VBoxContainer.new()
+	content.custom_minimum_size = Vector2(view.x - 92.0, 0.0)
+	content.add_theme_constant_override("separation", 16)
+	scroll.add_child(content)
+	var status := "CLEAR" if bool(record.get("completed", false)) else "ATTEMPT ENDED"
+	var summary := _run_recap_heading("%s · %s\n%s · %s · Level %d" % [str(record.get("stage_name", "Unknown Stage")), status, StoryStore.difficulty_name(str(record.get("difficulty", "normal"))), StoryRunPresentationClass.format_duration(float(record.get("duration_seconds", 0.0))), int(record.get("final_level", 1))], Color("d7e8ec"))
+	summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	content.add_child(summary)
+	content.add_child(_run_recap_heading("TOP DAMAGE"))
+	var damage_summary: Array = record.get("damage_summary", []) as Array
+	var top_count := mini(3, damage_summary.size())
+	if top_count == 0:
+		content.add_child(_run_recap_heading("No combat damage recorded", Color("9aaeb5")))
+	else:
+		var total_damage := maxf(float(record.get("total_damage", 0.0)), 1.0)
+		for index in top_count:
+			var row: Dictionary = damage_summary[index] as Dictionary
+			var row_box := HBoxContainer.new()
+			row_box.add_theme_constant_override("separation", 12)
+			content.add_child(row_box)
+			var source_id := str(row.get("source_id", "other"))
+			var source_icon := TextureRect.new()
+			source_icon.custom_minimum_size = Vector2(52.0, 52.0)
+			source_icon.texture = _skill_icon_texture(source_id) if SKILL_DEFS.has(source_id) else null
+			source_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			source_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			row_box.add_child(source_icon)
+			var row_label := Label.new()
+			row_label.text = "%d%%  %s%s" % [roundi(float(row.get("damage", 0.0)) / total_damage * 100.0), StoryRunPresentationClass.source_name(source_id), "  ·  TOP DAMAGE" if index == 0 else ""]
+			row_label.add_theme_font_size_override("font_size", 25)
+			row_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			row_box.add_child(row_label)
+			var bar := ProgressBar.new()
+			bar.custom_minimum_size = Vector2(0.0, 16.0)
+			bar.show_percentage = false
+			bar.max_value = total_damage
+			bar.value = float(row.get("damage", 0.0))
+			content.add_child(bar)
+	content.add_child(_run_recap_heading("FINAL BUILD"))
+	var skill_grid := GridContainer.new()
+	skill_grid.columns = 4
+	skill_grid.add_theme_constant_override("h_separation", 12)
+	skill_grid.add_theme_constant_override("v_separation", 12)
+	content.add_child(skill_grid)
+	for skill_variant in record.get("skills", []) as Array:
+		var skill: Dictionary = skill_variant as Dictionary
+		var sid := str(skill.get("id", ""))
+		var display_name := str(skill.get("evolution_name", ""))
+		if display_name.is_empty(): display_name = str(skill.get("name", sid.replace("_", " ").capitalize()))
+		skill_grid.add_child(_run_recap_icon_card(_skill_icon_texture(sid), display_name, "Lv.%d" % int(skill.get("level", 1))))
+	var gear_grid := GridContainer.new()
+	gear_grid.columns = 4
+	gear_grid.add_theme_constant_override("h_separation", 12)
+	gear_grid.add_theme_constant_override("v_separation", 12)
+	content.add_child(gear_grid)
+	for ring_variant in record.get("rings", []) as Array:
+		var ring: Dictionary = ring_variant as Dictionary
+		gear_grid.add_child(_run_recap_icon_card(RingStore.ring_icon(ring), str(ring.get("name", "Unknown Ring")), "%s · T%d" % [str(ring.get("rarity", "common")).to_upper(), int(ring.get("tier", 1))]))
+	for artifact_variant in record.get("artifacts", []) as Array:
+		var artifact: Dictionary = artifact_variant as Dictionary
+		gear_grid.add_child(_run_recap_icon_card(ArtifactStore.artifact_icon(artifact), str(artifact.get("name", "Unknown Artifact")), str(artifact.get("rarity", "common")).capitalize()))
+	var details_toggle := _pause_btn("Details  ›", Color(0.14, 0.22, 0.28), Color("d7e8ec"))
+	details_toggle.custom_minimum_size = Vector2(0.0, 68.0)
+	content.add_child(details_toggle)
+	var details := VBoxContainer.new()
+	details.name = "RunRecapDetails"
+	details.add_theme_constant_override("separation", 14)
+	details.visible = false
+	content.add_child(details)
+	details_toggle.pressed.connect(func() -> void:
+		details.visible = not details.visible
+		details_toggle.text = "Hide Details  ⌃" if details.visible else "Details  ›"
+	)
+	var artifact_lines: Array[String] = []
+	for artifact_variant in record.get("artifacts", []) as Array:
+		var artifact: Dictionary = artifact_variant as Dictionary
+		var line := "%s: %s" % [str(artifact.get("name", "Unknown Artifact")), StoryRunPresentationClass.effect_text(artifact.get("effects", {}) as Dictionary)]
+		var run_effect_text := StoryRunPresentationClass.effect_text(artifact.get("run_effects", {}) as Dictionary)
+		if not run_effect_text.is_empty(): line += "\nRun roll: %s" % run_effect_text
+		artifact_lines.append(line)
+	if not artifact_lines.is_empty():
+		var artifact_details := Label.new(); artifact_details.text = "\n".join(artifact_lines); artifact_details.add_theme_font_size_override("font_size", 20); artifact_details.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; details.add_child(artifact_details)
+	details.add_child(_run_recap_heading("COMBAT TOTALS"))
+	var totals := Label.new()
+	totals.text = "Damage %d  ·  Boss %d\nTaken %d  ·  Healing %d\nEnemies Defeated %d  ·  Revives %d" % [roundi(float(record.get("total_damage", 0.0))), roundi(float(record.get("boss_damage", 0.0))), roundi(float(record.get("damage_taken", 0.0))), roundi(float(record.get("healing", 0.0))), int(record.get("kills", 0)), int(record.get("revives", 0))]
+	totals.add_theme_font_size_override("font_size", 24)
+	totals.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	details.add_child(totals)
+	var record_evaluation: Dictionary = record.get("record_evaluation", {}) as Dictionary
+	var personal_record_text := StoryRunPresentationClass.personal_record_comparison(record_evaluation)
+	if not personal_record_text.is_empty():
+		details.add_child(_run_recap_heading("PERSONAL BEST"))
+		var personal_best := Label.new()
+		personal_best.name = "PersonalBestComparison"
+		personal_best.text = personal_record_text
+		personal_best.add_theme_font_size_override("font_size", 23)
+		personal_best.add_theme_color_override("font_color", Color("a9f0c4"))
+		personal_best.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		details.add_child(personal_best)
+	var mastery_completed: Array = record.get("mastery_completed", []) as Array
+	var mastery_new: Array = record.get("mastery_newly_earned", []) as Array
+	details.add_child(_run_recap_heading("MASTERY %d/3" % mastery_completed.size()))
+	var mastery := Label.new()
+	var mastery_lines: Array[String] = []
+	for objective_variant in StoryStore.mastery_objectives(str(record.get("stage_id", ""))):
+		var objective: Dictionary = objective_variant as Dictionary
+		var objective_id := str(objective.get("id", ""))
+		mastery_lines.append("%s %s%s" % ["★" if objective_id in mastery_completed else "☆", str(objective.get("title", "Mastery")), " · NEW" if objective_id in mastery_new else ""])
+	mastery.text = "No mastery data" if mastery_lines.is_empty() else "\n".join(mastery_lines)
+	mastery.add_theme_font_size_override("font_size", 23)
+	details.add_child(mastery)
+	details.add_child(_run_recap_heading("MUTATORS"))
+	var mutators := Label.new()
+	var mutator_names := StoryMutators.names(record.get("mutator_ids", []) as Array)
+	mutators.text = "None" if mutator_names.is_empty() else ", ".join(mutator_names)
+	mutators.add_theme_font_size_override("font_size", 23)
+	mutators.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	details.add_child(mutators)
+	var close := _pause_btn("Close Recap", Color(0.18, 0.28, 0.36), Color.WHITE)
+	close.position = Vector2(70.0, safe.end.y - 96.0)
+	close.size = Vector2(view.x - 140.0, 72.0)
+	close.pressed.connect(layer.queue_free)
+	layer.add_child(close)
+	apply_accessibility_settings(SettingsStore.load_all())
+
 func _try_drop_dungeon_key(ep: Vector2, enemy_kind: String) -> void:
-	if account_username.is_empty() or is_story_test_run:
+	if account_username.is_empty() or _is_non_persistent_story_run():
 		return
 	if not PurchaseStore.is_key_drop_available(account_username):
 		return
@@ -14625,6 +17915,7 @@ func _handle_player_death() -> void:
 
 func _do_ring_revive() -> void:
 	_ring_revive_used = true
+	_story_run_stats.record_revive()
 	_game_over = false
 	_paused = false
 	_player_hp = _player_max_hp * (_ring_bonus("revive_hp_pct") if _ring_bonus("revive_hp_pct") > 0.0 else 0.55)
@@ -14652,15 +17943,31 @@ func _show_revive_banner() -> void:
 func _on_death() -> void:
 	if not story_stage.is_empty() and _story_telemetry != null:
 		_story_telemetry.player_death()
-		var failure_reason: String = _story_custom_failure if not _story_custom_failure.is_empty() else "player_defeated"
+		var failure_reason: String = "%s_failed" % _story_custom_id if not _story_custom_failure.is_empty() else "player_defeated"
 		_story_telemetry.failure(failure_reason)
+		_story_telemetry.stage_failed(failure_reason, _story_telemetry_active_seconds(), _story_completion_state(), _story_telemetry_run_summary(), "unknown")
+	_cleanup_story_narrative()
 	_game_over = true
 	_paused    = true
 	_ring_drops.clear()
 	queue_redraw()
+	if _is_boss_practice():
+		_practice_result_shown = true
+		_clear_boss_attack_runtime()
+		_reset_boss_camera()
+		_enemies.clear()
+		_adventure_props.clear()
+		if _story_telemetry != null:
+			_story_telemetry.log_event("Practice failed: phase=%s · time=%.2fs · damage_taken=%.0f" % [str(story_stage.get("practice_phase", "full")), maxf(0.0, _elapsed - _practice_started_elapsed), _practice_damage_taken])
+			_story_telemetry.log_event("Mutator cleanup")
+		_cleanup_story_mutator_runtime()
+		_show_boss_practice_result(false)
+		return
 	if is_story_test_run:
 		if _story_telemetry != null:
 			_story_telemetry.log_event("Test stage failed")
+			_story_telemetry.log_event("Mutator cleanup")
+		_cleanup_story_mutator_runtime()
 		_show_story_test_result(false)
 		return
 	if _run_key_dropped:
@@ -14808,6 +18115,13 @@ func _on_death() -> void:
 		replay.size = Vector2(420, 84)
 		replay.pressed.connect(func() -> void: match_ended.emit("rematch"))
 		layer.add_child(replay)
+	if not story_stage.is_empty():
+		_latest_story_run_record = _build_story_run_record(false)
+		var recap := _pause_btn("View Run Recap", Color(0.26, 0.32, 0.42), Color.WHITE)
+		recap.position = Vector2((view.x - 420.0) * 0.5, back_y - 96.0)
+		recap.size = Vector2(420.0, 78.0)
+		recap.pressed.connect(_show_story_run_recap.bind(_latest_story_run_record, "ATTEMPT RECAP"))
+		layer.add_child(recap)
 	var back := Button.new()
 	back.text = "Back to Story Map" if not story_stage.is_empty() else ("Extract to Camp" if not dungeon_mode.is_empty() else "Back to Lobby")
 	back.add_theme_font_size_override("font_size", 36)
@@ -14836,47 +18150,134 @@ func _on_death() -> void:
 	layer.add_child(back)
 
 func _show_story_victory() -> void:
+	if _is_boss_practice():
+		_complete_boss_practice("practice_victory_redirect")
+		return
 	if not _story_victory_validated:
 		_request_story_victory("unvalidated_show_story_victory_call")
 		return
+	_cleanup_story_narrative()
 	_game_over = true
 	_paused = true
 	if is_story_test_run:
 		if _story_telemetry != null:
 			_story_telemetry.log_event("Test stage completed")
+			_story_telemetry.mastery_persisted([], true)
+			_story_telemetry.stage_completed(_story_telemetry_active_seconds(), _story_completion_state(), _story_telemetry_run_summary())
+			_story_telemetry.log_event("Mutator cleanup")
+		_cleanup_story_mutator_runtime()
 		_show_story_test_result(true)
 		return
-	var result := StoryStore.record_clear(account_username, str(story_stage.get("id", "")), {"elapsed":_elapsed, "kills":_kills, "level":_level})
+	var run_record := _build_story_run_record(true)
+	var result := StoryStore.record_clear(account_username, str(story_stage.get("id", "")), {"elapsed":_elapsed, "kills":_kills, "level":_level, "difficulty":str(story_stage.get("difficulty", "normal")), "mutators":_story_mutator_ids, "mastery_earned":_story_mastery_result, "run_record":run_record})
+	_latest_story_run_record = (result.get("run_record", run_record) as Dictionary).duplicate(true)
+	var record_evaluation: Dictionary = result.get("record_evaluation", {}) as Dictionary
+	_latest_story_run_record["record_evaluation"] = record_evaluation.duplicate(true)
+	if _story_telemetry != null: _story_telemetry.mastery_persisted(result.get("new_mastery", []) as Array, false)
+	if _story_telemetry != null:
+		_story_telemetry.log_event("Difficulty clear: %s · new=%s · unlocked=%s" % [str(result.get("difficulty", "normal")), str(result.get("first_difficulty_clear", false)), str(result.get("newly_unlocked", "none"))])
+		_story_telemetry.log_event("Mutator reward multiplier: %.2fx · cleanup" % float(result.get("mutator_multiplier", 1.0)))
+		for reward_id_variant in result.get("new_mastery_rewards", []) as Array:
+			var reward_id := str(reward_id_variant)
+			var reward := StoryStore.mastery_reward(reward_id)
+			_story_telemetry.log_event("Chapter Mastery reward available: %s · threshold=%d · reward=materials:%d" % [reward_id, int(reward.get("threshold", 0)), int(reward.get("materials", 0))])
+		if bool(result.get("chapter_mastered", false)):
+			_story_telemetry.log_event("Chapter Mastered: chapter=%d · stars=%d/15" % [int(story_stage.get("chapter", 0)), int(result.get("chapter_mastery", 0))])
+		for change_variant in record_evaluation.get("changes", []) as Array:
+			var record_change: Dictionary = change_variant as Dictionary
+			_story_telemetry.log_event("Personal record: stage=%s metric=%s value=%.2f first=%s difficulty=%s mutators=%s run_id=%s" % [str(story_stage.get("id", "")), str(record_change.get("record", "")), float(record_change.get("value", 0.0)), str(record_change.get("first", false)), str(result.get("difficulty", "normal")), ",".join(_story_mutator_ids), str(_latest_story_run_record.get("run_id", ""))])
+		_story_telemetry.stage_completed(_story_telemetry_active_seconds(), _story_completion_state(), _story_telemetry_run_summary(), str(_latest_story_run_record.get("run_id", "")))
+	_cleanup_story_mutator_runtime()
 	ProgressionStore.record_mission_event(account_username, "story_clears")
 	ProgressionStore.record_mission_event(account_username, "enemy_kills", _kills)
 	var view := get_viewport_rect().size
 	var layer := CanvasLayer.new(); layer.layer = 120; add_child(layer)
 	var shade := ColorRect.new(); shade.color = Color(0.02, 0.04, 0.06, 0.94); shade.size = view; shade.mouse_filter = Control.MOUSE_FILTER_STOP; layer.add_child(shade)
-	var title := Label.new(); title.text = "STAGE CLEARED!"; title.position = Vector2(0, view.y * 0.20); title.size = Vector2(view.x, 90); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 64); title.add_theme_color_override("font_color", Color("ffd66b")); layer.add_child(title)
-	var body := Label.new(); body.position = Vector2(60, view.y * 0.33); body.size = Vector2(view.x - 120, 360); body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; body.add_theme_font_size_override("font_size", 30)
-	var reward_message := "+%d camp coins  ·  +%d upgrade materials" % [int(result.get("coins", 0)), int(result.get("materials", 0))]
-	if not bool(result.get("first_clear", false)):
-		reward_message = "Replay reward (30%%)\n%s" % reward_message
+	var difficulty_name := StoryStore.difficulty_name(str(result.get("difficulty", "normal"))).to_upper()
+	var title := Label.new(); title.text = "CHALLENGE RUN COMPLETE" if not _story_mutator_ids.is_empty() else ("CHAPTER CLEARED" if int(story_stage.get("chapter_stage", 0)) == 5 else "%s CLEAR" % difficulty_name); title.position = Vector2(0, view.y * 0.12); title.size = Vector2(view.x, 100); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 52 if not _story_mutator_ids.is_empty() else 64); title.add_theme_color_override("font_color", Color("ffd66b")); layer.add_child(title)
+	var body := Label.new(); body.position = Vector2(60, view.y * 0.22); body.size = Vector2(view.x - 120, maxf(360.0, view.y * 0.28)); body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; body.add_theme_font_size_override("font_size", 24 if not (record_evaluation.get("changes", []) as Array).is_empty() else 27)
+	var difficulty_clear_message := "NEW DIFFICULTY CLEAR" if bool(result.get("first_difficulty_clear", false)) else "%s REPLAY" % difficulty_name
+	if not str(result.get("newly_unlocked", "")).is_empty():
+		difficulty_clear_message += "\n%s Unlocked" % StoryStore.difficulty_name(str(result.get("newly_unlocked", "")))
+	var mastery_reward_message := "CHAPTER MASTERY %d/15" % int(result.get("chapter_mastery", 0))
+	var new_mastery_reward_count := (result.get("new_mastery_rewards", []) as Array).size()
+	if new_mastery_reward_count > 0:
+		mastery_reward_message += " · %d REWARD%s AVAILABLE ON STORY MAP" % [new_mastery_reward_count, "S" if new_mastery_reward_count != 1 else ""]
+	if bool(result.get("chapter_mastered", false)):
+		mastery_reward_message += "\nCHAPTER MASTERED ◆"
+	var challenge_line := "%s  ·  ⚠ ×%d  ·  +%d%%" % [difficulty_name, _story_mutator_ids.size(), roundi(float(story_stage.get("mutator_reward_bonus", 0.0)) * 100.0)]
+	var narrative_outro := StoryNarrativeClass.result_text(str(story_stage.get("id", "")))
+	var record_message := StoryRunPresentationClass.record_result_text(record_evaluation)
+	var stars := "★".repeat(int(result.get("mastery_total", 0))) + "☆".repeat(maxi(0, 3 - int(result.get("mastery_total", 0))))
+	var record_section := "" if record_message.is_empty() else "\n🏆 %s" % record_message.replace("\n", "  ·  ")
+	body.text = "%s\n%s\n%s  ·  %s%s\n%s\n%s" % [difficulty_clear_message, challenge_line, stars, StoryRunPresentationClass.format_duration(_elapsed), record_section, mastery_reward_message, narrative_outro]; layer.add_child(body)
+	var rewards_title := Label.new(); rewards_title.text = "REWARDS%s" % ("  ·  FIRST CLEAR" if bool(result.get("first_clear", false)) else "  ·  REPLAY 30%"); rewards_title.position = Vector2(54.0, view.y * 0.50); rewards_title.size = Vector2(view.x - 108.0, 48.0); rewards_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; rewards_title.add_theme_font_size_override("font_size", 28); rewards_title.add_theme_color_override("font_color", Color("ffe2a1")); layer.add_child(rewards_title)
+	var reward_row := HBoxContainer.new(); reward_row.position = Vector2(56.0, view.y * 0.54); reward_row.size = Vector2(view.x - 112.0, 260.0); reward_row.add_theme_constant_override("separation", 14); layer.add_child(reward_row)
+	var coin_card := RewardItemCardClass.new(); coin_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL; coin_card.configure("currency", {"name":"Camp Coins", "rarity":"common", "icon":"res://assets/camp/resources/camp_coin.png", "primary_effect":"+%s" % String.num_int64(int(result.get("coins", 0)))}, {"first_clear":bool(result.get("first_clear", false))}, 1, 0, true, true); reward_row.add_child(coin_card)
+	var material_card := RewardItemCardClass.new(); material_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL; material_card.configure("material", {"name":"Upgrade Materials", "rarity":"common", "icon":"res://assets/camp/resources/forgecore_material.png", "primary_effect":"+%s" % String.num_int64(int(result.get("materials", 0)))}, {}, 1, 0, true, true); reward_row.add_child(material_card)
+	coin_card.call_deferred("play_reveal", SettingsStore.load_all(), "routine")
+	material_card.call_deferred("play_reveal", SettingsStore.load_all(), "routine")
 	if int(story_stage.get("chapter_stage", 0)) == 5 and bool(result.get("first_clear", false)):
-		reward_message += "\nChapter reward chest is ready on the map!"
-	body.text = "%s\n\n%s" % [String(story_stage.get("story", "The road ahead is open.")), reward_message]; layer.add_child(body)
-	var back := Button.new(); back.text = "Return to Story Map"; back.position = Vector2((view.x - 460) * 0.5, view.y * 0.72); back.size = Vector2(460, 92); back.add_theme_font_size_override("font_size", 32); back.pressed.connect(func(): match_ended.emit("story_clear")); layer.add_child(back)
+		var unlock := Label.new(); unlock.text = "★  NEW PATH UNLOCKED  ·  CHAPTER REWARD READY ON MAP"; unlock.position = Vector2(45.0, view.y * 0.69); unlock.size = Vector2(view.x - 90.0, 44.0); unlock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; unlock.add_theme_font_size_override("font_size", 22); unlock.add_theme_color_override("font_color", Color("9ff0ac")); layer.add_child(unlock)
+	var back := _pause_btn("CONTINUE", Color(0.24, 0.48, 0.24), Color.WHITE); back.position = Vector2((view.x - 460) * 0.5, view.y * 0.76); back.size = Vector2(460, 92); back.pressed.connect(func(): match_ended.emit("story_clear")); layer.add_child(back)
+	var recap := _pause_btn("Details  ›", Color(0.18, 0.25, 0.34), Color("d7e8ec")); recap.position = Vector2((view.x - 460) * 0.5, view.y * 0.86); recap.size = Vector2(460, 72); recap.add_theme_font_size_override("font_size", 28); recap.pressed.connect(_show_story_run_recap.bind(_latest_story_run_record, "VICTORY RECAP")); layer.add_child(recap)
+	SettingsStore.apply_ui_scale(layer, _ui_scale)
 
 func _show_story_test_result(success: bool) -> void:
 	var view := get_viewport_rect().size
 	var layer := CanvasLayer.new(); layer.layer = 180; add_child(layer)
 	var shade := ColorRect.new(); shade.color = Color(0.01, 0.02, 0.03, 0.96); shade.size = view; shade.mouse_filter = Control.MOUSE_FILTER_STOP; layer.add_child(shade)
-	var title := Label.new(); title.text = "TEST STAGE COMPLETE" if success else "TEST STAGE FAILED"; title.position = Vector2(40.0, view.y * 0.18); title.size = Vector2(view.x - 80.0, 90.0); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 54); title.add_theme_color_override("font_color", Color("ffd66b") if success else Color("ff806e")); layer.add_child(title)
-	var stage_label := Label.new(); stage_label.text = "C%dS%d\nProgress and rewards were not saved" % [int(story_stage.get("chapter", 0)), int(story_stage.get("chapter_stage", 0))]; stage_label.position = Vector2(60.0, view.y * 0.31); stage_label.size = Vector2(view.x - 120.0, 120.0); stage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; stage_label.add_theme_font_size_override("font_size", 28); layer.add_child(stage_label)
+	var test_difficulty := StoryStore.difficulty_name(str(story_stage.get("difficulty", "normal"))).to_upper()
+	var title := Label.new(); title.text = "TEST %s %s" % [test_difficulty, "CLEAR" if success else "FAILED"]; title.position = Vector2(40.0, view.y * 0.18); title.size = Vector2(view.x - 80.0, 90.0); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 54); title.add_theme_color_override("font_color", Color("ffd66b") if success else Color("ff806e")); layer.add_child(title)
+	var stage_label := Label.new(); stage_label.text = "C%dS%d · %s\nMutators ×%d: %s\nDEV TEST Mastery %d/3 — not saved\n%s" % [int(story_stage.get("chapter", 0)), int(story_stage.get("chapter_stage", 0)), test_difficulty, _story_mutator_ids.size(), "None" if _story_mutator_ids.is_empty() else ", ".join(story_stage.get("mutator_names", []) as Array), _story_mastery_result.size() if success else 0, _story_mastery_result_text([], _story_mastery_result if success else [], true)]; stage_label.position = Vector2(60.0, view.y * 0.26); stage_label.size = Vector2(view.x - 120.0, 320.0); stage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; stage_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; stage_label.add_theme_font_size_override("font_size", 24); layer.add_child(stage_label)
 	var buttons := VBoxContainer.new(); buttons.position = Vector2(90.0, view.y * 0.48); buttons.size = Vector2(view.x - 180.0, 310.0); buttons.add_theme_constant_override("separation", 18); layer.add_child(buttons)
 	var retry := _pause_btn("Retry Stage", Color(0.46, 0.30, 0.08), Color.WHITE); retry.custom_minimum_size = Vector2(0.0, 84.0); retry.pressed.connect(_finish_story_test.bind("story_test_retry")); buttons.add_child(retry)
 	var choose := _pause_btn("Choose Another Stage", Color(0.24, 0.28, 0.46), Color.WHITE); choose.custom_minimum_size = Vector2(0.0, 84.0); choose.pressed.connect(_finish_story_test.bind("story_test_choose")); buttons.add_child(choose)
 	var exit := _pause_btn("Return to Story Menu", Color(0.20, 0.32, 0.34), Color.WHITE); exit.custom_minimum_size = Vector2(0.0, 84.0); exit.pressed.connect(_finish_story_test.bind("story_test_exit")); buttons.add_child(exit)
 
+func _show_boss_practice_result(success: bool) -> void:
+	var view := get_viewport_rect().size
+	var layer := CanvasLayer.new(); layer.layer = 185; add_child(layer)
+	var shade := ColorRect.new(); shade.color = Color(0.01, 0.02, 0.035, 0.97); shade.size = view; shade.mouse_filter = Control.MOUSE_FILTER_STOP; layer.add_child(shade)
+	var title := Label.new(); title.text = "PRACTICE COMPLETE" if success else "PRACTICE FAILED"; title.position = Vector2(35.0, view.y * 0.15); title.size = Vector2(view.x - 70.0, 90.0); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 54); title.add_theme_color_override("font_color", Color("ffd66b") if success else Color("ff806e")); layer.add_child(title)
+	var elapsed := maxf(0.0, _elapsed - _practice_started_elapsed)
+	var minutes := floori(elapsed / 60.0)
+	var seconds := floori(elapsed) % 60
+	var details := Label.new(); details.text = "%s\n%s · %s\nTime: %02d:%02d\nDamage Taken: %d\nMutators: %d · Rewards Disabled" % [str(story_stage.get("practice_boss_name", "Chapter Boss")), StoryStore.difficulty_name(str(story_stage.get("difficulty", "normal"))).to_upper(), str(story_stage.get("practice_phase_name", "Full Fight")), minutes, seconds, roundi(_practice_damage_taken), _story_mutator_ids.size()]; details.position = Vector2(55.0, view.y * 0.25); details.size = Vector2(view.x - 110.0, 310.0); details.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; details.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; details.add_theme_font_size_override("font_size", 28); details.add_theme_color_override("font_color", Color("d7e8ec")); layer.add_child(details)
+	var buttons := VBoxContainer.new(); buttons.position = Vector2(80.0, view.y * 0.49); buttons.size = Vector2(view.x - 160.0, 440.0); buttons.add_theme_constant_override("separation", 14); layer.add_child(buttons)
+	_latest_story_run_record = _build_story_run_record(success, elapsed)
+	var recap := _pause_btn("View Practice Recap", Color(0.26, 0.32, 0.42), Color.WHITE); recap.custom_minimum_size = Vector2(0.0, 80.0); recap.pressed.connect(_show_story_run_recap.bind(_latest_story_run_record, "PRACTICE RECAP")); buttons.add_child(recap)
+	var retry := _pause_btn("Retry", Color(0.46, 0.30, 0.08), Color.WHITE); retry.custom_minimum_size = Vector2(0.0, 80.0); retry.pressed.connect(_finish_boss_practice.bind("boss_practice_retry")); buttons.add_child(retry)
+	var phase := _pause_btn("Change Phase", Color(0.24, 0.28, 0.46), Color.WHITE); phase.custom_minimum_size = Vector2(0.0, 80.0); phase.pressed.connect(_finish_boss_practice.bind("boss_practice_phase")); buttons.add_child(phase)
+	var choose := _pause_btn("Choose Boss", Color(0.22, 0.34, 0.42), Color.WHITE); choose.custom_minimum_size = Vector2(0.0, 80.0); choose.pressed.connect(_finish_boss_practice.bind("boss_practice_choose")); buttons.add_child(choose)
+	var exit := _pause_btn("Return to Story Menu", Color(0.20, 0.32, 0.34), Color.WHITE); exit.custom_minimum_size = Vector2(0.0, 80.0); exit.pressed.connect(_finish_boss_practice.bind("boss_practice_exit")); buttons.add_child(exit)
+
+func _finish_boss_practice(action: String) -> void:
+	if _story_telemetry != null:
+		if action == "boss_practice_retry":
+			_story_telemetry.stage_retried("boss_practice")
+		elif not _story_telemetry.is_terminal():
+			_record_story_abandon(action)
+		_story_telemetry.log_event("Retry" if action == "boss_practice_retry" else ("Change phase" if action == "boss_practice_phase" else ("Choose boss" if action == "boss_practice_choose" else "Exit")))
+	match_ended.emit(action)
+
+func _story_mastery_result_text(new_ids: Array, earned_ids: Array, test_mode: bool) -> String:
+	var lines: Array[String] = []
+	for objective_variant in _story_mastery_objectives():
+		var objective: Dictionary = objective_variant as Dictionary
+		var objective_id := str(objective.get("id", ""))
+		var suffix := ""
+		if objective_id in new_ids: suffix = " · NEW"
+		elif objective_id in earned_ids and not test_mode: suffix = " · Previously Completed"
+		lines.append("%s %s%s" % ["★" if objective_id in earned_ids else "☆", str(objective.get("title", "Mastery")), suffix])
+	return "\n".join(lines)
+
 func _finish_story_test(action: String) -> void:
 	if _story_telemetry != null:
 		if action == "story_test_retry":
-			_story_telemetry.retry("test_stage")
+			_story_telemetry.stage_retried("test_stage")
+		elif not _story_telemetry.is_terminal():
+			_record_story_abandon(action)
 	match_ended.emit(action)
 
 func _add_death_ring_rewards(layer: Node, view: Vector2, y: float) -> void:
@@ -14910,9 +18311,13 @@ func _add_death_ring_rewards(layer: Node, view: Vector2, y: float) -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(title)
 
-	var max_rows: int = min(_rings_obtained.size(), 3)
+	var focused_rings := _rings_obtained.duplicate(true)
+	focused_rings.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return RewardPresentationClass.state_priority({"new":bool(a.get("_reward_new", false)), "merge_ready":bool(a.get("_reward_merge_ready", false))}, str(a.get("rarity", "common"))) > RewardPresentationClass.state_priority({"new":bool(b.get("_reward_new", false)), "merge_ready":bool(b.get("_reward_merge_ready", false))}, str(b.get("rarity", "common")))
+	)
+	var max_rows: int = min(focused_rings.size(), 1)
 	for i in max_rows:
-		var ring: Dictionary = _rings_obtained[i] as Dictionary
+		var ring: Dictionary = focused_rings[i] as Dictionary
 		root.add_child(_make_death_ring_row(ring))
 	if _rings_obtained.size() > max_rows:
 		var more := Label.new()
@@ -14953,9 +18358,15 @@ func _add_death_artifact_reward(layer: Node, view: Vector2, y: float) -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	root.add_child(title)
 
-	var max_rows: int = min(_boss_artifact_results.size(), 3)
+	var focused_artifacts := _boss_artifact_results.duplicate(true)
+	focused_artifacts.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var art_a := a.get("artifact", {}) as Dictionary
+		var art_b := b.get("artifact", {}) as Dictionary
+		return RewardPresentationClass.state_priority({"new":not bool(a.get("duplicated", false))}, str(art_a.get("rarity", "common"))) > RewardPresentationClass.state_priority({"new":not bool(b.get("duplicated", false))}, str(art_b.get("rarity", "common")))
+	)
+	var max_rows: int = min(focused_artifacts.size(), 1)
 	for i in max_rows:
-		var reward: Dictionary = _boss_artifact_results[i] as Dictionary
+		var reward: Dictionary = focused_artifacts[i] as Dictionary
 		var reward_art: Dictionary = reward.get("artifact", {}) as Dictionary
 		var duplicated: bool = reward.get("duplicated", false) as bool
 		if not reward_art.is_empty():
@@ -14989,74 +18400,27 @@ func _add_death_artifact_reward(layer: Node, view: Vector2, y: float) -> void:
 		root.add_child(dup)
 
 func _make_death_artifact_row(artifact: Dictionary, duplicated: bool) -> Control:
-	var rarity: String = artifact.get("rarity", "rare") as String
-	var rarity_color: Color = ArtifactStore.RARITY_COLORS.get(rarity, Color(0.80, 0.80, 0.80)) as Color
-	var row := Button.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.07, 0.10).lerp(rarity_color, 0.24)
-	style.corner_radius_top_left = 10
-	style.corner_radius_top_right = 10
-	style.corner_radius_bottom_right = 10
-	style.corner_radius_bottom_left = 10
-	style.set_border_width_all(2)
-	style.border_color = rarity_color
-	row.add_theme_stylebox_override("normal", style)
-	row.add_theme_stylebox_override("hover", style)
-	row.add_theme_stylebox_override("pressed", style)
-	row.custom_minimum_size = Vector2(0, 108)
-	row.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	row.focus_mode = Control.FOCUS_NONE
+	var row := RewardItemCardClass.new()
+	row.configure("artifact", artifact, {"new":not duplicated, "duplicate":duplicated}, 1, 0, true, true)
+	row.custom_minimum_size = Vector2(0.0, 238.0)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.icon = ArtifactStore.artifact_icon(artifact)
-	row.expand_icon = true
-	row.add_theme_constant_override("icon_max_width", 56)
-	row.clip_text = true
-	row.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	row.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
-	row.text = "[%s]  %s%s" % [
-		rarity.to_upper(),
-		artifact.get("name", "Artifact") as String,
-		"",
-	]
-	row.add_theme_font_size_override("font_size", 30)
-	row.add_theme_color_override("font_color", Color(0.68, 0.68, 0.70) if duplicated else rarity_color)
-	if duplicated:
-		row.modulate = Color(0.66, 0.66, 0.66, 1.0)
+	if not duplicated:
+		row.call_deferred("play_reveal", SettingsStore.load_all(), "rare")
 	return row
 
 func _make_death_ring_row(ring: Dictionary) -> Control:
-	var rarity: String = ring.get("rarity", "rare") as String
-	var rarity_color: Color = _ring_rarity_color(rarity)
-	var row := Button.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.07, 0.10).lerp(rarity_color, 0.24)
-	style.corner_radius_top_left = 10
-	style.corner_radius_top_right = 10
-	style.corner_radius_bottom_right = 10
-	style.corner_radius_bottom_left = 10
-	style.set_border_width_all(2)
-	style.border_color = rarity_color
-	row.add_theme_stylebox_override("normal", style)
-	row.add_theme_stylebox_override("hover", style)
-	row.add_theme_stylebox_override("pressed", style)
-	row.custom_minimum_size = Vector2(0, 108)
-	row.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	row.focus_mode = Control.FOCUS_NONE
+	var duplicate := bool(ring.get("_reward_duplicate", false))
+	var merge_count := int(ring.get("_reward_merge_count", 1))
+	var row := RewardItemCardClass.new()
+	row.configure("ring", ring, {
+		"new":bool(ring.get("_reward_new", false)),
+		"duplicate":duplicate,
+		"merge_ready":bool(ring.get("_reward_merge_ready", false)),
+	}, 1, merge_count, true, true)
+	row.custom_minimum_size = Vector2(0.0, 238.0)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.icon = RingStore.ring_icon(ring)
-	row.expand_icon = true
-	row.add_theme_constant_override("icon_max_width", 56)
-	row.clip_text = true
-	row.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	row.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
-	row.text = "[%s]  %s  T%d  (%s)" % [
-		rarity.to_upper(),
-		ring.get("name", "Ring") as String,
-		int(ring.get("tier", 1)),
-		_format_ring_bonus(ring),
-	]
-	row.add_theme_font_size_override("font_size", 30)
-	row.add_theme_color_override("font_color", rarity_color)
+	if bool(ring.get("_reward_new", false)) or RewardPresentationClass.rarity_rank(ring.get("rarity", "common")) >= 2:
+		row.call_deferred("play_reveal", SettingsStore.load_all(), "rare")
 	return row
 
 func _ring_rarity_color(rarity: String) -> Color:
@@ -15135,6 +18499,7 @@ func _start_revive_ad(death_layer: Node, revive_btn: Button = null, status_lbl: 
 
 func _do_revive(death_layer: Node) -> void:
 	_ad_revive_used = true
+	_story_run_stats.record_revive()
 	_game_over   = false
 	_paused      = false
 	# Restore player to 40% HP
@@ -15203,6 +18568,9 @@ func _apply_mystery_box_chaos() -> void:
 		var sign_val: float = (m["pos"] as float) if randf() < 0.5 else (m["neg"] as float)
 		var k: String = m["key"] as String
 		_ring_bonuses[k] = float(_ring_bonuses.get(k, 0.0)) + sign_val
+		var mystery_effects: Dictionary = _artifact_run_effects.get("artifact_capy_mystery_box", {}) as Dictionary
+		mystery_effects[k] = sign_val
+		_artifact_run_effects["artifact_capy_mystery_box"] = mystery_effects
 
 func _update_artifact_runtime(delta: float) -> void:
 	if _ring_bonus("chaos_wheel") > 0.0:
@@ -15236,7 +18604,7 @@ func _update_artifact_runtime(delta: float) -> void:
 		_artifact_regen_pulse_t -= delta
 		if _artifact_regen_pulse_t <= 0.0:
 			_artifact_regen_pulse_t = _ring_bonus("regen_pulse_interval")
-			_player_hp = min(_player_max_hp, _player_hp + _player_max_hp * _ring_bonus("regen_pulse_pct"))
+			_restore_player_hp(_player_max_hp * _ring_bonus("regen_pulse_pct"))
 	if _ring_bonus("blink_interval") > 0.0:
 		_artifact_blink_t -= delta
 		if _artifact_blink_t <= 0.0:

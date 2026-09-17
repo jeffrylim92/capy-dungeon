@@ -231,6 +231,7 @@ static func _validate_chapter_two(objective: String, state: Dictionary) -> Dicti
 			if not bool(state.get("final_rune_activated", false)): return _rejected("final_rune_inactive")
 			if not bool(state.get("spreading_freeze_resolved", false)): return _rejected("spreading_freeze_unresolved")
 		"frost_mimic":
+			if not bool(state.get("clue_state_valid", false)): return _rejected("mimic_clue_state_invalid")
 			if not bool(state.get("real_mimic_opened", false)): return _rejected("real_mimic_not_opened")
 			if not bool(state.get("mimic_spawned", false)): return _rejected("frost_mimic_not_spawned")
 			if not bool(state.get("mimic_defeated", false)): return _rejected("frost_mimic_not_defeated")

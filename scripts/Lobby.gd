@@ -6,6 +6,9 @@ extends Node2D
 signal start_game_requested
 signal dungeon_requested(dungeon_id: String)
 signal story_requested
+signal continue_story_requested(stage_index: int)
+signal story_reward_requested(chapter_number: int)
+signal build_requested(character_id: String)
 signal history_requested
 signal cloud_sync_requested
 signal collectibles_requested
@@ -13,6 +16,7 @@ signal logout_requested
 
 const SETTINGS_SCENE := preload("res://scenes/Settings.tscn")
 const CAMP_VISTA_SCRIPT := preload("res://scripts/CampVista.gd")
+const HOME_STATE := preload("res://scripts/ui/HomeState.gd")
 const CAMP_COIN_ICON := preload("res://assets/camp/resources/camp_coin.png")
 const FORGECORE_MATERIAL_ICON := preload("res://assets/camp/resources/forgecore_material.png")
 
@@ -26,129 +30,220 @@ var _camp_overlay: CanvasLayer = null
 var _modifier_info_layer: CanvasLayer = null
 var _play_hub_layer: CanvasLayer = null
 var _camp_resident_state: Dictionary = {}
+var _home_character_id: String = "capy_zoomer"
+var _navigation_started: bool = false
 
 func _ready() -> void:
 	SettingsStore.apply(get_tree())
 	add_to_group("active_account")
+	add_to_group("accessibility_settings")
 	set_meta("username", String(account.get("username", "")))
 	set_meta("social_email", String(account.get("social_email", "")).strip_edges().to_lower())
 	_build_ui()
+	apply_accessibility_settings(SettingsStore.load_all())
 	if open_play_hub_on_ready:
 		_show_play_hub.call_deferred()
 
 func _build_ui() -> void:
 	var view := get_viewport_rect().size
+	var username := String(account.get("username", ""))
+	var story_profile := StoryStore.load_profile(username)
+	var story := HOME_STATE.story_summary(story_profile)
+	var local_profile := _load_profile()
+	_home_character_id = String(account.get("favorite_capy", "")).strip_edges()
+	if _home_character_id.is_empty():
+		_home_character_id = String(local_profile.get("avatar", "capy_zoomer"))
+	var chapter_number := int(story.get("chapter", 1))
+	var chapter_bg_path := "res://assets/story/chapters/ch%d_base.png" % chapter_number
 
 	var bg := TextureRect.new()
-	var bg_tex := load("res://assets/backgrounds/bg_lobby.png") as Texture2D
-	if bg_tex:
-		bg.texture = bg_tex
-	else:
-		bg.set_script(null)
+	bg.texture = load(chapter_bg_path) as Texture2D if ResourceLoader.exists(chapter_bg_path) else load("res://assets/backgrounds/bg_lobby.png") as Texture2D
 	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	bg.stretch_mode = TextureRect.STRETCH_SCALE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	bg.size = view
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
+	var veil := ColorRect.new()
+	veil.color = Color(0.012, 0.022, 0.035, 0.68)
+	veil.size = view
+	veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(veil)
 
-	var layout := Control.new()
-	layout.position = Vector2.ZERO
-	layout.size = view
-	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(layout)
-
-	var center := CenterContainer.new()
-	center.position = Vector2.ZERO
-	center.size = view
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layout.add_child(center)
-
-	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(view.x - 80.0, 0.0)
-	var card_style := StyleBoxFlat.new()
-	card_style.bg_color = Color(0.98, 0.95, 0.88, 0.55)
-	card_style.border_color = Color(0.75, 0.55, 0.20, 0.88)
-	card_style.set_border_width_all(2)
-	card_style.corner_radius_top_left = 28
-	card_style.corner_radius_top_right = 28
-	card_style.corner_radius_bottom_right = 28
-	card_style.corner_radius_bottom_left = 28
-	card_style.shadow_color = Color(0.0, 0.0, 0.0, 0.45)
-	card_style.shadow_size = 18
-	card_style.shadow_offset = Vector2(0, 6)
-	card.add_theme_stylebox_override("panel", card_style)
-	center.add_child(card)
-
-	var inner := MarginContainer.new()
-	inner.add_theme_constant_override("margin_left", 48)
-	inner.add_theme_constant_override("margin_right", 48)
-	inner.add_theme_constant_override("margin_top", 48)
-	inner.add_theme_constant_override("margin_bottom", 48)
-	card.add_child(inner)
-
+	var safe := SettingsStore.safe_area(view)
+	var scroll := ScrollContainer.new()
+	scroll.name = "HomeScroll"
+	scroll.position = safe.position
+	scroll.size = safe.size
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.scroll_deadzone = 24
+	add_child(scroll)
+	var margin := MarginContainer.new()
+	margin.name = "HomeMargins"
+	margin.custom_minimum_size = Vector2(safe.size.x, 0.0)
+	margin.set_meta("accessibility_no_scale", true)
+	margin.add_theme_constant_override("margin_left", 34)
+	margin.add_theme_constant_override("margin_right", 34)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_bottom", 30)
+	scroll.add_child(margin)
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 22)
-	inner.add_child(root)
+	root.name = "HomeContent"
+	root.add_theme_constant_override("separation", 15)
+	margin.add_child(root)
 
-	var title := Label.new()
-	title.text = "Capy Dungeon"
-	title.add_theme_font_size_override("font_size", 72)
-	title.add_theme_color_override("font_color", Color(0.22, 0.10, 0.02))
-	title.add_theme_color_override("font_outline_color", Color(1.0, 0.90, 0.60, 0.55))
-	title.add_theme_constant_override("outline_size", 3)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	root.add_child(title)
-
-	var _prof := _load_profile()
-	var _av_id: String = _prof.get("avatar", "capy_zoomer") as String
-	var _av_tex := load("res://assets/characters/" + _av_id + ".png") as Texture2D
-	if _av_tex:
-		var av_center := CenterContainer.new()
-		_lobby_avatar_rect = TextureRect.new()
-		_lobby_avatar_rect.texture = _av_tex
-		_lobby_avatar_rect.custom_minimum_size = Vector2(96, 96)
-		_lobby_avatar_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		_lobby_avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		av_center.add_child(_lobby_avatar_rect)
-		root.add_child(av_center)
-
-	var welcome := Label.new()
-	var _base_name: String = String(account.get("display_name", account.get("username", "trainer")))
-	var display_name: String = _prof.get("display_name", _base_name) as String
-	welcome.text = "Welcome back, %s" % display_name
-	welcome.add_theme_font_size_override("font_size", 36)
-	welcome.add_theme_color_override("font_color", Color(0.28, 0.14, 0.04))
-	welcome.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	root.add_child(welcome)
-	_welcome_lbl = welcome
-	var username := String(account.get("username", ""))
 	var progression := ProgressionStore.load_profile(username)
-	var camp_summary := Label.new()
-	camp_summary.text = "Camp Lv.%d  ·  %d coins  ·  %s" % [ProgressionStore.account_level(progression), int(progression.get("coins", 0)), String(ProgressionStore.difficulty(progression).get("name", "Cozy"))]
-	camp_summary.add_theme_font_size_override("font_size", 24)
-	camp_summary.add_theme_color_override("font_color", Color(0.34, 0.20, 0.06))
-	camp_summary.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	root.add_child(camp_summary)
-
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 24)
-	root.add_child(spacer)
-
-	var play_btn := _make_button("PLAY", 44, Vector2(0, 140), true)
-	play_btn.pressed.connect(_show_play_hub)
-	root.add_child(play_btn)
-
-	var history_btn := _make_button("History", 32, Vector2(0, 90))
-	history_btn.pressed.connect(func() -> void: history_requested.emit())
-	root.add_child(history_btn)
-
-	var collectibles_btn := _make_button("Collectibles", 32, Vector2(0, 90))
-	collectibles_btn.pressed.connect(func() -> void: collectibles_requested.emit())
-	root.add_child(collectibles_btn)
-
-	var settings_btn := _make_button("Settings", 32, Vector2(0, 90))
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 12)
+	root.add_child(top)
+	var identity := VBoxContainer.new()
+	identity.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(identity)
+	var title := Label.new()
+	title.text = "CAPY DUNGEON"
+	title.add_theme_font_size_override("font_size", 43)
+	title.add_theme_color_override("font_color", Color("ffe195"))
+	identity.add_child(title)
+	var base_name := String(account.get("display_name", account.get("username", "trainer")))
+	var display_name := String(local_profile.get("display_name", base_name))
+	_welcome_lbl = Label.new()
+	_welcome_lbl.text = "%s  ·  Camp Lv.%d  ·  %d coins" % [display_name, ProgressionStore.account_level(progression), int(progression.get("coins", 0))]
+	_welcome_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_welcome_lbl.clip_text = true
+	_welcome_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_welcome_lbl.add_theme_font_size_override("font_size", 22)
+	_welcome_lbl.add_theme_color_override("font_color", Color("d9e9ed"))
+	identity.add_child(_welcome_lbl)
+	var settings_btn := _make_button("⚙", 34, Vector2(78, 72))
+	settings_btn.name = "SettingsButton"
+	settings_btn.accessibility_name = "Settings"
 	settings_btn.pressed.connect(_on_settings_pressed)
-	root.add_child(settings_btn)
+	top.add_child(settings_btn)
+
+	var hero_center := CenterContainer.new()
+	hero_center.custom_minimum_size = Vector2(0, 270)
+	root.add_child(hero_center)
+	_lobby_avatar_rect = TextureRect.new()
+	var avatar_path := "res://assets/characters/%s.png" % _home_character_id
+	if ResourceLoader.exists(avatar_path):
+		_lobby_avatar_rect.texture = load(avatar_path) as Texture2D
+	_lobby_avatar_rect.custom_minimum_size = Vector2(280, 270)
+	_lobby_avatar_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_lobby_avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_lobby_avatar_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hero_center.add_child(_lobby_avatar_rect)
+
+	var continue_btn := _make_button("", 28, Vector2(0, 238), true)
+	continue_btn.name = "ContinueStoryButton"
+	continue_btn.text = _continue_text(story)
+	continue_btn.pressed.connect(func() -> void:
+		if bool(story.get("campaign_complete", false)) or bool(story.get("chapter_reward_pending", false)):
+			_navigate(func() -> void: story_requested.emit())
+		else:
+			_navigate(func() -> void: continue_story_requested.emit(int(story.get("stage_index", 0))))
+	)
+	root.add_child(continue_btn)
+
+	var attention := HBoxContainer.new()
+	attention.name = "AttentionActions"
+	attention.add_theme_constant_override("separation", 10)
+	var attention_count := 0
+	var reward_count := int(story.get("claimable_mastery_count", 0))
+	if reward_count > 0:
+		var reward_btn := _make_button("REWARD READY · %d" % reward_count, 22, Vector2(0, 66), true)
+		reward_btn.name = "MasteryRewardButton"
+		reward_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		reward_btn.pressed.connect(func() -> void: _navigate(func() -> void: story_reward_requested.emit(int(story.get("claimable_mastery_chapter", 1)))))
+		attention.add_child(reward_btn)
+		attention_count += 1
+	if attention_count > 0:
+		root.add_child(attention)
+	else:
+		attention.free()
+
+	var modes_title := _section_label("PLAY MODES")
+	root.add_child(modes_title)
+	var modes := HBoxContainer.new()
+	modes.add_theme_constant_override("separation", 10)
+	root.add_child(modes)
+	_add_home_mode(modes, "STORY", "Campaign", Color("43a978"), func() -> void: _navigate(func() -> void: story_requested.emit()))
+	_add_home_mode(modes, "SURVIVAL", "Endless", Color("cf673c"), func() -> void: _navigate(func() -> void: start_game_requested.emit()))
+	_add_home_mode(modes, "DUNGEON", "Resources", Color("527fc4"), func() -> void: _show_camp("difficulty"))
+
+	root.add_child(_section_label("CURRENT BUILD"))
+	var build_btn := _make_button("", 22, Vector2(0, 118))
+	build_btn.name = "BuildPreviewButton"
+	build_btn.pressed.connect(func() -> void: _navigate(func() -> void: build_requested.emit(_home_character_id)))
+	root.add_child(build_btn)
+	_add_build_preview(build_btn, HOME_STATE.build_items(username, _home_character_id))
+
+	var more := _make_button("MORE", 24, Vector2(0, 72))
+	more.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	more.pressed.connect(_show_play_hub)
+	root.add_child(more)
+
+func _continue_text(story: Dictionary) -> String:
+	if bool(story.get("campaign_mastered", false)):
+		return "CAMPAIGN MASTERED ◆\nSTORY MAP  ›\n25 / 25 Cleared  ·  75 / 75 ★"
+	if bool(story.get("campaign_complete", false)):
+		return "STORY COMPLETE\nSTORY MAP  ›\n25 / 25 Cleared  ·  %d / 75 ★" % int(story.get("campaign_mastery", 0))
+	if bool(story.get("chapter_reward_pending", false)):
+		return "CHAPTER %d COMPLETE\nCLAIM CHAPTER REWARD  ›\n%s    Mastery %d/15 ★" % [int(story.get("chapter", 1)), str(story.get("chapter_path", "")), int(story.get("chapter_mastery", 0))]
+	return "CONTINUE STORY  ›\nC%dS%d · %s\n%s    Chapter %d/5    Mastery %d/15 ★" % [int(story.get("chapter", 1)), int(story.get("chapter_stage", 1)), str(story.get("stage_title", "Story Stage")), str(story.get("chapter_path", "")), int(story.get("chapter_cleared", 0)), int(story.get("chapter_mastery", 0))]
+
+func _section_label(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 21)
+	label.add_theme_color_override("font_color", Color("c6d9df"))
+	return label
+
+func _add_home_mode(parent: HBoxContainer, title: String, subtitle: String, accent: Color, action: Callable) -> void:
+	var button := _make_button("%s\n%s" % [title, subtitle], 22, Vector2(0, 105))
+	button.name = "%sModeButton" % title.capitalize()
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.add_theme_color_override("font_color", accent.lightened(0.35))
+	button.pressed.connect(action)
+	parent.add_child(button)
+
+func _add_build_preview(button: Button, items: Array[Dictionary]) -> void:
+	var row := HBoxContainer.new()
+	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	row.offset_left = 22
+	row.offset_right = -22
+	row.add_theme_constant_override("separation", 12)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(row)
+	var label := Label.new()
+	label.text = "EQUIPPED\nTap to manage"
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 22)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(label)
+	for index in 4:
+		var icon := TextureRect.new()
+		icon.custom_minimum_size = Vector2(76, 76)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if index < items.size():
+			var path := str(items[index].get("icon", ""))
+			if ResourceLoader.exists(path):
+				icon.texture = load(path) as Texture2D
+			icon.tooltip_text = str(items[index].get("name", "Equipped item"))
+		else:
+			icon.tooltip_text = "Empty slot"
+		row.add_child(icon)
+
+func _navigate(action: Callable) -> void:
+	if _navigation_started:
+		return
+	_navigation_started = true
+	action.call()
+
+func apply_accessibility_settings(settings: Dictionary) -> void:
+	SettingsStore.apply_ui_scale(self, float(settings.get("ui_scale", 1.0)))
 
 func _show_play_hub() -> void:
 	if _play_hub_layer != null and is_instance_valid(_play_hub_layer): return
@@ -156,34 +251,17 @@ func _show_play_hub() -> void:
 	_play_hub_layer.layer = 70
 	add_child(_play_hub_layer)
 	var view := get_viewport_rect().size
-	var bg := TextureRect.new()
-	bg.texture = load("res://assets/backgrounds/bg_preparation_stage.png") as Texture2D
-	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	bg.stretch_mode = TextureRect.STRETCH_SCALE
-	bg.size = view
-	_play_hub_layer.add_child(bg)
-	var shade := ColorRect.new(); shade.color = Color(0.02, 0.04, 0.06, 0.55); shade.size = view; _play_hub_layer.add_child(shade)
+	var shade := ColorRect.new(); shade.color = Color(0.02, 0.04, 0.06, 0.96); shade.size = view; _play_hub_layer.add_child(shade)
 	var root := VBoxContainer.new(); root.position = Vector2(55, 70); root.size = Vector2(view.x - 110, view.y - 125); root.add_theme_constant_override("separation", 24); _play_hub_layer.add_child(root)
-	var title := Label.new(); title.text = "CHOOSE YOUR ADVENTURE"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 54); title.add_theme_color_override("font_color", Color(1.0, 0.82, 0.28)); root.add_child(title)
-	_add_mode_card(root, "story", "STORY", "Clear chapters · Claim equipment · Upgrade your loadout", Color(0.25, 0.66, 0.48), func() -> void: story_requested.emit())
-	_add_mode_card(root, "survival", "SURVIVAL", "Endless waves · Rings and artifacts · High-score runs", Color(0.72, 0.34, 0.20), func() -> void: start_game_requested.emit())
-	_add_mode_card(root, "camp", "CAMP & CHALLENGES", "Permanent upgrades · Missions · Dungeon difficulty", Color(0.32, 0.48, 0.72), func() -> void:
+	var title := Label.new(); title.text = "MORE"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 54); title.add_theme_color_override("font_color", Color(1.0, 0.82, 0.28)); root.add_child(title)
+	var camp := _make_button("CAMP\nPermanent upgrades and challenges", 29, Vector2(0, 122), true); camp.pressed.connect(func() -> void:
 		_close_play_hub()
 		_show_camp()
-	)
-	var back := _make_button("Main Menu", 30, Vector2(0, 90)); back.pressed.connect(_close_play_hub); root.add_child(back)
-
-func _add_mode_card(parent: VBoxContainer, asset_id: String, title: String, description: String, color: Color, action: Callable) -> void:
-	var button := _make_button("", 28, Vector2(0, 350), true)
-	button.clip_contents = true
-	var style := _camp_card_style(color.lightened(0.25), color.darkened(0.55), 24, 4)
-	button.add_theme_stylebox_override("normal", style)
-	button.add_theme_stylebox_override("hover", style.duplicate())
-	var art := TextureRect.new(); art.texture = load("res://assets/story/modes/%s.png" % asset_id) as Texture2D; art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); art.offset_left = 5; art.offset_top = 5; art.offset_right = -5; art.offset_bottom = -5; art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED; art.mouse_filter = Control.MOUSE_FILTER_IGNORE; button.add_child(art)
-	var veil := ColorRect.new(); veil.color = Color(0.01, 0.02, 0.03, 0.48); veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); veil.offset_left = 5; veil.offset_top = 5; veil.offset_right = -5; veil.offset_bottom = -5; veil.mouse_filter = Control.MOUSE_FILTER_IGNORE; button.add_child(veil)
-	var text := Label.new(); text.text = "%s\n%s" % [title, description]; text.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); text.offset_left = 38; text.offset_right = -38; text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT; text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; text.add_theme_font_size_override("font_size", 34); text.add_theme_color_override("font_color", Color.WHITE); text.add_theme_color_override("font_outline_color", Color.BLACK); text.add_theme_constant_override("outline_size", 8); text.mouse_filter = Control.MOUSE_FILTER_IGNORE; button.add_child(text)
-	button.pressed.connect(action)
-	parent.add_child(button)
+	); root.add_child(camp)
+	var history := _make_button("RECORDS", 29, Vector2(0, 96)); history.pressed.connect(func() -> void: _navigate(func() -> void: history_requested.emit())); root.add_child(history)
+	var collectibles := _make_button("COLLECTIBLES", 29, Vector2(0, 96)); collectibles.pressed.connect(func() -> void: _navigate(func() -> void: collectibles_requested.emit())); root.add_child(collectibles)
+	var back := _make_button("BACK TO HOME", 30, Vector2(0, 90)); back.pressed.connect(_close_play_hub); root.add_child(back)
+	apply_accessibility_settings(SettingsStore.load_all())
 
 func _close_play_hub() -> void:
 	if _play_hub_layer != null and is_instance_valid(_play_hub_layer): _play_hub_layer.queue_free()
@@ -209,6 +287,7 @@ func _show_camp(selected_upgrade: String = "") -> void:
 	_camp_overlay.add_child(scroll)
 	var root := VBoxContainer.new()
 	root.custom_minimum_size = Vector2(view.x - 110, 0)
+	root.set_meta("accessibility_no_scale", true)
 	root.add_theme_constant_override("separation", 16)
 	scroll.add_child(root)
 	var title := Label.new()
@@ -289,10 +368,10 @@ func _show_camp(selected_upgrade: String = "") -> void:
 		root.add_child(difficulty_title)
 		var depths: Dictionary = profile.get("dungeon_depths", {}) as Dictionary
 		var coin := _make_button("CAMP COIN BURROW\nCurrent best: Depth %d\nTimed treasure extraction · Break deposits and carry loot\nExtract safely or risk everything by descending deeper." % int(depths.get("coin_burrow", 0)), 29, Vector2(0, 170), true)
-		coin.pressed.connect(func() -> void: _close_camp(); dungeon_requested.emit("coin_burrow"))
+		coin.pressed.connect(func() -> void: _navigate(func() -> void: _close_camp(); dungeon_requested.emit("coin_burrow")))
 		root.add_child(coin)
 		var forge := _make_button("FORGECORE DEPTHS\nCurrent best: Depth %d\nActivate and defend three forges · Defeat the guardian\nChoose a forge protocol before descending deeper." % int(depths.get("forgecore", 0)), 29, Vector2(0, 170), true)
-		forge.pressed.connect(func() -> void: _close_camp(); dungeon_requested.emit("forgecore"))
+		forge.pressed.connect(func() -> void: _navigate(func() -> void: _close_camp(); dungeon_requested.emit("forgecore")))
 		root.add_child(forge)
 		_add_camp_overview_button(root)
 	elif selected_upgrade == "missions" or selected_upgrade == "missions_weekly":
@@ -348,12 +427,12 @@ func _show_camp(selected_upgrade: String = "") -> void:
 		)
 		root.add_child(collect_all)
 		_add_camp_overview_button(root)
-	var close := _make_button("Back to Play Modes", 34, Vector2(0, 90), true)
+	var close := _make_button("Back to Home", 34, Vector2(0, 90), true)
 	close.pressed.connect(func() -> void:
 		_close_camp()
-		_show_play_hub()
 	)
 	root.add_child(close)
+	apply_accessibility_settings(SettingsStore.load_all())
 
 func _add_camp_resource_amount(parent: Container, texture: Texture2D, amount: int, tooltip: String, icon_size: int = 48, font_size: int = 34) -> void:
 	var group := HBoxContainer.new()
@@ -497,6 +576,7 @@ func _show_modifier_info() -> void:
 	_modifier_info_layer.add_child(blocker)
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(view.x - 100, 0)
+	panel.set_meta("accessibility_no_scale", true)
 	panel.position = Vector2(50, view.y * 0.17)
 	panel.add_theme_stylebox_override("panel", _camp_card_style(Color(0.35, 0.78, 1.0), Color(0.03, 0.05, 0.10, 0.99), 22, 3))
 	_modifier_info_layer.add_child(panel)
@@ -575,8 +655,11 @@ func _refresh_lobby_header() -> void:
 	var base_name: String = String(account.get("display_name", account.get("username", "trainer")))
 	var new_name: String = prof.get("display_name", base_name) as String
 	if is_instance_valid(_welcome_lbl):
-		_welcome_lbl.text = "Welcome back, %s" % new_name
-	var new_av: String = prof.get("avatar", "capy_zoomer") as String
+		var progression := ProgressionStore.load_profile(String(account.get("username", "")))
+		_welcome_lbl.text = "%s  ·  Camp Lv.%d  ·  %d coins" % [new_name, ProgressionStore.account_level(progression), int(progression.get("coins", 0))]
+	var new_av := String(account.get("favorite_capy", "")).strip_edges()
+	if new_av.is_empty():
+		new_av = String(prof.get("avatar", "capy_zoomer"))
 	var ntex := load("res://assets/characters/" + new_av + ".png") as Texture2D
 	if ntex and is_instance_valid(_lobby_avatar_rect):
 		_lobby_avatar_rect.texture = ntex
@@ -590,7 +673,8 @@ func _on_settings_pressed() -> void:
 		logout_requested.emit())
 	_settings_overlay.display_name_changed.connect(func(new_name: String) -> void:
 		if is_instance_valid(_welcome_lbl):
-			_welcome_lbl.text = "Welcome back, %s" % new_name)
+			var progression := ProgressionStore.load_profile(String(account.get("username", "")))
+			_welcome_lbl.text = "%s  ·  Camp Lv.%d  ·  %d coins" % [new_name, ProgressionStore.account_level(progression), int(progression.get("coins", 0))])
 	_settings_overlay.closed.connect(func() -> void:
 		_refresh_lobby_header()
 		_close_settings())

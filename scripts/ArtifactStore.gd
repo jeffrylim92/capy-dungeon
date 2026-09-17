@@ -40,6 +40,7 @@ const ARTIFACT_ICON_DIRS: Array[String] = [
 ]
 
 static var _stash_cache: Dictionary = {}  # username -> Array[Dictionary]
+static var _icon_cache: Dictionary = {}
 const _SHARED_EQUIPPED_KEY: String = "__shared__"
 
 static func artifact_icon_path(artifact: Dictionary) -> String:
@@ -78,7 +79,11 @@ static func artifact_icon(artifact: Dictionary) -> Texture2D:
 	var path: String = artifact_icon_path(artifact)
 	if path.is_empty():
 		return null
-	return load(path) as Texture2D
+	if _icon_cache.has(path):
+		return _icon_cache[path] as Texture2D
+	var texture := ResourceLoader.load(path) as Texture2D
+	_icon_cache[path] = texture
+	return texture
 
 static func _stash_path(username: String) -> String:
 	return "user://artifacts_%s.json" % username.strip_edges().to_lower()

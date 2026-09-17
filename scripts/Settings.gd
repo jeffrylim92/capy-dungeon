@@ -16,27 +16,34 @@ var _music_slider: HSlider
 var _bright_slider: HSlider
 var _mute_check: CheckBox
 var _fps_check: CheckBox
+var _main_scrim: ColorRect
+var _main_panel: PanelContainer
 
 func _ready() -> void:
 	layer = 50
+	add_to_group("accessibility_settings")
 	_data = SettingsStore.load_all()
 	_build_ui()
 
 func _build_ui() -> void:
 	var view := get_viewport().get_visible_rect().size
+	var safe := SettingsStore.safe_area(view)
 
 	# Dim backdrop that absorbs taps outside the panel.
 	var scrim := ColorRect.new()
+	_main_scrim = scrim
 	scrim.color = Color(0, 0, 0, 0.55)
 	scrim.size = view
 	scrim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(scrim)
 
 	var panel := PanelContainer.new()
-	var panel_w: float = min(view.x - 80.0, 720.0)
-	var panel_h: float = min(view.y - 200.0, 1100.0)
+	_main_panel = panel
+	panel.set_meta("accessibility_no_scale", true)
+	var panel_w: float = min(safe.size.x - 80.0, 720.0)
+	var panel_h: float = min(safe.size.y - 80.0, 1160.0)
 	panel.custom_minimum_size = Vector2(panel_w, panel_h)
-	panel.position = Vector2((view.x - panel_w) * 0.5, (view.y - panel_h) * 0.5)
+	panel.position = safe.position + Vector2((safe.size.x - panel_w) * 0.5, (safe.size.y - panel_h) * 0.5)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.99, 0.96, 0.88)
 	style.corner_radius_top_left = 18
@@ -45,10 +52,10 @@ func _build_ui() -> void:
 	style.corner_radius_bottom_right = 18
 	style.border_color = Color(0.35, 0.18, 0.08)
 	style.set_border_width_all(3)
-	style.content_margin_left = 24
-	style.content_margin_right = 24
-	style.content_margin_top = 24
-	style.content_margin_bottom = 24
+	style.content_margin_left = 36
+	style.content_margin_right = 36
+	style.content_margin_top = 36
+	style.content_margin_bottom = 36
 	panel.add_theme_stylebox_override("panel", style)
 	add_child(panel)
 
@@ -65,9 +72,17 @@ func _build_ui() -> void:
 				close_modal.call()
 	)
 
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_child(scroll)
+
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 18)
-	panel.add_child(col)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(col)
 
 	var title := Label.new()
 	title.text = "Settings"
@@ -76,12 +91,42 @@ func _build_ui() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(title)
 
+	_add_section_header(col, "Audio & Display")
 	_sfx_slider = _add_slider(col, "Sound effects", "sfx_volume", 0.0, 100.0, 1.0)
 	_music_slider = _add_slider(col, "Music", "music_volume", 0.0, 100.0, 1.0)
 	_bright_slider = _add_slider(col, "Brightness", "brightness", 0.4, 1.0, 0.01, true)
+	_add_choice(col, "Frame rate", "frame_rate", ["60 FPS", "30 FPS"], [60, 30], "30 FPS lowers sustained battery use and heat on older phones; gameplay timing is unchanged.")
 
 	_mute_check = _add_toggle(col, "Mute all audio", "muted")
 	_fps_check   = _add_toggle(col, "Show FPS counter", "show_fps")
+
+	_add_section_header(col, "Interface")
+	_add_choice(col, "UI scale", "ui_scale", ["80%", "90%", "100%", "110%", "120%"], [0.8, 0.9, 1.0, 1.1, 1.2], "Scales text and container spacing without changing the game world.")
+	_add_choice(col, "Objective text", "objective_text_scale", ["90%", "100%", "110%", "120%"], [0.9, 1.0, 1.1, 1.2])
+	_add_slider(col, "HUD opacity", "hud_opacity", 0.8, 1.0, 0.05, true)
+	_add_choice(col, "Player outline", "player_outline", ["Off", "Normal", "Strong"], [0.0, 1.0, 1.5])
+	_add_toggle(col, "High-contrast telegraphs", "high_contrast_telegraphs")
+	_add_choice(col, "Hazard patterns", "hazard_patterns", ["Standard", "Enhanced"], ["standard", "enhanced"], "Enhanced adds stripes and directional marks; hazard timing is unchanged.")
+	_add_toggle(col, "Symbols alongside colours", "color_independent_indicators")
+
+	_add_section_header(col, "Combat Feedback")
+	_add_choice(col, "Screen shake", "screen_shake", ["Off", "50%", "100%"], [0.0, 0.5, 1.0])
+	_add_choice(col, "Screen flashes", "flash_intensity", ["Off", "50%", "100%"], [0.0, 0.5, 1.0])
+	_add_choice(col, "Player effects", "player_effects", ["High", "Medium", "Low"], ["high", "medium", "low"], "Reduces decorative effects only; warnings and enemy attacks stay visible.")
+	_add_choice(col, "Damage numbers", "damage_numbers", ["All", "Critical only", "Off"], ["all", "critical_only", "off"])
+	_add_choice(col, "Haptics", "haptics", ["Strong", "Light", "Off"], ["strong", "light", "off"])
+
+	_add_section_header(col, "Touch Controls")
+	_add_choice(col, "Joystick size", "touch_control_scale", ["Small", "Default", "Large"], [0.85, 1.0, 1.2])
+	_add_slider(col, "Joystick opacity", "touch_control_opacity", 0.35, 1.0, 0.05, true)
+
+	var reset_btn := Button.new()
+	reset_btn.text = "Reset Accessibility Settings"
+	reset_btn.add_theme_font_size_override("font_size", 30)
+	reset_btn.custom_minimum_size = Vector2(0, 72)
+	_style_secondary(reset_btn)
+	reset_btn.pressed.connect(_reset_accessibility_settings)
+	col.add_child(reset_btn)
 
 	var sep := HSeparator.new()
 	col.add_child(sep)
@@ -103,11 +148,101 @@ func _build_ui() -> void:
 	col.add_child(close_btn)
 
 	var version := Label.new()
-	version.text = "Capy Dungeon v1.0"
+	version.text = "Capy Dungeon v%s" % str(ProjectSettings.get_setting("application/config/version", "1.0.11"))
 	version.add_theme_font_size_override("font_size", 26)
 	version.add_theme_color_override("font_color", Color(0.55, 0.40, 0.25))
 	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(version)
+	apply_accessibility_settings(_data)
+
+func apply_accessibility_settings(data: Dictionary) -> void:
+	if _main_panel != null and is_instance_valid(_main_panel):
+		SettingsStore.apply_ui_scale(_main_panel, float(data.get("ui_scale", 1.0)))
+
+func _add_section_header(parent: Node, text: String) -> void:
+	var header := Label.new()
+	header.text = text.to_upper()
+	header.add_theme_font_size_override("font_size", 24)
+	header.add_theme_color_override("font_color", Color(0.62, 0.38, 0.08))
+	header.add_theme_color_override("font_outline_color", Color(1.0, 0.92, 0.70, 0.65))
+	header.add_theme_constant_override("outline_size", 2)
+	header.custom_minimum_size = Vector2(0, 40)
+	parent.add_child(header)
+
+func _add_choice(parent: Node, label_text: String, key: String, labels: Array, values: Array, description: String = "") -> OptionButton:
+	var block := VBoxContainer.new()
+	block.add_theme_constant_override("separation", 5)
+	parent.add_child(block)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	block.add_child(row)
+	var label := Label.new()
+	label.text = label_text
+	label.add_theme_font_size_override("font_size", 31)
+	label.add_theme_color_override("font_color", Color(0.35, 0.22, 0.1))
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(label)
+	var choice := OptionButton.new()
+	choice.custom_minimum_size = Vector2(260, 76)
+	choice.add_theme_font_size_override("font_size", 29)
+	choice.add_theme_constant_override("arrow_margin", 18)
+	choice.focus_mode = Control.FOCUS_NONE
+	_style_secondary(choice)
+	_add_choice_padding(choice)
+	choice.get_popup().add_theme_font_size_override("font_size", 28)
+	for option_label in labels:
+		choice.add_item(str(option_label))
+	var current: Variant = _data.get(key, values[0] if not values.is_empty() else null)
+	for index in values.size():
+		if _setting_values_equal(current, values[index]):
+			choice.select(index)
+			break
+	choice.item_selected.connect(func(index: int) -> void:
+		if index < 0 or index >= values.size():
+			return
+		_data = SettingsStore.set_value(key, values[index])
+		SettingsStore.apply(get_tree()))
+	row.add_child(choice)
+	if not description.is_empty():
+		var detail := Label.new()
+		detail.text = description
+		detail.add_theme_font_size_override("font_size", 22)
+		detail.add_theme_color_override("font_color", Color(0.50, 0.39, 0.27))
+		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		detail.custom_minimum_size = Vector2(0, 38)
+		block.add_child(detail)
+	return choice
+
+func _add_choice_padding(choice: OptionButton) -> void:
+	for state in ["normal", "hover", "pressed"]:
+		var style := choice.get_theme_stylebox(state) as StyleBoxFlat
+		if style == null:
+			continue
+		var padded := style.duplicate() as StyleBoxFlat
+		padded.content_margin_left = 18.0
+		padded.content_margin_right = 18.0
+		padded.content_margin_top = 10.0
+		padded.content_margin_bottom = 10.0
+		choice.add_theme_stylebox_override(state, padded)
+
+func _setting_values_equal(left: Variant, right: Variant) -> bool:
+	if (left is float or left is int) and (right is float or right is int):
+		return is_equal_approx(float(left), float(right))
+	return str(left) == str(right)
+
+func _reset_accessibility_settings() -> void:
+	_data = SettingsStore.reset_accessibility()
+	SettingsStore.apply(get_tree())
+	if _main_scrim != null and is_instance_valid(_main_scrim):
+		remove_child(_main_scrim)
+		_main_scrim.queue_free()
+	if _main_panel != null and is_instance_valid(_main_panel):
+		remove_child(_main_panel)
+		_main_panel.queue_free()
+	_main_scrim = null
+	_main_panel = null
+	_build_ui()
 
 func _add_slider(parent: Node, label_text: String, key: String, min_v: float, max_v: float, step: float, is_percent_one: bool = false) -> HSlider:
 	var row := VBoxContainer.new()
@@ -130,7 +265,8 @@ func _add_slider(parent: Node, label_text: String, key: String, min_v: float, ma
 	slider.max_value = max_v
 	slider.step = step
 	slider.value = float(_data.get(key, min_v))
-	slider.custom_minimum_size = Vector2(0, 40)
+	slider.custom_minimum_size = Vector2(0, 48)
+	slider.set_meta("accessibility_no_scale", true)
 	row.add_child(slider)
 	var update_label := func(v: float) -> void:
 		if is_percent_one:
